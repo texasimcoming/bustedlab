@@ -1,108 +1,143 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 
-// Large pool of names + cities so no repeat is visible within a session
-// Actions avoid "just" to work for returning visitors too
-const FIRST_NAMES = [
-  "Maya","Jordan","Tyler","Sofia","Amir","Priya","Chris","Lena","Noah","Ines",
-  "Zara","Marcus","Layla","Devon","Chloe","Rafi","Elena","Jake","Nadia","Omar",
-  "Bianca","Kai","Yasmin","Leo","Sasha","Finn","Mira","Andre","Talia","Hugo",
-  "Camille","Ezra","Dani","Theo","Isla","Remy","Jess","Mateo","Quinn","Sage",
-];
-const LAST_INITIALS = "ABCDEFGHJKLMNPRSTW";
-const CITIES = [
-  "London","Toronto","Austin","Paris","Dubai","Sydney","New York","Berlin",
-  "LA","Madrid","Amsterdam","Singapore","Miami","Stockholm","Barcelona",
-  "Montreal","Tokyo","Dublin","Lisbon","Cape Town","Chicago","Melbourne",
-  "Seoul","Copenhagen","Vienna","Zurich","Brussels","Oslo","Helsinki",
-];
-const ACTIONS = [
-  "scanned a product",
-  "busted a markup",
-  "ran an X-ray",
-  "exposed a dropship scam",
-  "scanned a skincare device",
-  "found a cheaper source",
-  "busted a TikTok product",
-  "scanned a fitness tracker",
-  "ran a price check",
-  "exposed a markup on a watch",
-  "scanned a home gadget",
-  "found a better price",
-  "busted a viral product",
-  "scanned a beauty device",
-  "ran a product X-ray",
-];
+/**
+ * SIGNAL STRIP.
+ *
+ * This component used to invent people. It generated a random first name, a
+ * random last initial, a random city and a random action, then told the
+ * visitor that "Maya B. from London busted a markup" — an event that never
+ * happened, attributed to a person who does not exist. Three problems, in
+ * ascending order of seriousness:
+ *
+ *  1. Off-brand. The entire product is an argument that you are being lied
+ *     to by people who want your money. Fabricating social proof to sell it
+ *     is the exact behaviour BustedLab exists to expose, and a visitor who
+ *     notices the same forty names cycling has been handed a reason to
+ *     distrust every other number on the page.
+ *  2. Legally exposed. Fabricated activity notifications are treated as
+ *     deceptive practice by the FTC and by EU consumer-protection law
+ *     (Annex I of the UCPD lists false claims about other consumers'
+ *     behaviour among the practices that are unfair in all circumstances).
+ *  3. Wrong voice. Names and cities are a growth-hack pattern. This brand
+ *     speaks as an instrument, not as a shop floor.
+ *
+ * What replaced it reads the same visual slot but only ever states measured
+ * facts pulled from the scan API's real counters. When there is no data
+ * behind a line, the line does not render. Nothing here can be disproved by
+ * anyone who checks, because everything here is a count of something that
+ * actually happened.
+ */
 
-function getRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+interface Signal {
+  id: string;
+  label: string;
+  value: string;
 }
 
-function generateActivity() {
-  const first = getRandom(FIRST_NAMES);
-  const last = LAST_INITIALS[Math.floor(Math.random() * LAST_INITIALS.length)];
-  return {
-    name: `${first} ${last}.`,
-    city: getRandom(CITIES),
-    action: getRandom(ACTIONS),
-  };
+interface Telemetry {
+  totalScans?: number;
+  totalSavings?: number;
+  hourlyScans?: number;
+  maxMarkup?: number;
+  verdictsRecorded?: number;
+  bustedRecorded?: number;
 }
 
-export default function LiveToast() {
+function buildSignals(t: Telemetry): Signal[] {
+  const signals: Signal[] = [];
+
+  if (typeof t.hourlyScans === "number" && t.hourlyScans > 0) {
+    signals.push({
+      id: "hourly",
+      label: "SCANS THIS HOUR",
+      value: t.hourlyScans.toLocaleString(),
+    });
+  }
+
+  if (typeof t.maxMarkup === "number" && t.maxMarkup > 0) {
+    signals.push({
+      id: "peak",
+      label: "HIGHEST MARKUP RECORDED",
+      value: `${t.maxMarkup.toLocaleString()}%`,
+    });
+  }
+
+  // Only shown once there is a real sample behind the ratio. A "0% of 0
+  // scans" tile is worse than no tile.
+  if (t.verdictsRecorded && t.verdictsRecorded >= 25 && typeof t.bustedRecorded === "number") {
+    const rate = Math.round((t.bustedRecorded / t.verdictsRecorded) * 100);
+    signals.push({
+      id: "rate",
+      label: "VERDICTS RETURNING BUSTED",
+      value: `${rate}%`,
+    });
+  }
+
+  if (typeof t.totalSavings === "number" && t.totalSavings >= 100) {
+    const v = t.totalSavings >= 1000
+      ? `$${(t.totalSavings / 1000).toFixed(1)}K`
+      : `$${Math.round(t.totalSavings)}`;
+    signals.push({ id: "exposed", label: "OVERCHARGES EXPOSED", value: v });
+  }
+
+  return signals;
+}
+
+// Telemetry is passed down from the page, which already fetches it for the
+// counters. Fetching it a second time here would double the request count on
+// every page load to display numbers the page is already holding.
+export default function LiveToast({ telemetry }: { telemetry: Telemetry }) {
+  const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(false);
-  const [activity, setActivity] = useState(generateActivity);
-  const [key, setKey] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showNext = () => {
-    setActivity(generateActivity());
-    setKey(k => k + 1);
-    setVisible(true);
-    timerRef.current = setTimeout(() => setVisible(false), 4000);
-  };
+  const hideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const signals = useMemo(() => buildSignals(telemetry), [telemetry]);
 
   useEffect(() => {
-    // First toast after 5 seconds
-    const initial = setTimeout(showNext, 5000);
-    // Then every 14-22 seconds (randomized so it never feels like a loop)
-    const interval = setInterval(() => {
-      const delay = Math.random() * 8000 + 14000;
-      setTimeout(showNext, delay);
-    }, 22000);
+    if (signals.length === 0) return;
 
-    return () => {
-      clearTimeout(initial);
-      clearInterval(interval);
-      if (timerRef.current) clearTimeout(timerRef.current);
+    const show = () => {
+      setVisible(true);
+      hideRef.current = setTimeout(() => {
+        setVisible(false);
+        setIndex(i => (i + 1) % signals.length);
+      }, 4200);
     };
-  }, []);
 
-  if (!visible) return null;
+    // Irregular by design. A strip that surfaces on a fixed cadence reads as
+    // a widget; an irregular one reads as something reporting in.
+    const delay = 6000 + Math.random() * 9000;
+    const timer = setTimeout(show, delay);
+    return () => {
+      clearTimeout(timer);
+      if (hideRef.current) clearTimeout(hideRef.current);
+    };
+  }, [signals, index]);
+
+  if (!visible || signals.length === 0) return null;
+  const signal = signals[index % signals.length];
 
   return (
-    <div key={key} className="toast">
-      <div style={{
-        width: "32px", height: "32px", borderRadius: "50%",
-        background: "linear-gradient(135deg, var(--accent-2), var(--accent))",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: "13px", fontWeight: "700", color: "white", flexShrink: 0,
-        fontFamily: "'Space Grotesk', sans-serif",
-      }}>
-        {activity.name[0]}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: "12px", fontWeight: "600", color: "var(--text)", lineHeight: "1.3" }}>
-          {activity.name} from {activity.city}
-        </div>
-        <div style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "1px", lineHeight: "1.3" }}>
-          {activity.action}
-        </div>
-      </div>
+    <div key={signal.id + index} className="toast">
       <div style={{
         width: "6px", height: "6px", borderRadius: "50%",
         background: "var(--green)", flexShrink: 0,
         boxShadow: "0 0 6px rgba(16,217,160,0.5)",
       }} className="animate-pulse" />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px", letterSpacing: "1.4px",
+          color: "rgba(238,238,246,0.28)", textTransform: "uppercase", lineHeight: "1.3",
+        }}>
+          {signal.label}
+        </div>
+        <div style={{
+          fontFamily: "var(--font-display), sans-serif", fontSize: "15px", fontWeight: "700",
+          color: "var(--text)", letterSpacing: "-0.3px", marginTop: "2px", lineHeight: "1.2",
+        }}>
+          {signal.value}
+        </div>
+      </div>
     </div>
   );
 }

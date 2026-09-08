@@ -1,48 +1,71 @@
-# BustedLab — Deploy in 15 minutes
+# Deployment
 
-## Step 1: Push to GitHub
+Vercel, Next.js App Router, one project. The build is standard; everything
+that varies between environments is an environment variable.
 
-1. Go to github.com → New repository → name it `bustedlab` → Create
-2. Open terminal (or Git Bash on Windows) and run:
+## 1. Deploy
 
-```bash
-cd bustedlab
-git init
-git add .
-git commit -m "Initial build"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/bustedlab.git
-git push -u origin main
-```
+Import the repository into Vercel and deploy. Default settings are correct.
+The app builds and serves with no environment variables set.
 
-## Step 2: Deploy on Vercel
+## 2. Configure the scan engine
 
-1. Go to vercel.com → Add New Project
-2. Import your `bustedlab` GitHub repo
-3. Click Deploy (default settings are fine)
-4. Your site is live on a .vercel.app URL instantly
+Set in Vercel project settings, then redeploy:
 
-## Step 3: Add your Apify API key
+- `ANTHROPIC_API_KEY`
+- `SERPER_API_KEY` (primary search)
+- `SERPAPI_KEY` (backup search and merchant-link resolution)
+- `BLOB_READ_WRITE_TOKEN` (create a Blob store in the project first)
+- `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
+- `IDENTITY_SALT` (any long random string; rotating it resets rate limits)
+- `RESEND_API_KEY`, and verify the sending domain
+- `NEXT_PUBLIC_BASE_URL` (no trailing slash)
+- `CRON_SECRET` (the cleanup cron rejects every request without it)
 
-1. Go to console.apify.com → Sign up free
-2. Go to Settings → Integrations → copy your API token
-3. In Vercel: go to your project → Settings → Environment Variables
-4. Add: `APIFY_API_TOKEN` = your token
-5. Redeploy
+Confirm `maxDuration = 60` in `src/app/api/scan/route.ts` is within the plan's
+function limit. Hobby caps lower, and a scan that exceeds it returns
+`UNRESOLVED` for reasons that look like an engine fault but are not.
 
-**Without the Apify key, the app runs in demo mode with realistic mock data — still fully functional for testing.**
+## 3. Turn on payments
 
-## Step 4: Connect your domain
+Checkout is configuration. Nothing in the codebase names a processor.
 
-1. In Vercel: Settings → Domains → Add `bustedlab.com`
-2. In your domain registrar (GoDaddy/Namecheap): add the DNS records Vercel shows you
-3. Done — usually propagates in under 10 minutes
+1. Create the product with whichever provider is live and copy its payment link.
+2. Set `CHECKOUT_URL` to that link and `PAYMENT_PROVIDER` to `gumroad`,
+   `lemonsqueezy` or `paddle`.
+3. Point the provider's webhook at `https://<domain>/api/webhook` and set the
+   matching secret:
+   - Gumroad: append `?secret=<value>` to the ping URL and set
+     `GUMROAD_WEBHOOK_SECRET` to the same value. Optionally set
+     `GUMROAD_SELLER_ID` and `GUMROAD_PRODUCT_PERMALINK` to narrow what
+     grants access.
+   - Lemon Squeezy: `LEMONSQUEEZY_WEBHOOK_SECRET`.
+   - Paddle: `PADDLE_WEBHOOK_SECRET`.
+4. Redeploy and make one live purchase. The access email should arrive and its
+   link should sign you in.
 
-## Step 5: Add payments (Stripe)
+Until `CHECKOUT_URL` is set, the purchase buttons render a disabled
+"Checkout offline" state. That is deliberate: an honest closed door beats a
+button that opens a dead tab.
 
-When you're ready to charge $4.99:
-1. Create a Stripe account at stripe.com
-2. Create a Payment Link for $4.99 one-time
-3. Replace the "Unlock BustedLab" buttons with your Stripe Payment Link
+Switching providers is two environment variables and a redeploy. No code change.
 
-That's it. No backend needed for payments at this stage.
+## 4. Domain
+
+Add the domain in Vercel, create the DNS records it shows, and set
+`NEXT_PUBLIC_BASE_URL` to match. Emails and share metadata read from it.
+
+## Cron
+
+`vercel.json` schedules `/api/cleanup-blobs` daily at 03:00 UTC. It is a
+backstop only: the scan pipeline deletes each temporary upload as soon as the
+reverse-image search returns, so a healthy deployment reports `deleted: 0`.
+A consistently non-zero count means scans are dying mid-request.
+
+## Load behaviour
+
+- Verified results are cached for 24 hours, keyed on the normalized URL or on
+  the bytes of the uploaded image. One product going viral costs the API once.
+- `GLOBAL_DAILY_SCAN_CAP` (default 25000) caps uncached scans per day for
+  free users. Cache hits and signed-in paid users are never capped.
+- Raise it before a campaign, not during one.

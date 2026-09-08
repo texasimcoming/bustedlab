@@ -108,91 +108,112 @@ const PLATE_LABEL: Record<MatchConfidence, string> = {
   unverified: "EXACT ITEM UNCONFIRMED",
 };
 
-// The human-voice line — one sentence, computed from the real numbers on
-// every render. This is what makes the card readable by a person instead
-// of just a computer: a tag and two prices is data, this is a verdict.
+// The line a person actually reads before deciding to screenshot this.
+// Computed from the real numbers on every render, never a static template.
+//
+// Three rules govern every string below, and they are not stylistic:
+//
+//  1. EVERY message states the exact dollar gap. The percentage is the
+//     headline; the dollar figure is what a person feels, and a card that
+//     omits it is a card that gets scrolled past. Several messages in the
+//     previous bank named only a multiple, and none of the FAIR lines
+//     carried a number at all.
+//  2. EVERY claim is anchored to what was actually measured. The engine
+//     found the same product listed elsewhere at a price; it did not audit
+//     anyone's invoices. So the language is "lists at", "available at",
+//     "market shows" — never "they sourced it for", which asserts a fact
+//     about a business's costs that no scan can establish and that turns
+//     an unarguable finding into a defamation surface. The measured version
+//     hits harder anyway: it cannot be argued with.
+//  3. Short. The card has to be legible as a 200px thumbnail and as a 9:16
+//     video frame, which means the message is one line, not a paragraph.
 function buildMessage(data: VerdictData): string {
   const s = data.savings.toFixed(2);
+  const retail = data.retailPrice.toFixed(2);
+  const source = data.wholesalePrice.toFixed(2);
   const m = data.wholesalePrice > 0 ? (data.retailPrice / data.wholesalePrice).toFixed(1) : "0";
   const idx = Math.floor((data.savings * 100 + data.retailPrice * 7 + data.markup * 3)) % 20;
 
-  // HIGH_MARKUP: sharp, direct, about the GAP — never a claim about intent
+  // BUSTED. Outrage with receipts. The brand does not get softened, but the
+  // weapon is the arithmetic, not an accusation: every line states the gap
+  // and lets it do the work.
   const HIGH = [
-    `Sourced for $${data.wholesalePrice.toFixed(2)}. Sold for $${data.retailPrice.toFixed(2)}. That's a $${s} gap.`,
-    `${m}x the real price. $${s} gap between what this costs and what they are asking. That is the whole story.`,
-    `A $${data.wholesalePrice.toFixed(2)} product carrying a $${data.retailPrice.toFixed(2)} price tag. That's $${s} of pure markup.`,
-    `The ad was convincing. The wholesale price tells a different story. ${m}x markup.`,
-    `${m}x over source cost. $${s} of margin sitting on top of the real price.`,
-    `POV: you just found a ${m}x markup and $${s} in savings before you paid it.`,
-    `The aesthetic is a 10. The ${m}x markup over cost is doing a lot of the work.`,
-    `Real cost: $${data.wholesalePrice.toFixed(2)}. Asking price: $${data.retailPrice.toFixed(2)}. Gap: $${s}.`,
-    `${m}x markup and $${s} above the real cost. The packaging is premium. The source price is not.`,
-    `$${s} sits between what this costs and what it's asking. That's the whole finding.`,
-    `We found the receipt. ${m}x markup. $${s} between what it costs and what they charged.`,
-    `${m}x the real price. $${s} you did not have to spend. Now you know.`,
-    `Every scan like this one surfaces the same gap: real cost, then a very different asking price. This one's $${s}.`,
-    `Sourced at $${data.wholesalePrice.toFixed(2)}. Listed at $${data.retailPrice.toFixed(2)}. $${s} apart.`,
-    `The packaging is doing more than the materials. ${m}x markup. $${s} gap between what it costs and what they charged.`,
-    `$${s} is the gap between the real price and the asking price here. Worth knowing before you check out.`,
-    `${m}x markup and strong branding. That combination is the entire model, visible in one scan.`,
-    `The scan found what the listing doesn't say out loud: a $${s} gap between cost and price.`,
-    `A $${data.wholesalePrice.toFixed(2)} product at a $${data.retailPrice.toFixed(2)} price point. ${m}x apart.`,
-    `$${s} is what this scan just surfaced. That's the real gap, not a guess.`,
+    `The same product lists at $${source}. You were asked $${retail}. That is a $${s} gap.`,
+    `$${s} of that price is not the product.`,
+    `${m}x the going rate. $${s} of it is margin.`,
+    `Listed elsewhere at $${source}. Priced here at $${retail}. $${s} unaccounted for.`,
+    `$${s} sits between the market price and the asking price. That is the whole business.`,
+    `${m}x markup. $${s} you keep by knowing.`,
+    `The ad cost more than the product. $${s} more, to be exact.`,
+    `$${s} above the market floor. The packaging is not worth $${s}.`,
+    `Same item, $${source}, in stock. This one wants $${retail}. Difference: $${s}.`,
+    `${m}x over market. $${s} of pure spread.`,
+    `You were $${s} from finding out. Now you know.`,
+    `$${s} of branding on a $${source} product.`,
+    `Market price $${source}. Asking price $${retail}. No version of that gap is $${s} of value.`,
+    `${m}x markup, $${s} deep. The scan found it in seconds.`,
+    `$${s} is what the funnel was built to collect.`,
+    `A $${source} item wearing a $${retail} price tag. $${s} of costume.`,
+    `The math does not survive contact: $${s} above the market rate.`,
+    `$${s}. That is the number they were counting on you not checking.`,
+    `${m}x the market price. $${s} on the table, and it was yours.`,
+    `Priced $${s} above what this openly sells for. Receipt attached.`,
   ];
 
-  // OVERPRICED: smart catch, matter-of-fact about the gap, no verdict on motive
+  // OVERPRICED. Sharp frustration. Smart enough to catch it, real enough to
+  // matter, never inflated into outrage it does not earn.
   const OVER = [
-    `$${s} above market. Not extreme. Still worth knowing before you buy.`,
-    `Overpriced by $${s}. The product's fine. The price has room in it.`,
-    `$${s} gap. Small enough to miss. Big enough to matter across enough purchases.`,
-    `$${s} above what the market shows for this. Not dramatic. Still real.`,
-    `A $${s} premium over the market rate. Worth factoring in before you check out.`,
-    `$${s} above what this is available for elsewhere, based on what we found.`,
-    `Overpriced by $${s}. Not the most extreme case. Still a real gap.`,
-    `$${s} sits above the market rate here. Not huge. Not nothing either.`,
-    `The market rate runs $${s} lower than this asking price.`,
-    `$${s} over. Enough to be worth a second look before buying.`,
-    `Not the steepest markup we've seen. Still $${s} above the market rate.`,
-    `Overpriced by $${s}. Worth knowing, whatever you decide to do with it.`,
-    `The listing looks standard. The price runs $${s} over what the market shows.`,
-    `$${s} above market rate. Small gap, real gap.`,
-    `Priced $${s} above what this is going for elsewhere.`,
-    `A $${s} premium sits on top of the market rate for this one.`,
-    `$${s} over market. Not the kind of gap that makes headlines. Still worth having.`,
+    `$${s} above market. Not extreme. Still yours.`,
+    `Overpriced by $${s}. The product is fine. The price has air in it.`,
+    `$${s} gap. Small enough to miss, big enough to matter.`,
+    `$${s} above what this sells for elsewhere. Not dramatic. Still real.`,
+    `A $${s} premium for nothing you can point at.`,
+    `$${s} over the market rate, on the record.`,
+    `Not the worst we have seen. Still $${s} over.`,
+    `$${s} above market. Small gap, real gap.`,
+    `The market runs $${s} under this asking price.`,
+    `$${s} over. Enough to check twice.`,
+    `Overpriced by $${s}. Worth knowing before, not after.`,
+    `The listing looks standard. The price runs $${s} hot.`,
+    `$${s} above the going rate. Nothing about the product explains it.`,
+    `Priced $${s} over what this openly sells for.`,
+    `A $${s} premium is sitting on top of this.`,
+    `$${s} over market. Not headline material. Still money.`,
     `Market data puts this $${s} below the asking price.`,
-    `$${s} over. Worth knowing, worth comparing, before you decide.`,
+    `$${s} over. Compare before you commit.`,
     `Overpriced by $${s}. You now know before paying it.`,
+    `$${s} of margin you were not told about.`,
   ];
 
-  // FAIR: surprise, mild relief, almost suspicious it is honest
+  // FAIR. Dry surprise. Honest pricing is rare, and the rarity is the story.
   const FAIR = [
-    `Clean. The price reflects what this actually costs. This seller is not running the standard play.`,
-    `Fair price confirmed. Genuinely rare. Buy with confidence.`,
-    `No inflated premium. No markup theatre. Just an honest price for a real product.`,
-    `The numbers check out. What they charge lines up with what it actually costs to source.`,
-    `We scan a lot of products. This one is legitimately priced. That is worth saying out loud.`,
-    `Nothing hidden. Nothing inflated. This seller is pricing it straight.`,
-    `Fair price. Not a given in this market. This seller apparently decided to be the exception.`,
-    `Priced at market value. Which means you are not subsidising anyone's margin here.`,
-    `The price is real. The product is real. Both of those being true at once is rarer than it should be.`,
-    `Actually fair. Either the margins are thin or the ethics are intact. Either way, this one passes.`,
-    `No significant markup. The scan came back clean. This is what honest pricing looks like.`,
-    `Not every seller is running the dropship markup game. This one is not. Noted.`,
-    `Fair pricing confirmed. Screenshot this. It is proof that it is possible.`,
-    `Priced correctly. The product costs what it costs and they charged accordingly. Simple. Rare.`,
-    `Clean scan. The price and the reality are aligned. Nothing to expose today.`,
-    `We expected a markup. There was not one. This seller is choosing to price with integrity.`,
-    `Fair. Not exciting. But knowing you are not being overcharged is genuinely useful information.`,
-    `The listing price and the market price agree. That alignment is rarer than most people realise.`,
-    `No overprice detected. If you want this, you are not leaving money on the table by buying here.`,
-    `This price holds up. No games. No gap. Just a fair transaction if you choose to make it.`,
+    `Clean. $${s} between this and the market floor. That is what fair looks like.`,
+    `Fair price confirmed. $${s} off market. Rare enough to note.`,
+    `No theatre. $${s} from the market rate and nothing hidden behind it.`,
+    `The numbers hold. $${s} of spread, which is a real margin, not a markup.`,
+    `We expected a gap. We found $${s}. Priced straight.`,
+    `$${s} above the market floor. That is a business, not a funnel.`,
+    `Nothing inflated. $${s} of spread on a real product.`,
+    `Fair. $${s} off market. This one is not running the play.`,
+    `Priced at value. $${s} of margin, openly earned.`,
+    `$${s} spread. Either the margins are thin or the ethics are intact.`,
+    `No significant markup. $${s} from market. The scan came back clean.`,
+    `Not every seller runs the game. This one carries $${s} of honest margin.`,
+    `Fair pricing confirmed at a $${s} spread. Screenshot it. It happens.`,
+    `Priced correctly. $${s} above market cost. Simple, and rare.`,
+    `Clean scan. $${s} of spread, nothing to expose.`,
+    `$${s} from the market floor. That is the price being the price.`,
+    `Actually fair. A $${s} margin and no story underneath it.`,
+    `The listing price and the market price agree within $${s}.`,
+    `No overprice detected. $${s} of spread. You are not funding anyone's ad budget.`,
+    `This one holds up. $${s} of margin, no games.`,
   ];
 
   switch (data.verdict) {
     case "HIGH_MARKUP": return HIGH[idx % 20];
     case "OVERPRICED": return OVER[idx % 20];
     case "FAIR": return FAIR[idx % 20];
-    default: return `No listed price to compare. Found this available from $${data.wholesalePrice.toFixed(2)} elsewhere. Worth knowing before you buy.`;
+    default: return `No confirmed asking price to compare against. Closest listing found runs $${source}.`;
   }
 }
 
@@ -258,6 +279,32 @@ function EmptyThumb({ color }: { color: string }) {
 // only a monospace string.
 const SIGNAL_BAR_COUNT: Record<MatchConfidence, number> = { exact: 4, likely: 3, unverified: 2 };
 
+// How much of the markup ring is lit.
+//
+// The previous mapping was markup/20 capped at 100, then multiplied by a
+// hand-measured circumference with a magic dash offset bolted on. It put a
+// 60% markup at 3% of the ring (invisible) and started the arc at three
+// o'clock for no reason. Markup is unbounded and heavily skewed, so a linear
+// scale wastes the whole dial on the tail: a square-root curve against a
+// 1000% ceiling keeps the ordinary 50-200% range legible while still leaving
+// somewhere for a 900% outlier to go.
+// html2canvas does not implement text-overflow: ellipsis. The card is
+// captured through it to produce the shareable PNG, so a title relying on CSS
+// truncation renders in the export as the full string running off the edge of
+// the card and clipped mid-glyph. Truncating in JS makes the browser and the
+// exported image agree.
+function clampTitle(title: string, compact: boolean): string {
+  const max = compact ? 32 : 46;
+  const clean = (title || "").trim();
+  if (clean.length <= max) return clean;
+  return clean.slice(0, max - 1).replace(/[\s,;:|-]+$/, "") + "\u2026";
+}
+
+function ringFraction(markup: number): number {
+  if (!Number.isFinite(markup) || markup <= 0) return 0;
+  return Math.min(Math.sqrt(markup / 1000), 1);
+}
+
 function SignalBars({ confidence, color }: { confidence: MatchConfidence; color: string }) {
   const lit = SIGNAL_BAR_COUNT[confidence];
   return (
@@ -285,30 +332,45 @@ export default function VerdictCard({ data, animate = true, compact = false, car
   const [numbersIn, setNumbersIn] = useState(!animate);
 
   const cfg = data.mode === "UNRESOLVED" ? UNRESOLVED_CONFIG : VERDICT_CONFIG[data.verdict];
-  const now = new Date();
-  const timestamp = `${now.toISOString().split("T")[0]} ${now.toTimeString().slice(0, 8)} UTC`;
+  // toTimeString() returns the BROWSER'S LOCAL time. The previous version
+  // pasted it next to a hardcoded "UTC" suffix, so every card shipped a
+  // timestamp that was wrong by the reader's offset and labelled with a
+  // timezone it was not in. Both halves come from the ISO string now.
+  const iso = new Date().toISOString();
+  const timestamp = `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
 
   useEffect(() => {
     if (!animate) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
     const startTime = Date.now();
-    const duration = 800;
+    const duration = 520;
     const raf = setInterval(() => {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
       setScanlinePos(-10 + progress * 120);
       if (progress >= 1) {
         clearInterval(raf);
+        // The card lands here. The 90ms slam class is applied by this state
+        // change; nothing about it eases, fades, or settles.
         setScanComplete(true);
-        setTimeout(() => setDataIn(true), 100);
-        setTimeout(() => {
+        setShowFlash(true);
+        // One frame of verdict colour across the viewport. The class runs a
+        // 90ms in-and-out, and the node is unmounted right after so it can
+        // never linger as a coloured wash over the page, which is what the
+        // previous 600ms hold on a "forwards" fade actually produced.
+        timers.push(setTimeout(() => setShowFlash(false), 110));
+        timers.push(setTimeout(() => setDataIn(true), 60));
+        timers.push(setTimeout(() => {
           setStampIn(true);
-          setShowFlash(true);
-          setTimeout(() => setShowFlash(false), 600);
-          setTimeout(() => setNumbersIn(true), 80);
-        }, 400);
+          // Numbers resolve staggered, from below, after the label.
+          timers.push(setTimeout(() => setNumbersIn(true), 70));
+        }, 230));
       }
     }, 16);
-    return () => clearInterval(raf);
+    return () => {
+      clearInterval(raf);
+      timers.forEach(clearTimeout);
+    };
   }, [animate]);
 
   const isVerdict = data.mode === "VERDICT";
@@ -320,13 +382,15 @@ export default function VerdictCard({ data, animate = true, compact = false, car
     <>
     {/* Screen flash - one frame of verdict color filling the viewport */}
     {showFlash && (
-      <div style={{
-        position: "fixed", inset: 0, zIndex: 9998,
-        background: (cfg as Record<string,string>).flashColor || "rgba(123,94,167,0.06)",
-        pointerEvents: "none",
-        animation: "fadeIn 0.08s ease forwards, fadeUp 0.5s ease 0.08s forwards",
-        opacity: 0,
-      }} />
+      <div
+        className="verdict-flash"
+        style={{
+          position: "fixed", inset: 0, zIndex: 9998,
+          background: (cfg as Record<string, string>).flashColor || "rgba(123,94,167,0.06)",
+          pointerEvents: "none",
+          opacity: 0,
+        }}
+      />
     )}
     <div
       ref={cardRef}
@@ -341,7 +405,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
           ? `0 0 40px ${cfg.accentGlow}, 0 0 80px ${cfg.accentGlow.replace(/[\d.]+\)$/, "0.1)")}, 0 24px 48px rgba(0,0,0,0.6)`
           : "0 8px 32px rgba(0,0,0,0.4)",
         transition: "box-shadow 0.6s ease",
-        fontFamily: "'Inter', sans-serif",
+        fontFamily: "var(--font-sans), sans-serif",
       }}
     >
       <div style={{
@@ -381,14 +445,19 @@ export default function VerdictCard({ data, animate = true, compact = false, car
         </div>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{
-            fontFamily: "'Space Grotesk', sans-serif", fontSize: compact ? "8px" : "9px", fontWeight: "700",
+            fontFamily: "var(--font-display), sans-serif", fontSize: compact ? "8px" : "9px", fontWeight: "700",
             color: "rgba(184,160,232,0.65)", letterSpacing: "1.8px", textTransform: "uppercase",
-            lineHeight: "1", whiteSpace: "nowrap",
+            lineHeight: "1.4", whiteSpace: "nowrap",
           }}>BUSTEDLAB SCAN</div>
           <div style={{
             fontSize: compact ? "7px" : "8px", color: "rgba(238,238,246,0.22)", letterSpacing: "0.3px",
-            marginTop: "2px", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>{data.isDemo ? "2026-09-03 14:22:07 UTC" : timestamp}</div>
+            marginTop: "2px", fontFamily: "var(--font-mono), ui-monospace, monospace", lineHeight: "1.5",
+          }}
+          // A live clock differs between the server render and the client
+          // hydration by exactly the milliseconds between them. That is the
+          // case this attribute exists for.
+          suppressHydrationWarning
+          >{data.isDemo ? "VERIFIED REFERENCE RECORD" : timestamp}</div>
         </div>
       </div>
 
@@ -404,7 +473,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
         {isUnresolved ? (
           <div style={{ textAlign: "center", padding: compact ? "10px 0 6px" : "16px 0 10px" }}>
             <div style={{
-              fontFamily: "'Space Grotesk', sans-serif", fontSize: compact ? "24px" : "28px", fontWeight: "800",
+              fontFamily: "var(--font-display), sans-serif", fontSize: compact ? "24px" : "28px", fontWeight: "800",
               color: cfg.accentColor, letterSpacing: "1.5px", marginBottom: "10px",
               opacity: stampIn ? 1 : 0, transition: "opacity 0.3s ease",
             }}>{cfg.label}</div>
@@ -425,10 +494,11 @@ export default function VerdictCard({ data, animate = true, compact = false, car
               {/* Verdict label - grid column 1 */}
               <div>
                 <div style={{
-                  fontFamily: "'Space Grotesk', sans-serif",
+                  fontFamily: "var(--font-display), sans-serif",
                   fontSize: compact ? (isFinder ? "22px" : "38px") : (isFinder ? "30px" : "48px"),
                   fontWeight: "800", color: cfg.accentColor,
-                  letterSpacing: compact ? "1.5px" : "3px", lineHeight: "1",
+                  letterSpacing: compact ? "1.5px" : "3px", lineHeight: "1.12",
+                  paddingBottom: "2px",
                   textShadow: `0 0 ${compact ? "14px" : "24px"} ${cfg.accentGlow}`,
                   opacity: stampIn ? 1 : 0, transform: stampIn ? "none" : "scale(1.1)",
                   transition: "opacity 0.3s ease, transform 0.3s ease",
@@ -436,17 +506,20 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                 }}>{cfg.label}</div>
                 {isVerdict && (
                   <div style={{
-                    fontFamily: "'Space Grotesk', sans-serif",
+                    fontFamily: "var(--font-display), sans-serif",
                     fontSize: compact ? "13px" : "15px",
                     fontWeight: "700",
                     color: data.verdict === "FAIR" ? "#10d9a0" : data.verdict === "HIGH_MARKUP" ? "#ef4444" : "#f59e0b",
                     letterSpacing: "-0.3px",
+                    lineHeight: "1.35",
                     marginTop: compact ? "4px" : "6px",
                     opacity: numbersIn ? 1 : 0,
                     transform: numbersIn ? "none" : "translateY(3px)",
                     transition: "opacity 0.2s ease 0.1s, transform 0.2s ease 0.1s",
                   }}>
-                    {data.verdict === "FAIR" ? `${data.markup}% markup` : `Save $${data.savings.toFixed(2)}`}
+                    {data.verdict === "FAIR"
+                      ? `$${data.savings.toFixed(2)} spread`
+                      : `Save $${data.savings.toFixed(2)}`}
                   </div>
                 )}
               </div>
@@ -465,29 +538,24 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                     viewBox={compact ? "0 0 68 68" : "0 0 88 88"}
                     style={{ position: "absolute", top: 0, left: 0 }}
                   >
-                    {compact ? (
-                      <>
-                        <circle cx="34" cy="34" r="28" fill="none" stroke={cfg.accentBorder} strokeWidth="1.5"/>
-                        <circle cx="34" cy="34" r="28" fill="none" stroke={cfg.accentColor} strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeDasharray={`${Math.min(data.markup / 20, 100) * 1.759} 175.9`}
-                          strokeDashoffset="44"
-                          transform="rotate(-90 34 34)"
-                          style={{ filter: `drop-shadow(0 0 4px ${cfg.accentColor})`, transition: "stroke-dasharray 1s ease" }}
-                        />
-                      </>
-                    ) : (
-                      <>
-                        <circle cx="44" cy="44" r="37" fill="none" stroke={cfg.accentBorder} strokeWidth="1.5"/>
-                        <circle cx="44" cy="44" r="37" fill="none" stroke={cfg.accentColor} strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeDasharray={`${Math.min(data.markup / 20, 100) * 2.325} 232.5`}
-                          strokeDashoffset="58.1"
-                          transform="rotate(-90 44 44)"
-                          style={{ filter: `drop-shadow(0 0 4px ${cfg.accentColor})`, transition: "stroke-dasharray 1s ease" }}
-                        />
-                      </>
-                    )}
+                    {(() => {
+                      const c = compact ? 34 : 44;
+                      const r = compact ? 28 : 37;
+                      const circumference = 2 * Math.PI * r;
+                      const filled = circumference * ringFraction(data.markup);
+                      return (
+                        <>
+                          <circle cx={c} cy={c} r={r} fill="none" stroke={cfg.accentBorder} strokeWidth="1.5" />
+                          <circle
+                            cx={c} cy={c} r={r} fill="none" stroke={cfg.accentColor} strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeDasharray={`${filled.toFixed(2)} ${circumference.toFixed(2)}`}
+                            transform={`rotate(-90 ${c} ${c})`}
+                            style={{ filter: `drop-shadow(0 0 4px ${cfg.accentColor})`, transition: "stroke-dasharray 0.6s linear" }}
+                          />
+                        </>
+                      );
+                    })()}
                   </svg>
                   <div style={{
                     position: "absolute", inset: 0,
@@ -495,10 +563,10 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                     alignItems: "center", justifyContent: "center",
                   }}>
                     <div style={{
-                      fontFamily: "'Space Grotesk', sans-serif",
+                      fontFamily: "var(--font-display), sans-serif",
                       fontSize: compact ? "13px" : "17px",
                       fontWeight: "800", color: cfg.accentColor,
-                      letterSpacing: "-0.5px", lineHeight: "1",
+                      letterSpacing: "-0.5px", lineHeight: "1.2",
                       opacity: numbersIn ? 1 : 0,
                       transform: numbersIn ? "none" : "translateY(4px)",
                       transition: "opacity 0.25s ease, transform 0.25s ease",
@@ -531,7 +599,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                 </div>
                 <div style={{ position: "relative", display: "inline-block" }}>
                   <div style={{
-                    fontFamily: "'Space Grotesk', sans-serif", fontSize: compact ? "20px" : "24px", fontWeight: "700", color: "#ef4444", letterSpacing: "-0.8px", lineHeight: "1",
+                    fontFamily: "var(--font-display), sans-serif", fontSize: compact ? "20px" : "24px", fontWeight: "700", color: "#ef4444", letterSpacing: "-0.8px", lineHeight: "1.2",
                     opacity: numbersIn ? 1 : 0,
                     transform: numbersIn ? "none" : "translateY(4px)",
                     transition: "opacity 0.25s ease 0.05s, transform 0.25s ease 0.05s",
@@ -551,7 +619,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                   {isVerdict ? "Wholesale from" : "Closest listing"}
                 </div>
                 <div style={{
-                  fontFamily: "'Space Grotesk', sans-serif", fontSize: compact ? "20px" : "24px", fontWeight: "700", color: "#10d9a0", letterSpacing: "-0.8px", lineHeight: "1",
+                  fontFamily: "var(--font-display), sans-serif", fontSize: compact ? "20px" : "24px", fontWeight: "700", color: "#10d9a0", letterSpacing: "-0.8px", lineHeight: "1.2",
                   opacity: numbersIn ? 1 : 0,
                   transform: numbersIn ? "none" : "translateY(4px)",
                   transition: "opacity 0.25s ease 0.1s, transform 0.25s ease 0.1s",
@@ -571,6 +639,14 @@ export default function VerdictCard({ data, animate = true, compact = false, car
               <div style={{ position: "relative", width: compact ? "44px" : "50px", height: compact ? "44px" : "50px", flexShrink: 0, borderRadius: "9px", overflow: "visible" }}>
                 <div style={{ position: "absolute", inset: 0, borderRadius: "9px", overflow: "hidden", background: "#050508" }}>
                   {hasImage ? (
+                    // Deliberately a plain <img>. This node is captured by
+                    // html2canvas to produce the shareable PNG, and next/image
+                    // renders a srcset plus a lazy-loading wrapper that the
+                    // capture cannot resolve, so the evidence thumbnail comes
+                    // out blank in every saved card. The source is already
+                    // same-origin through /api/proxy-image, which is what makes
+                    // the canvas capture possible at all.
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={data.productImageUrl}
                       alt=""
@@ -590,12 +666,12 @@ export default function VerdictCard({ data, animate = true, compact = false, car
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{
                   fontSize: compact ? "11.5px" : "12.5px", fontWeight: "600", color: "rgba(238,238,246,0.75)",
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: "3px",
-                }}>{data.productTitle}</div>
+                  lineHeight: "1.45", marginBottom: "3px", wordBreak: "break-word",
+                }}>{clampTitle(data.productTitle, compact)}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                   <SignalBars confidence={data.matchConfidence} color={cfg.accentColor} />
                   <div style={{
-                    fontFamily: "monospace", fontSize: compact ? "8px" : "8.5px",
+                    fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: compact ? "8px" : "8.5px",
                     color: cfg.accentColor, letterSpacing: "0.6px", opacity: 0.85,
                   }}>{PLATE_LABEL[data.matchConfidence]}</div>
                 </div>
@@ -619,12 +695,12 @@ export default function VerdictCard({ data, animate = true, compact = false, car
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: "#10d9a0", boxShadow: "0 0 4px rgba(16,217,160,0.6)" }} />
-          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: "700", fontSize: compact ? "10px" : "11px", color: "rgba(184,160,232,0.6)", letterSpacing: "0.5px" }}>
+          <span style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "700", fontSize: compact ? "10px" : "11px", color: "rgba(184,160,232,0.6)", letterSpacing: "0.5px" }}>
             bustedlab.com
           </span>
         </div>
         {data.scanId && (
-          <div style={{ fontFamily: "monospace", fontSize: compact ? "8px" : "9px", color: "rgba(238,238,246,0.15)", letterSpacing: "0.5px" }}>
+          <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: compact ? "8px" : "9px", color: "rgba(238,238,246,0.15)", letterSpacing: "0.5px" }}>
             {data.scanId}
           </div>
         )}

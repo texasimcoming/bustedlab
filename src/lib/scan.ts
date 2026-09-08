@@ -75,7 +75,13 @@
  *   + ~$0.0017 Haiku vision (verify) + ~$0.004 Lens/Shopping/Search calls = ~$0.009
  */
 
-import { put } from "@vercel/blob";
+import { put, del } from "@vercel/blob";
+import { randomBytes } from "crypto";
+import { LENS_BLOB_PREFIX } from "@/lib/constants";
+// Classification lives in its own dependency-free module so the landing page
+// can publish the same thresholds the engine applies, and so the calibration
+// check can execute the real function rather than a copy of it.
+import { calculateVerdict } from "@/lib/verdict";
 
 export interface ScanResult {
   found: boolean;
@@ -184,7 +190,7 @@ const KNOWN_CROSS_BORDER_PLATFORMS = [
   "aliexpress.com", "temu.com", "dhgate.com", "wish.com", "banggood.com", "1688.com",
 ];
 
-function buildShippingNote(sourceUrl: string, country: string): string | undefined {
+export function buildShippingNote(sourceUrl: string, country: string): string | undefined {
   if (country === "us" || !sourceUrl) return undefined;
   try {
     const host = new URL(sourceUrl).hostname;
@@ -232,19 +238,19 @@ async function extractFromImage(imageBase64: string, mimeType: string): Promise<
   "brand": "brand or empty",
   "visiblePrice": null or number (ONLY if a price is clearly visible on screen),
   "currency": "USD",
-  "quantity": "pack/bundle size if stated anywhere, e.g. '3-pack', '1 unit', '2-in-1' — empty string if not specified. Comparing a 3-pack retail price against a single-unit wholesale listing produces a false markup, so this matters as much as the product name.",
+  "quantity": "pack/bundle size if stated anywhere, e.g. '3-pack', '1 unit', '2-in-1'. Empty string if not specified. Comparing a 3-pack retail price against a single-unit wholesale listing produces a false markup, so this matters as much as the product name.",
   "category": "beauty|fitness|tech|fashion|home|pet|skincare|accessories|food|other",
   "platform": "tiktok|instagram|amazon|shopify|facebook|aliexpress|website|unknown",
-  "storeName": "the seller/shop/store name or @handle if visible anywhere in the screenshot (watermark, caption, URL bar, product page header, checkout logo) — empty string if none is visible",
-  "visibleUrl": "an actual URL/website address/domain visibly written or shown anywhere in the screenshot (browser address bar, a link in a caption or bio, a 'shop at ___' text overlay) — empty string if no URL text is actually visible. Do not construct or guess a URL — only report one if it is literally shown as text.",
+  "storeName": "the seller/shop/store name or @handle if visible anywhere in the screenshot (watermark, caption, URL bar, product page header, checkout logo). Empty string if none is visible",
+  "visibleUrl": "an actual URL/website address/domain visibly written or shown anywhere in the screenshot (browser address bar, a link in a caption or bio, a 'shop at ___' text overlay). Empty string if no URL text is actually visible. Do not construct or guess a URL. Only report one if it is literally shown as text.",
   "priceConfidence": "visible|inferred|none",
   "imageQuality": "good|poor"
 }
 CRITICAL: visiblePrice must be null unless a price number is clearly visible. Never guess.
-CRITICAL: check every part of the image for a price, not just near the product — video screenshots (TikTok/Reels) often show the price in a caption, a corner overlay, or a graphic banner rather than next to the item itself. Scan the full frame, all four corners and any text overlay, before concluding no price is visible.
+CRITICAL: check every part of the image for a price, not just near the product. Video screenshots (TikTok/Reels) often show the price in a caption, a corner overlay, or a graphic banner rather than next to the item itself. Scan the full frame, all four corners and any text overlay, before concluding no price is visible.
 CRITICAL: storeName must be read directly from visible text/logos/handles/URLs in the image. Never guess or infer a store name that isn't actually shown.
 CRITICAL: visibleUrl must be an actual URL string visible as text in the image. Never invent one from a store name or brand guess.
-CRITICAL: productName must include the defining material/type descriptor whenever visible or inferable — "jade roller" not "roller", "rose quartz gua sha" not "gua sha tool", "copper straightening brush" not "hair brush". A bare generic category word causes wrong-product matches against visually similar but materially different items (e.g. jade rollers vs needle/derma rollers both being "rollers"). Never drop a visible distinguishing word to make the name shorter.`,
+CRITICAL: productName must include the defining material/type descriptor whenever visible or inferable. Use "jade roller" not "roller", "rose quartz gua sha" not "gua sha tool", "copper straightening brush" not "hair brush". A bare generic category word causes wrong-product matches against visually similar but materially different items (e.g. jade rollers vs needle/derma rollers both being "rollers"). Never drop a visible distinguishing word to make the name shorter.`,
             },
           ],
         }],
@@ -295,13 +301,13 @@ async function verifyVisualMatch(
             { type: "image", source: { type: "base64", media_type: candidateBase64.mimeType, data: candidateBase64.data } },
             {
               type: "text",
-              text: `Is IMAGE B showing the exact same physical product as IMAGE A — same design, same shape, same distinguishing features — not just a similar item in the same category?
+              text: `Is IMAGE B showing the exact same physical product as IMAGE A, with the same design, same shape and same distinguishing features, and not just a similar item in the same category?
 Return ONLY JSON:
 {"match": "exact" | "similar" | "different", "reasoning": "one short sentence"}
 "exact" = same specific product, high confidence.
 "similar" = same category/type but cannot confirm it's the identical item (different colorway, different design details, generic stock photo, etc).
 "different" = clearly not the same product.
-Be strict. Default to "similar" or "different" when uncertain — never guess "exact".`,
+Be strict. Default to "similar" or "different" when uncertain. Never guess "exact".`,
             },
           ],
         }],
@@ -335,12 +341,19 @@ async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType
   }
 }
 
+// Google Lens can only be handed a URL, so the uploaded photo has to be
+// publicly reachable for the few seconds the reverse-image call takes. The
+// URL is unguessable (128 bits of randomness in the filename) and the blob
+// is deleted by discardLensUpload() the moment the search returns, with the
+// daily cron as a backstop for anything a crashed request left behind.
+// The privacy policy describes exactly this, because it has to.
 async function uploadForLensSearch(imageBase64: string, mimeType: string): Promise<string | null> {
   if (!process.env.BLOB_READ_WRITE_TOKEN) return null;
   try {
     const ext = mimeType.split("/")[1]?.split("+")[0] || "jpg";
     const buf = Buffer.from(imageBase64, "base64");
-    const blob = await put(`lens-scans/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`, buf, {
+    const secret = randomBytes(16).toString("hex");
+    const blob = await put(`${LENS_BLOB_PREFIX}${Date.now()}-${secret}.${ext}`, buf, {
       access: "public",
       contentType: mimeType,
       addRandomSuffix: false,
@@ -349,6 +362,16 @@ async function uploadForLensSearch(imageBase64: string, mimeType: string): Promi
   } catch {
     return null;
   }
+}
+
+// Deleted as soon as the reverse-image search that needed it has returned.
+// A scan should not leave a copy of someone's screenshot sitting on a public
+// URL for up to a day waiting on a cron job.
+async function discardLensUpload(url: string | null): Promise<void> {
+  if (!url || !process.env.BLOB_READ_WRITE_TOKEN) return;
+  try {
+    await del(url);
+  } catch { /* the daily cleanup cron is the backstop */ }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -598,6 +621,13 @@ function buildShoppingMatch(candidates: ShoppingCandidate[]): ShoppingMatch | nu
 // highestPrice is left as the original range's top end deliberately — it
 // only ever feeds a retail ESTIMATE, which carries no link, so it isn't
 // subject to the same must-match-the-link constraint.
+//
+// v10 FIX — the verified candidate is not necessarily the cheapest one in
+// the list. Overwriting lowestPrice with a candidate priced above the
+// original range's top end produced an inverted range (lowest > highest),
+// which downstream reads as a negative markup and a negative "savings"
+// number on a FINDER card. The range is re-widened so it always contains
+// the price actually being shown.
 // ════════════════════════════════════════════════════════════════
 function applyVerifiedCandidate(
   match: ShoppingMatch,
@@ -611,6 +641,7 @@ function applyVerifiedCandidate(
     source: verified.best.source,
     productId: verified.best.productId,
     lowestPrice: verified.best.price,
+    highestPrice: Math.max(match.highestPrice, verified.best.price),
   };
 }
 
@@ -786,44 +817,25 @@ const CATEGORY_DATA: Record<string, { wholesaleRatio: number; avgRetail: number 
   other:       { wholesaleRatio: 0.14, avgRetail: 52 },
 };
 
-function calculateVerdict(retail: number, wholesale: number) {
-  const markup = Math.round(((retail - wholesale) / wholesale) * 100);
-  const savings = parseFloat((retail - wholesale).toFixed(2));
-  const savingsPercent = Math.round((savings / retail) * 100);
-
-  // Two-layer verdict: percentage alone is misleading in both directions —
-  // a 300% markup on a $2 item is noise, a 60% markup on a $300 item is
-  // real money. The verdict requires percentage AND absolute dollar
-  // savings to both clear their bar before escalating.
-  //   FAIR:      markup < 50%  AND savings < $10  (both small — genuinely fair)
-  //   BUSTED:    markup >= 150% AND savings > $15  (both large — the real thing)
-  //   OVERPRICED: everything else — high % with small $ (cheap item, real
-  //               but not dramatic gap), or moderate % with real $ (expensive
-  //               item, meaningful gap even if the percentage looks modest)
-  let verdict: "HIGH_MARKUP" | "OVERPRICED" | "FAIR";
-  // Savings-first: the dollar amount is what a person actually feels, so it's
-  // the primary signal. Percentage is secondary context. The $25+ branch
-  // still requires markup >= 50% (the same floor FAIR uses to define
-  // "normal retail margin") — without that floor, a large absolute gap on
-  // an expensive item with a genuinely thin, ordinary margin (e.g. a
-  // $10,000 item at 5% markup) would incorrectly read as BUSTED purely
-  // because of its price tag, not because the pricing is actually bad.
-  //   BUSTED:  (savings >= $25 AND markup >= 50%) OR (markup >= 200% AND savings >= $10)
-  //   FAIR:    markup < 50% AND savings < $10  (both small — genuinely fair)
-  //   OVERPRICED: everything else
-  if ((savings >= 25 && markup >= 50) || (markup >= 200 && savings >= 10)) {
-    verdict = "HIGH_MARKUP";
-  } else if (markup < 50 && savings < 10) {
-    verdict = "FAIR";
-  } else {
-    verdict = "OVERPRICED";
-  }
-  return { markup, savings, savingsPercent, verdict };
-}
-
 function proxyImage(url: string): string {
   if (!url) return "";
   return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+}
+
+// Titles arrive from merchant listings and product pages, so they carry
+// whatever punctuation and boilerplate the seller typed. Two things get
+// normalized before the card renders one: em/en dashes (BustedLab renders
+// none anywhere, and a stray one from a scraped title breaks the typographic
+// signature the card is built on), and runaway length, since the evidence
+// strip is a single ellipsized line and a 200-character SEO title tells the
+// reader nothing the first 90 characters didn't.
+function cleanTitle(raw: string): string {
+  const normalized = (raw || "")
+    .replace(/[\u2013\u2014\u2212]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (normalized.length <= 90) return normalized;
+  return normalized.slice(0, 89).replace(/[\s,;:|-]+$/, "") + "\u2026";
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -997,8 +1009,8 @@ async function extractProductViaClaudeText(html: string): Promise<Partial<PagePr
           role: "user",
           content: `Extract the product name and price from this product page text. Return ONLY JSON:
 {"title": "product name or empty string", "price": null or number, "currency": "USD"}
-CRITICAL: price must be the main one-time purchase price of this exact product as currently displayed by default — never a per-installment amount ("4 payments of $X"), a subscription/subscribe-and-save price, a shipping cost, or a price for a different variant/bundle than the one shown by default. If several prices appear and it's unclear which is the main displayed price, return null rather than guessing.
-CRITICAL: title must include defining material/type descriptors, not a bare generic category word — "jade roller" not "roller".
+CRITICAL: price must be the main one-time purchase price of this exact product as currently displayed by default. Never a per-installment amount ("4 payments of $X"), a subscription/subscribe-and-save price, a shipping cost, or a price for a different variant/bundle than the one shown by default. If several prices appear and it's unclear which is the main displayed price, return null rather than guessing.
+CRITICAL: title must include defining material/type descriptors, not a bare generic category word. Use "jade roller" not "roller".
 
 PAGE TEXT:
 ${text}`,
@@ -1044,7 +1056,7 @@ async function buildEnrichedSearchQuery(title: string, description: string, rawT
 
 Include distinguishing descriptors the content actually mentions: material, specific type or variant, notable features (e.g. "dual-head", "2-in-1", number of pieces, mechanism, size). Do not include the brand or store name. Do not include marketing filler words ("premium", "best-selling", "amazing"). Do not invent details the text doesn't support.
 
-Return ONLY the search query text — no quotes, no JSON, no explanation, nothing else.
+Return ONLY the search query text. No quotes, no JSON, no explanation, nothing else.
 
 PRODUCT TITLE: ${title || "(none given)"}
 
@@ -1118,6 +1130,9 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
       shopping = await searchLensViaSerper(lensImageUrl);
       if (shopping) engineUsed = "lens_serper";
     }
+    // The temporary public copy exists only for the duration of the Lens
+    // call. It goes as soon as that call is done.
+    await discardLensUpload(lensImageUrl);
   }
 
   if (shopping) {
@@ -1145,6 +1160,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
               shopping = await searchLensViaSerper(lensUrl);
               if (shopping) engineUsed = "store_page_lens_serper";
             }
+            await discardLensUpload(lensUrl);
           }
           if (shopping) {
             const verified = await verifyCandidates(shopping, pageImage.data, pageImage.mimeType);
@@ -1230,14 +1246,27 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
 
   const { markup, savings, savingsPercent, verdict } = calculateVerdict(retailPrice, wholesalePrice);
 
-  // ── Gate: a confident VERDICT requires BOTH a visually verified match
-  //    AND pricing that actually supports a markup claim (wholesale really
-  //    is cheaper than retail). Everything else renders as FINDER — same
-  //    engine, no confident claim attached to data that doesn't support it. ──
+  // ── Gate: a confident VERDICT requires THREE things, not two.
+  //    1. a visually verified match,
+  //    2. pricing that actually supports a markup claim (wholesale really
+  //       is cheaper than retail), and
+  //    3. an OBSERVED retail price — one read off the screenshot itself or
+  //       off the seller's own product page.
+  //
+  //    (3) is the accuracy fix that matters most. Without it, a scan with
+  //    no visible price fell back to `shopping.highestPrice`: the most
+  //    expensive listing found on some third merchant. The card would then
+  //    print "Retail asking $X" and accuse a seller of a markup using a
+  //    price that seller never charged, which is both wrong and the one
+  //    kind of wrong that is trivially disprovable by anyone who opens the
+  //    listing. An estimated retail figure still produces a full FINDER
+  //    result with the real source price attached; it just never carries a
+  //    confident BUSTED. ──
   const engineHadRealMatch = !!shopping;
   const pricingSupportsVerdict = wholesalePrice > 0 && wholesalePrice < retailPrice;
+  const retailPriceWasObserved = retailSource === "screenshot";
   const mode: ScanResult["mode"] =
-    engineHadRealMatch && confidence !== "unverified" && pricingSupportsVerdict ? "VERDICT"
+    engineHadRealMatch && confidence !== "unverified" && pricingSupportsVerdict && retailPriceWasObserved ? "VERDICT"
     : engineHadRealMatch ? "FINDER"
     : "UNRESOLVED";
 
@@ -1259,7 +1288,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
     matchConfidence: confidence,
     shippingNote: buildShippingNote(resolvedUrl, requesterCountry),
     sourceProduct: {
-      title: shopping?.title || discoveredPage?.title || vision.productName || "Similar product found",
+      title: cleanTitle(shopping?.title || discoveredPage?.title || vision.productName) || "Similar product found",
       price: parseFloat(wholesalePrice.toFixed(2)),
       currency: vision.currency || "USD",
       imageUrl: proxyImage(shopping?.imageUrl || ""),
@@ -1329,6 +1358,7 @@ export async function scanProductUrl(url: string, country?: string): Promise<Sca
           shopping = await searchLensViaSerper(lensImageUrl);
           if (shopping) engineUsed = "url_lens_serper";
         }
+        await discardLensUpload(lensImageUrl);
       }
     }
 
@@ -1379,7 +1409,13 @@ export async function scanProductUrl(url: string, country?: string): Promise<Sca
 
     const { markup, savings, savingsPercent, verdict } = calculateVerdict(retailPrice, wholesalePrice);
     const pricingSupportsVerdict = wholesalePrice < retailPrice;
-    const mode: ScanResult["mode"] = confidence !== "unverified" && pricingSupportsVerdict ? "VERDICT" : "FINDER";
+    // Same three-part gate as the image pipeline: a confident verdict needs
+    // a verified match, a real gap, AND a retail price actually read off
+    // the seller's own page. A markup claim built on some other merchant's
+    // listing price is a claim the seller can disprove in one click.
+    const retailPriceWasObserved = retailSource === "screenshot";
+    const mode: ScanResult["mode"] =
+      confidence !== "unverified" && pricingSupportsVerdict && retailPriceWasObserved ? "VERDICT" : "FINDER";
     const resolvedUrl = await resolveMerchantLink(shopping.productUrl, shopping.productId);
 
     return {
@@ -1390,7 +1426,7 @@ export async function scanProductUrl(url: string, country?: string): Promise<Sca
       matchConfidence: confidence,
       shippingNote: buildShippingNote(resolvedUrl, requesterCountry),
       sourceProduct: {
-        title: pageData.title || shopping.title,
+        title: cleanTitle(pageData.title || shopping.title),
         price: parseFloat(wholesalePrice.toFixed(2)),
         currency: pageData.currency || "USD",
         imageUrl: proxyImage(shopping.imageUrl || pageData.imageUrl || ""),

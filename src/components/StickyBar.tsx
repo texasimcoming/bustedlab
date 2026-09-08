@@ -17,7 +17,7 @@ export default function StickyBar({
           <span style={{ fontSize: "13px", color: "var(--text-2)" }}>Unlimited access active</span>
         </div>
         <button onClick={onScan} className="btn-primary"
-          style={{ borderRadius: "10px", padding: "10px 20px", fontSize: "14px", fontWeight: "600", fontFamily: "'Space Grotesk', sans-serif" }}>
+          style={{ borderRadius: "10px", padding: "10px 20px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif" }}>
           {hasFile ? "Run X-ray" : "Upload first"}
         </button>
       </div>
@@ -42,12 +42,12 @@ export default function StickyBar({
       </div>
       {remaining > 0 ? (
         <button onClick={onScan} className="btn-primary"
-          style={{ borderRadius: "10px", padding: "10px 20px", fontSize: "14px", fontWeight: "600", fontFamily: "'Space Grotesk', sans-serif" }}>
+          style={{ borderRadius: "10px", padding: "10px 20px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif" }}>
           {hasFile ? "Run X-ray" : "Upload first"}
         </button>
       ) : (
         <button onClick={onUpgrade} className="btn-primary"
-          style={{ borderRadius: "10px", padding: "10px 20px", fontSize: "14px", fontWeight: "700", fontFamily: "'Space Grotesk', sans-serif" }}>
+          style={{ borderRadius: "10px", padding: "10px 20px", fontSize: "14px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif" }}>
           Unlock $4.99
         </button>
       )}
