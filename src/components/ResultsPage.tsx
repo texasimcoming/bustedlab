@@ -7,6 +7,8 @@ import SoundToggle from "@/components/SoundToggle";
 interface ScanResult {
   found: boolean;
   shippingNote?: string;
+  /** Present once the verdict has a permanent record in the ledger. */
+  scanId?: string | null;
   mode: CardMode;
   matchConfidence: MatchConfidence;
   priceSource: "screenshot" | "estimated" | "shopping";
@@ -53,6 +55,10 @@ export default function ResultsPage({
   // on every re-render, so the id printed on the card was different from the
   // one in the image a person saved a second later.
   const [scanId] = useState(() => `SCAN #${Date.now().toString(36).toUpperCase()}`);
+  // Pinned once, when this result first rendered. The card stamps itself with
+  // this rather than reading the clock on every render, so the time printed on
+  // the card and the time baked into the saved PNG are the same time.
+  const [resolvedAt] = useState(() => Date.now());
 
   const verdictData: VerdictData = {
     verdict: an.verdict,
@@ -69,6 +75,7 @@ export default function ResultsPage({
     retailSource: an.retailSource,
     confidence: an.confidence,
     scanId,
+    recordedAt: resolvedAt,
     isDemo: false,
   };
 
@@ -122,12 +129,23 @@ export default function ResultsPage({
     setSaving(false);
   };
 
+  // The permanent address for this verdict. Present only when the ledger write
+  // succeeded, so a share never points at a page that does not exist.
+  const permalink = result.scanId
+    ? `${typeof window === "undefined" ? "https://bustedlab.com" : window.location.origin}/scan/${result.scanId}`
+    : "https://bustedlab.com";
+
   // The dollar figure is the hook, not the percentage: "$47.10 above market"
   // is a number a person feels, "412% markup" is a statistic. Both go in,
   // dollars first, because this string is the caption on every repost.
+  //
+  // The URL is the change that matters. Sharing only a PNG was a dead end: an
+  // image cannot be clicked, indexed or attributed, so every repost of a
+  // verdict card leaked its whole audience. The link now travels with the
+  // image and lands on this exact verdict.
   const shareText = mode === "VERDICT"
-    ? `$${an.savings.toFixed(2)} above market on this one. ${an.markup}% markup, verified. Scan anything: bustedlab.com`
-    : `Ran this through BustedLab. Closest listing found: $${sp.price.toFixed(2)}. Scan anything: bustedlab.com`;
+    ? `$${an.savings.toFixed(2)} above market on this one. ${an.markup}% markup, verified.`
+    : `Ran this through BustedLab. Closest listing found: $${sp.price.toFixed(2)}.`;
 
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -143,23 +161,24 @@ export default function ResultsPage({
             files: [file],
             title: "BustedLab",
             text: shareText,
+            url: permalink,
           });
           setSharing(false);
           return;
         } catch { /* cancelled, fall through */ }
       }
 
-      // Fallback: share URL
+      // Fallback: share the link on its own. Still an entry point.
       if (navigator.share) {
         try {
-          await navigator.share({ title: "BustedLab", text: shareText, url: "https://bustedlab.com" });
+          await navigator.share({ title: "BustedLab", text: shareText, url: permalink });
           setSharing(false);
           return;
         } catch { /* fall through to clipboard */ }
       }
 
       // Last resort: copy to clipboard
-      await navigator.clipboard.writeText(`${shareText} https://bustedlab.com`);
+      await navigator.clipboard.writeText(`${shareText} ${permalink}`);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch { /* ignore */ }
@@ -206,6 +225,21 @@ export default function ResultsPage({
                 {sharing ? "Rendering" : copied ? "Copied" : "Share"}
               </button>
             </div>
+
+            {result.scanId && (
+              <a
+                href={`/scan/${result.scanId}`}
+                style={{
+                  display: "block", width: "100%", padding: "12px", borderRadius: "10px",
+                  fontSize: "13px", textAlign: "center", textDecoration: "none", fontWeight: "500",
+                  marginBottom: "8px", color: "rgba(184,160,232,0.75)",
+                  border: "1px solid rgba(123,94,167,0.28)", background: "rgba(123,94,167,0.06)",
+                  fontFamily: "var(--font-sans), sans-serif",
+                }}
+              >
+                Permanent link to this verdict
+              </a>
+            )}
 
             {sp.affiliateUrl && (
               <>

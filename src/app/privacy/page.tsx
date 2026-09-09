@@ -14,7 +14,7 @@ export default function PrivacyPage() {
       </Link>
 
       <h1 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "32px", fontWeight: "700", letterSpacing: "-0.8px", marginBottom: "8px" }}>Privacy Policy</h1>
-      <p style={{ color: "var(--text-3)", fontSize: "13px", marginBottom: "40px" }}>Policy version 3.0 · BustedLab LLC, Wyoming, USA</p>
+      <p style={{ color: "var(--text-3)", fontSize: "13px", marginBottom: "40px" }}>Policy version 3.2 · BustedLab LLC, Wyoming, USA</p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "32px", fontSize: "15px", lineHeight: "1.75", color: "var(--text-2)" }}>
 
@@ -30,7 +30,8 @@ export default function PrivacyPage() {
           <p style={{ marginTop: "12px" }}><strong style={{ color: "var(--text)" }}>IP address</strong> - used only to enforce the free tier scan limit (2 per day). Your address is never written to storage in readable form: it is converted to a salted, one-way hash that serves purely as a counter key, and the key expires at midnight UTC. The original address cannot be recovered from what we hold.</p>
           <p style={{ marginTop: "12px" }}><strong style={{ color: "var(--text)" }}>Uploaded images</strong> - product screenshots you scan are processed in memory. Reverse-image search requires the image to be briefly retrievable by URL, so during a scan a copy is written to temporary object storage at an unguessable address and deleted as soon as the search returns. A scheduled job removes any copy left behind by an interrupted scan. Images are never associated with your email address or used for any purpose other than completing your scan.</p>
           <p style={{ marginTop: "12px" }}><strong style={{ color: "var(--text)" }}>Payment data</strong> - handled entirely by our payment provider, which acts as Merchant of Record. BustedLab never sees or stores your card details. We receive only your email address upon successful payment. The current provider is named on the checkout page before you enter any details.</p>
-          <p style={{ marginTop: "12px" }}><strong style={{ color: "var(--text)" }}>Scan metadata</strong> - anonymized, aggregated data about scan volume and product categories may be retained to improve the service. This data cannot be used to identify individual users.</p>
+          <p style={{ marginTop: "12px" }}><strong style={{ color: "var(--text)" }}>Scan records</strong> - when a scan produces a confirmed verdict, we permanently record the product, its category, the two prices compared, the resulting markup, the verdict and the time. These records describe a product, never a person: they contain no IP address, no email address, no session identifier and no copy of anything you uploaded, and they cannot be linked back to you or to any other record you created. Confirmed verdicts are published at a permanent address of the form /scan/[id], which is how a shared result opens to a real page, and appear in the public index at /the-index and in the leaderboards on the home page. We do not record or publish the retail web address you scanned.</p>
+          <p style={{ marginTop: "12px" }}><strong style={{ color: "var(--text)" }}>Product update list</strong> - if you choose to submit your email for product updates, we store that address, the time you submitted it, and which part of the site it came from. This is optional, it is never a condition of using the Service, and we use it only to send occasional updates about BustedLab. We do not sell, rent or share it. Unsubscribe at any time by emailing <a href="mailto:privacy@bustedlab.com" style={{ color: "var(--accent-bright)" }}>privacy@bustedlab.com</a>, and the address is deleted.</p>
         </section>
 
         <section>
@@ -40,12 +41,14 @@ export default function PrivacyPage() {
             <li><strong style={{ color: "var(--text)" }}>Contract</strong> - processing your email to deliver the service you paid for.</li>
             <li><strong style={{ color: "var(--text)" }}>Legitimate interests</strong> - IP-based rate limiting to prevent abuse and ensure fair access for all users.</li>
             <li><strong style={{ color: "var(--text)" }}>Legal obligation</strong> - retaining transaction records as required by applicable law.</li>
+            <li><strong style={{ color: "var(--text)" }}>Consent</strong> - the optional product update list. Given when you submit the form, withdrawable at any time.</li>
           </ul>
         </section>
 
         <section>
           <h2 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "18px", fontWeight: "700", color: "var(--text)", marginBottom: "12px" }}>How Long We Keep Your Data</h2>
-          <p>Email addresses are retained until you request deletion. IP-based rate limit data expires automatically every 24 hours. Payment transaction records are retained for 7 years as required by US tax law. You may request deletion of all personal data at any time.</p>
+          <p>Email addresses are retained until you request deletion. Rate limit data, which holds only a one-way hash, expires automatically every 24 hours. Payment transaction records are retained for 7 years as required by US tax law. You may request deletion of all personal data at any time.</p>
+          <p style={{ marginTop: "12px" }}>Scan records are retained indefinitely because they contain no personal data: they are measurements of products and prices. Deleting your account does not delete them, because there is nothing in them to connect to you.</p>
         </section>
 
         <section>

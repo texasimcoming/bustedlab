@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 // Rebuilt to match the HUD language everywhere else in the app — corner
 // brackets, monospace telemetry, dark scan-styled surface. The previous
 // version was a generic centered modal with a lock emoji and a checkmark
@@ -139,8 +141,104 @@ export default function PaywallModal({
           >
             Already paid? Sign in with email
           </button>
+
+          {/* ── INTENT CAPTURE ──
+              The person reading this used the product and ran out of it. If
+              they close the tab without paying, they were previously gone
+              permanently. This is the last moment they are reachable, and it
+              is the highest-intent audience the product will ever have. The
+              ask is deliberately not a second attempt at the sale: pushing
+              the same $4.99 again after a decline converts nobody and costs
+              the address too. */}
+          <NotifyCapture />
         </div>
       </div>
+    </div>
+  );
+}
+
+
+function NotifyCapture() {
+  const [email, setEmail] = useState("");
+  const [state, setState] = useState<"idle" | "sending" | "done">("idle");
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (state !== "idle") return;
+    setState("sending");
+    try {
+      await fetch("/api/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Submitting the form IS the consent, and the label above the field
+        // states what the address is used for.
+        body: JSON.stringify({ email, source: "paywall", consent: true }),
+      });
+    } catch {
+      /* The address is a nice-to-have. Never show this person an error. */
+    }
+    setState("done");
+  };
+
+  if (state === "done") {
+    return (
+      <div style={{
+        marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(255,255,255,0.06)",
+        textAlign: "center",
+      }}>
+        <p style={{
+          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
+          letterSpacing: "1.4px", color: "#10d9a0", textTransform: "uppercase",
+        }}>
+          Logged. You will hear from us when the index expands.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <p style={{
+        fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9.5px",
+        letterSpacing: "1.3px", color: "rgba(238,238,246,0.3)", textTransform: "uppercase",
+        marginBottom: "8px", textAlign: "center",
+      }}>
+        Not ready? Get notified as the index grows
+      </p>
+      <form onSubmit={submit} style={{ display: "flex", gap: "6px" }}>
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          placeholder="your@email.com"
+          aria-label="Email address for product updates"
+          style={{
+            flex: 1, minWidth: 0, background: "rgba(255,255,255,0.028)",
+            border: "1px solid rgba(255,255,255,0.09)", borderRadius: "8px",
+            padding: "9px 12px", color: "#eeeef6", fontSize: "13px", outline: "none",
+            fontFamily: "var(--font-sans), sans-serif",
+          }}
+        />
+        <button
+          type="submit"
+          disabled={state === "sending" || !email}
+          className="btn-ghost"
+          style={{
+            borderRadius: "8px", padding: "9px 14px", fontSize: "13px",
+            fontFamily: "var(--font-display), sans-serif", fontWeight: "600",
+            opacity: state === "sending" || !email ? 0.4 : 1,
+          }}
+        >
+          {state === "sending" ? "..." : "Notify"}
+        </button>
+      </form>
+      <p style={{
+        fontSize: "9.5px", color: "rgba(238,238,246,0.22)", marginTop: "7px",
+        lineHeight: "1.5", textAlign: "center",
+      }}>
+        Product updates only. No sharing, no selling, unsubscribe any time.
+      </p>
     </div>
   );
 }

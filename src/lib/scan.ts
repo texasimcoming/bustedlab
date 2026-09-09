@@ -89,6 +89,11 @@ export interface ScanResult {
   priceSource: "screenshot" | "estimated" | "shopping";
   engineUsed?: string;
   matchConfidence: "exact" | "likely" | "unverified";
+  // Product category. Present on every result so the scan ledger can be
+  // sliced by category later: "average markup by category" is one of the few
+  // genuinely new things a dataset of this shape can say, and it is
+  // impossible to reconstruct after the fact from a title alone.
+  category: string;
   // Locality disclosure — NOT a search filter. The search itself always
   // targets the US index (see sanitizeCountry usage below); this is purely
   // an honest heads-up when the requester isn't in that market, so the
@@ -817,6 +822,38 @@ const CATEGORY_DATA: Record<string, { wholesaleRatio: number; avgRetail: number 
   other:       { wholesaleRatio: 0.14, avgRetail: 52 },
 };
 
+// The image pipeline gets its category from the vision model. The URL
+// pipeline has no vision step, so rather than spend another paid call on a
+// field that only feeds analytics, it is inferred from the text the page
+// already gave us. Deterministic, free, and using the exact same vocabulary
+// the vision prompt uses so the two halves of the ledger stay comparable.
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  skincare: ["serum", "moisturis", "moisturiz", "cleanser", "skincare", "retinol", "hyaluronic", "gua sha", "jade roller", "spf", "sunscreen", "toner"],
+  beauty: ["makeup", "lipstick", "mascara", "foundation", "whitening", "lash", "nail", "hair", "shampoo", "perfume", "fragrance", "brush"],
+  fitness: ["workout", "fitness", "gym", "dumbbell", "resistance band", "yoga", "massage gun", "treadmill", "protein"],
+  tech: ["charger", "earbud", "headphone", "bluetooth", "usb", "laptop", "phone case", "camera", "speaker", "smart watch", "led", "projector"],
+  fashion: ["dress", "shirt", "hoodie", "jacket", "jeans", "shoes", "sneaker", "skirt", "coat", "sweater"],
+  accessories: ["watch", "bag", "wallet", "sunglasses", "jewelry", "jewellery", "necklace", "bracelet", "ring", "belt", "earring"],
+  home: ["diffuser", "lamp", "cushion", "kitchen", "blanket", "organiser", "organizer", "storage", "candle", "vacuum", "decor"],
+  pet: ["dog", "cat", "pet", "puppy", "kitten", "leash", "litter", "aquarium"],
+  food: ["snack", "coffee", "tea", "supplement", "vitamin", "powder", "gummies", "protein bar"],
+};
+
+function inferCategory(...parts: string[]): string {
+  const text = parts.filter(Boolean).join(" ").toLowerCase();
+  if (!text) return "other";
+  let best = "other";
+  let bestHits = 0;
+  for (const [category, words] of Object.entries(CATEGORY_KEYWORDS)) {
+    const hits = words.reduce((n, w) => (text.includes(w) ? n + 1 : n), 0);
+    if (hits > bestHits) {
+      bestHits = hits;
+      best = category;
+    }
+  }
+  return best;
+}
+
 function proxyImage(url: string): string {
   if (!url) return "";
   return `/api/proxy-image?url=${encodeURIComponent(url)}`;
@@ -1286,6 +1323,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
     priceSource: retailSource,
     engineUsed,
     matchConfidence: confidence,
+    category: vision.category || "other",
     shippingNote: buildShippingNote(resolvedUrl, requesterCountry),
     sourceProduct: {
       title: cleanTitle(shopping?.title || discoveredPage?.title || vision.productName) || "Similar product found",
@@ -1424,6 +1462,7 @@ export async function scanProductUrl(url: string, country?: string): Promise<Sca
       priceSource: retailSource,
       engineUsed,
       matchConfidence: confidence,
+      category: inferCategory(pageData.title, pageData.description, shopping.title),
       shippingNote: buildShippingNote(resolvedUrl, requesterCountry),
       sourceProduct: {
         title: cleanTitle(pageData.title || shopping.title),
@@ -1460,6 +1499,7 @@ export function getUnresolvedResult(): ScanResult {
     priceSource: "estimated",
     engineUsed: "none",
     matchConfidence: "unverified",
+    category: "other",
     sourceProduct: {
       title: "Product not identified",
       price: 0, currency: "USD", imageUrl: "", productUrl: "", affiliateUrl: "",

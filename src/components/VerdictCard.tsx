@@ -48,6 +48,16 @@ export interface VerdictData {
   confidence?: "high" | "medium" | "low";
   scanId?: string;
   isDemo?: boolean;
+  /**
+   * When this scan happened, as epoch milliseconds.
+   *
+   * Supplied by archived records. Without it the card stamps itself with the
+   * current time, which is correct for a scan that just ran and plainly wrong
+   * on a permanent page: a verdict shared three months ago would render with
+   * today's date on it, and the one artifact whose entire authority rests on
+   * being a dated measurement would be quietly lying about when it was taken.
+   */
+  recordedAt?: number;
 }
 
 const VERDICT_CONFIG = {
@@ -106,28 +116,35 @@ const UNRESOLVED_CONFIG = {
 const PLATE_LABEL: Record<MatchConfidence, string> = {
   exact: "PIXEL-MATCH VERIFIED",
   likely: "VISUAL MATCH CONFIRMED",
-  unverified: "EXACT ITEM UNCONFIRMED",
+  unverified: "MATCH NOT CONFIRMED",
 };
 
-// The line a person actually reads before deciding to screenshot this.
-// Computed from the real numbers on every render, never a static template.
+// THE LINE. The one a person reads before deciding whether to screenshot it.
 //
-// Three rules govern every string below, and they are not stylistic:
+// Computed from the real numbers on every render, never a static template
+// dropped over any result. Three rules, and they are not stylistic:
 //
 //  1. EVERY message states the exact dollar gap. The percentage is the
-//     headline; the dollar figure is what a person feels, and a card that
-//     omits it is a card that gets scrolled past. Several messages in the
-//     previous bank named only a multiple, and none of the FAIR lines
-//     carried a number at all.
-//  2. EVERY claim is anchored to what was actually measured. The engine
-//     found the same product listed elsewhere at a price; it did not audit
-//     anyone's invoices. So the language is "lists at", "available at",
-//     "market shows" — never "they sourced it for", which asserts a fact
-//     about a business's costs that no scan can establish and that turns
-//     an unarguable finding into a defamation surface. The measured version
-//     hits harder anyway: it cannot be argued with.
-//  3. Short. The card has to be legible as a 200px thumbnail and as a 9:16
-//     video frame, which means the message is one line, not a paragraph.
+//     headline; the dollar figure is what a person feels. A card that omits
+//     it is a card that gets scrolled past.
+//  2. Sharp, human, funny, angry where anger is earned. This is the copy that
+//     travels. Clinical language is safe and gets zero reposts, and a verdict
+//     nobody shares is a verdict nobody sees. The Terms exist to hold exactly
+//     this: everything the Service outputs is framed there as editorial market
+//     analysis and opinion, which is what these lines are.
+//  3. Every claim stays anchored to something the engine actually measured.
+//     The scan found the same product listed elsewhere at a price and compared
+//     it to the asking price. So the copy says "it sells for $X", "available
+//     at $X", "the market says $X" rather than "they paid $X for it" - the
+//     first is an unarguable observation about a public listing, the second is
+//     an assertion about a business's internal costs that no scan can see.
+//     The measured version is not softer. It is harder, because there is
+//     nothing in it to deny.
+//
+// Calibration is by intensity, not by topic. BUSTED is outrage with receipts.
+// OVERPRICED is sharp frustration that never inflates itself into outrage it
+// has not earned. FAIR is dry surprise, because honest pricing is rare enough
+// to be the story.
 function buildMessage(data: VerdictData): string {
   const s = data.savings.toFixed(2);
   const retail = data.retailPrice.toFixed(2);
@@ -135,79 +152,76 @@ function buildMessage(data: VerdictData): string {
   const m = data.wholesalePrice > 0 ? (data.retailPrice / data.wholesalePrice).toFixed(1) : "0";
   const idx = Math.floor((data.savings * 100 + data.retailPrice * 7 + data.markup * 3)) % 20;
 
-  // BUSTED. Outrage with receipts. The brand does not get softened, but the
-  // weapon is the arithmetic, not an accusation: every line states the gap
-  // and lets it do the work.
+  // ── BUSTED. Outrage with receipts. ──
   const HIGH = [
-    `The same product lists at $${source}. You were asked $${retail}. That is a $${s} gap.`,
-    `$${s} of that price is not the product.`,
-    `${m}x the going rate. $${s} of it is margin.`,
-    `Listed elsewhere at $${source}. Priced here at $${retail}. $${s} unaccounted for.`,
-    `$${s} sits between the market price and the asking price. That is the whole business.`,
-    `${m}x markup. $${s} you keep by knowing.`,
-    `The ad cost more than the product. $${s} more, to be exact.`,
-    `$${s} above the market floor. The packaging is not worth $${s}.`,
-    `Same item, $${source}, in stock. This one wants $${retail}. Difference: $${s}.`,
-    `${m}x over market. $${s} of pure spread.`,
-    `You were $${s} from finding out. Now you know.`,
-    `$${s} of branding on a $${source} product.`,
-    `Market price $${source}. Asking price $${retail}. No version of that gap is $${s} of value.`,
-    `${m}x markup, $${s} deep. The scan found it in seconds.`,
-    `$${s} is what the funnel was built to collect.`,
-    `A $${source} item wearing a $${retail} price tag. $${s} of costume.`,
-    `The math does not survive contact: $${s} above the market rate.`,
-    `$${s}. That is the number they were counting on you not checking.`,
-    `${m}x the market price. $${s} on the table, and it was yours.`,
-    `Priced $${s} above what this openly sells for. Receipt attached.`,
+    `It sells for $${source}. They charged you $${retail}. That $${s} gap has a name.`,
+    `You were about to pay ${m}x what this actually costs. $${s} of it was the story.`,
+    `$${s}. That is what the aesthetic cost you.`,
+    `Somebody's rent got paid with your $${s}.`,
+    `The product is $${source}. The other $${s} is the ad you fell for.`,
+    `$${s} above what everyone else charges. They were betting you would not check.`,
+    `${m}x markup, $${s} deep, and the ad had soft lighting.`,
+    `A $${source} item in a $${retail} costume. The costume runs $${s}.`,
+    `$${s} of that price is not the product. It never was.`,
+    `Same item, $${source}, publicly listed. Yours was $${retail}. The logo cost $${s}.`,
+    `You nearly funded a $${s} marketing budget. One scan.`,
+    `$${s}. Not a discount you missed. A markup you were handed.`,
+    `Buy at $${source}, sell at $${retail}. The $${s} in the middle is the entire company.`,
+    `${m}x the real price. That is not a margin, that is a personality, and it costs $${s}.`,
+    `They called it premium. The market calls it $${source}. You were charged $${s} extra for the adjective.`,
+    `$${s}. Screenshot this and send it to whoever recommended it.`,
+    `Available right now for $${source}. You were quoted $${retail}. Do what you like with that. ($${s}.)`,
+    `They are not selling a product. They are selling a $${retail} price tag with a $${source} product attached. You keep the $${s}.`,
+    `${m}x. $${s}. And it ships from the same warehouse as the cheap one.`,
+    `$${s} over market. That is not a business model, that is a magic trick, and you just saw the wires.`,
   ];
 
-  // OVERPRICED. Sharp frustration. Smart enough to catch it, real enough to
-  // matter, never inflated into outrage it does not earn.
+  // ── OVERPRICED. Sharp frustration. Real, never inflated. ──
   const OVER = [
-    `$${s} above market. Not extreme. Still yours.`,
-    `Overpriced by $${s}. The product is fine. The price has air in it.`,
-    `$${s} gap. Small enough to miss, big enough to matter.`,
-    `$${s} above what this sells for elsewhere. Not dramatic. Still real.`,
-    `A $${s} premium for nothing you can point at.`,
-    `$${s} over the market rate, on the record.`,
-    `Not the worst we have seen. Still $${s} over.`,
-    `$${s} above market. Small gap, real gap.`,
-    `The market runs $${s} under this asking price.`,
-    `$${s} over. Enough to check twice.`,
-    `Overpriced by $${s}. Worth knowing before, not after.`,
-    `The listing looks standard. The price runs $${s} hot.`,
-    `$${s} above the going rate. Nothing about the product explains it.`,
-    `Priced $${s} over what this openly sells for.`,
-    `A $${s} premium is sitting on top of this.`,
-    `$${s} over market. Not headline material. Still money.`,
-    `Market data puts this $${s} below the asking price.`,
-    `$${s} over. Compare before you commit.`,
-    `Overpriced by $${s}. You now know before paying it.`,
-    `$${s} of margin you were not told about.`,
+    `$${s} over. Not a scandal. Still your $${s}.`,
+    `Overpriced by $${s}. Not criminal. Just optimistic.`,
+    `$${s}. The kind of gap you only catch when something is actually checking.`,
+    `They are not robbing you. They are rounding up, by $${s}.`,
+    `$${s} above market. Small enough to shrug at. That is exactly the point.`,
+    `The market says $${source}. They say $${retail}. Somebody is $${s} braver than the data.`,
+    `$${s} of confidence baked into the price.`,
+    `Not outrageous. Just $${s} more than it needed to be.`,
+    `$${s} over the going rate, and nothing about the product explains it.`,
+    `You would not have noticed the $${s}. That is what it was counting on.`,
+    `Overpriced by $${s}. Buy it if you want it. Just buy it knowing.`,
+    `$${s}. Enough for lunch. They would rather have it than you.`,
+    `The listing looks completely normal. The price runs $${s} hot.`,
+    `$${s} above what this openly sells for elsewhere. Your call now.`,
+    `A $${s} premium for the privilege of not checking.`,
+    `Market rate $${source}, asking $${retail}. That is $${s} of nerve.`,
+    `$${s} over. Not the worst we have seen today. Not nothing either.`,
+    `They are $${s} ahead of the market and hoping nobody keeps score.`,
+    `Overpriced by $${s}. Now it is a decision instead of an accident.`,
+    `$${s}. Small gap, real gap, your money.`,
   ];
 
-  // FAIR. Dry surprise. Honest pricing is rare, and the rarity is the story.
+  // ── FAIR. Dry surprise. Honest pricing is rare and the rarity is the story. ──
   const FAIR = [
-    `Clean. $${s} between this and the market floor. That is what fair looks like.`,
-    `Fair price confirmed. $${s} off market. Rare enough to note.`,
-    `No theatre. $${s} from the market rate and nothing hidden behind it.`,
-    `The numbers hold. $${s} of spread, which is a real margin, not a markup.`,
-    `We expected a gap. We found $${s}. Priced straight.`,
-    `$${s} above the market floor. That is a business, not a funnel.`,
-    `Nothing inflated. $${s} of spread on a real product.`,
-    `Fair. $${s} off market. This one is not running the play.`,
-    `Priced at value. $${s} of margin, openly earned.`,
-    `$${s} spread. Either the margins are thin or the ethics are intact.`,
-    `No significant markup. $${s} from market. The scan came back clean.`,
-    `Not every seller runs the game. This one carries $${s} of honest margin.`,
-    `Fair pricing confirmed at a $${s} spread. Screenshot it. It happens.`,
-    `Priced correctly. $${s} above market cost. Simple, and rare.`,
-    `Clean scan. $${s} of spread, nothing to expose.`,
-    `$${s} from the market floor. That is the price being the price.`,
-    `Actually fair. A $${s} margin and no story underneath it.`,
-    `The listing price and the market price agree within $${s}.`,
-    `No overprice detected. $${s} of spread. You are not funding anyone's ad budget.`,
-    `This one holds up. $${s} of margin, no games.`,
+    `Fair. $${s} off market. We checked twice, because that is unusual.`,
+    `Priced honestly. A $${s} spread. We are as surprised as you are.`,
+    `No markup theatre. $${s}. Somebody here has principles or terrible margins.`,
+    `$${s} from the market floor. That is a business, not a funnel.`,
+    `Clean scan. $${s}. Nothing to expose, which is its own kind of news.`,
+    `They could have charged you $${retail} and more. They did not. $${s} spread.`,
+    `Fair price confirmed at $${s}. Screenshot it anyway. It is rarer than the bad ones.`,
+    `$${s}. That is what a normal margin looks like, in case you had forgotten.`,
+    `We came here to find a markup. We found $${s} and a straight answer.`,
+    `Actually fair. $${s} of honest margin and no story underneath it.`,
+    `$${s}. Either the margins are thin or the ethics are intact. Either way it passes.`,
+    `Priced at what it costs plus $${s}. Revolutionary, apparently.`,
+    `No inflation, no theatre, $${s}. Buy it and stop worrying.`,
+    `The market price and the asking price agree within $${s}. Frame this.`,
+    `$${s} spread. This seller is not running the play everyone else is running.`,
+    `Fair. $${s}. We ran it twice because the first result looked like a mistake.`,
+    `$${s} above cost and honest about it. That should not be remarkable.`,
+    `Nothing hidden here. $${s}, and the price is just the price.`,
+    `$${s}. You are not subsidising anyone's ad spend on this one.`,
+    `Clean. $${s}. Enjoy the rare sensation of not being worked.`,
   ];
 
   switch (data.verdict) {
@@ -286,12 +300,6 @@ function EmptyThumb({ color }: { color: string }) {
   );
 }
 
-// Signal-strength bars, driven directly by the real matchConfidence field —
-// exact = 4 bars, likely = 3 bars, unverified = 2 bars. Same data the text
-// label already states, just given an instrument-style visual instead of
-// only a monospace string.
-const SIGNAL_BAR_COUNT: Record<MatchConfidence, number> = { exact: 4, likely: 3, unverified: 2 };
-
 // How much of the markup ring is lit.
 //
 // The previous mapping was markup/20 capped at 100, then multiplied by a
@@ -318,23 +326,6 @@ function ringFraction(markup: number): number {
   return Math.min(Math.sqrt(markup / 1000), 1);
 }
 
-function SignalBars({ confidence, color }: { confidence: MatchConfidence; color: string }) {
-  const lit = SIGNAL_BAR_COUNT[confidence];
-  return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: "1.5px", height: "9px" }}>
-      {[0, 1, 2, 3].map(i => (
-        <div key={i} style={{
-          width: "3px",
-          height: `${4 + i * 2}px`,
-          borderRadius: "1px",
-          background: i < lit ? color : "rgba(238,238,246,0.12)",
-          boxShadow: i < lit ? `0 0 3px ${color}` : "none",
-        }} />
-      ))}
-    </div>
-  );
-}
-
 export default function VerdictCard({ data, animate = true, compact = false, cardRef, sound = false }: Props) {
   const [scanComplete, setScanComplete] = useState(!animate);
   const [stampIn, setStampIn] = useState(!animate);
@@ -345,12 +336,20 @@ export default function VerdictCard({ data, animate = true, compact = false, car
   const [numbersIn, setNumbersIn] = useState(!animate);
 
   const cfg = data.mode === "UNRESOLVED" ? UNRESOLVED_CONFIG : VERDICT_CONFIG[data.verdict];
-  // toTimeString() returns the BROWSER'S LOCAL time. The previous version
+  // toTimeString() returns the BROWSER'S LOCAL time. An earlier version
   // pasted it next to a hardcoded "UTC" suffix, so every card shipped a
   // timestamp that was wrong by the reader's offset and labelled with a
   // timezone it was not in. Both halves come from the ISO string now.
-  const iso = new Date().toISOString();
-  const timestamp = `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
+  //
+  // The moment is passed in, never read from the clock during render.
+  // Date.now() in a render body is impure: it returns something different on
+  // every re-render, so the stamp on screen could drift away from the stamp
+  // baked into the PNG a person saved from it seconds later. All three callers
+  // supply it: the results page pins the moment the scan resolved, an archived
+  // page passes the moment it was recorded, and the reference card renders a
+  // fixed label instead of a time.
+  const iso = data.recordedAt === undefined ? null : new Date(data.recordedAt).toISOString();
+  const timestamp = iso ? `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC` : "";
 
   useEffect(() => {
     if (!animate) return;
@@ -472,9 +471,9 @@ export default function VerdictCard({ data, animate = true, compact = false, car
             fontSize: compact ? "7px" : "8px", color: "rgba(238,238,246,0.22)", letterSpacing: "0.3px",
             marginTop: "2px", fontFamily: "var(--font-mono), ui-monospace, monospace", lineHeight: "1.5",
           }}
-          // A live clock differs between the server render and the client
-          // hydration by exactly the milliseconds between them. That is the
-          // case this attribute exists for.
+          // The results page pins its moment in a state initialiser, which
+          // runs once on the server and once on the client and can straddle a
+          // second boundary between the two.
           suppressHydrationWarning
           >{data.isDemo ? "VERIFIED REFERENCE RECORD" : timestamp}</div>
         </div>
@@ -687,13 +686,15 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                   fontSize: compact ? "11.5px" : "12.5px", fontWeight: "600", color: "rgba(238,238,246,0.75)",
                   lineHeight: "1.45", marginBottom: "3px", wordBreak: "break-word",
                 }}>{clampTitle(data.productTitle, compact)}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <SignalBars confidence={data.matchConfidence} color={cfg.accentColor} />
-                  <div style={{
-                    fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: compact ? "8px" : "8.5px",
-                    color: cfg.accentColor, letterSpacing: "0.6px", opacity: 0.85,
-                  }}>{PLATE_LABEL[data.matchConfidence]}</div>
-                </div>
+                {/* The confidence readout is text and nothing else. The bar
+                    graphic that used to sit beside it restated the same value
+                    a second time in a second visual language, which is noise
+                    in a card whose whole job is to be read in two seconds at
+                    thumbnail size. */}
+                <div style={{
+                  fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: compact ? "8px" : "8.5px",
+                  color: cfg.accentColor, letterSpacing: "0.7px", opacity: 0.85, lineHeight: "1.4",
+                }}>{PLATE_LABEL[data.matchConfidence]}</div>
               </div>
             </div>
 
