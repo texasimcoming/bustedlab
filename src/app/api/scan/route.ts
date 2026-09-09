@@ -29,6 +29,7 @@ import {
 } from "@/lib/redis";
 import { cookies } from "next/headers";
 import { after } from "next/server";
+import { recordEvents, type EventName } from "@/lib/analytics";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import crypto from "crypto";
@@ -353,6 +354,20 @@ export async function POST(req: NextRequest) {
         void shippingNote;
         await setCachedScan(cacheKey, cacheable).catch(() => {});
       }
+
+      // ── Analytics. Counted here rather than from the browser because this
+      //    is the moment the scan actually finished, which makes these two
+      //    numbers unforgeable. Every completed scan counts, including cache
+      //    hits and failures: "how many scans happened" is a different
+      //    question from "how many produced a verdict", and conflating them
+      //    hides exactly the failure rate worth watching. ──
+      const events: EventName[] = ["scan_completed"];
+      if (result.mode === "VERDICT") {
+        if (result.analysis.verdict === "HIGH_MARKUP") events.push("verdict_busted");
+        else if (result.analysis.verdict === "OVERPRICED") events.push("verdict_overpriced");
+        else if (result.analysis.verdict === "FAIR") events.push("verdict_fair");
+      }
+      await recordEvents(events);
     });
 
     const response = NextResponse.json({ ...result, scanId });

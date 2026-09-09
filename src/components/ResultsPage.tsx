@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect } from "react";
 import VerdictCard, { VerdictData, VerdictType, CardMode, MatchConfidence } from "@/components/VerdictCard";
 import SoundToggle from "@/components/SoundToggle";
+import { track } from "@/lib/track";
 
 interface ScanResult {
   found: boolean;
@@ -151,6 +152,11 @@ export default function ResultsPage({
   const [sharing, setSharing] = useState(false);
 
   const handleShare = async () => {
+    // Counted on the tap, not on completion. Whether the share sheet is then
+    // confirmed or dismissed is invisible to the page on every platform, so
+    // counting "completed shares" would mean counting nothing at all. This
+    // measures intent to share, which is the number the growth loop turns on.
+    track("share_tapped");
     setSharing(true);
     try {
       // Try sharing the actual image file first

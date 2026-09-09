@@ -14,7 +14,7 @@ export default function PrivacyPage() {
       </Link>
 
       <h1 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "32px", fontWeight: "700", letterSpacing: "-0.8px", marginBottom: "8px" }}>Privacy Policy</h1>
-      <p style={{ color: "var(--text-3)", fontSize: "13px", marginBottom: "40px" }}>Policy version 3.2 · BustedLab LLC, Wyoming, USA</p>
+      <p style={{ color: "var(--text-3)", fontSize: "13px", marginBottom: "40px" }}>Policy version 3.3 · BustedLab LLC, Wyoming, USA</p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "32px", fontSize: "15px", lineHeight: "1.75", color: "var(--text-2)" }}>
 
@@ -31,6 +31,7 @@ export default function PrivacyPage() {
           <p style={{ marginTop: "12px" }}><strong style={{ color: "var(--text)" }}>Uploaded images</strong> - product screenshots you scan are processed in memory. Reverse-image search requires the image to be briefly retrievable by URL, so during a scan a copy is written to temporary object storage at an unguessable address and deleted as soon as the search returns. A scheduled job removes any copy left behind by an interrupted scan. Images are never associated with your email address or used for any purpose other than completing your scan.</p>
           <p style={{ marginTop: "12px" }}><strong style={{ color: "var(--text)" }}>Payment data</strong> - handled entirely by our payment provider, which acts as Merchant of Record. BustedLab never sees or stores your card details. We receive only your email address upon successful payment. The current provider is named on the checkout page before you enter any details.</p>
           <p style={{ marginTop: "12px" }}><strong style={{ color: "var(--text)" }}>Scan records</strong> - when a scan produces a confirmed verdict, we permanently record the product, its category, the two prices compared, the resulting markup, the verdict and the time. These records describe a product, never a person: they contain no IP address, no email address, no session identifier and no copy of anything you uploaded, and they cannot be linked back to you or to any other record you created. Confirmed verdicts are published at a permanent address of the form /scan/[id], which is how a shared result opens to a real page, and appear in the public index at /the-index and in the leaderboards on the home page. We do not record or publish the retail web address you scanned.</p>
+          <p style={{ marginTop: "12px" }}><strong style={{ color: "var(--text)" }}>Usage counts</strong> - we keep a daily tally of how many times a handful of things happen across the whole site: scans finishing, each type of verdict being returned, the share button being tapped, the upgrade screen appearing, an email being submitted, and a purchase link being followed. These are counters and nothing else. There is no session, no visitor identifier, no page path, no referrer, no device and no location attached to them, so a count cannot be traced back to you or matched with anything else we hold. The three counts that come from your browser are rate limited using the same one-way hash of your IP address described above, and that hash is used for nothing else.</p>
           <p style={{ marginTop: "12px" }}><strong style={{ color: "var(--text)" }}>Product update list</strong> - if you choose to submit your email for product updates, we store that address, the time you submitted it, and which part of the site it came from. This is optional, it is never a condition of using the Service, and we use it only to send occasional updates about BustedLab. We do not sell, rent or share it. Unsubscribe at any time by emailing <a href="mailto:privacy@bustedlab.com" style={{ color: "var(--accent-bright)" }}>privacy@bustedlab.com</a>, and the address is deleted.</p>
         </section>
 
@@ -86,7 +87,7 @@ export default function PrivacyPage() {
             <li><strong style={{ color: "var(--text)" }}>bl_session</strong> - keeps you signed in after you use a sign-in link. Set only once you sign in.</li>
             <li><strong style={{ color: "var(--text)" }}>bl_bid</strong> - a random identifier, expiring after 30 days, that counts free scans from this browser. It exists because mobile networks change your IP address mid-session, which would otherwise reset the free tier. It contains no information about you, is never linked to your email address, and is not used to track you across other websites.</li>
           </ul>
-          <p style={{ marginTop: "12px" }}>No third-party advertising or analytics cookies are used, and no third-party scripts run on this site.</p>
+          <p style={{ marginTop: "12px" }}>No third-party advertising or analytics cookies are used, and no third-party scripts run on this site. Our usage measurement is first-party, sets no cookie, and stores only aggregate daily counts.</p>
         </section>
 
         <section>

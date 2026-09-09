@@ -12,6 +12,7 @@ import Leaderboards from "@/components/Leaderboards";
 import type { CardMode, MatchConfidence, VerdictType } from "@/components/VerdictCard";
 import { CLASSIFICATION_RULES } from "@/lib/verdict";
 import { armAudio } from "@/lib/sound";
+import { track } from "@/lib/track";
 
 type AppState = "landing" | "scanning" | "results";
 
@@ -218,6 +219,13 @@ export default function Home() {
     }).catch(() => setCheckoutAvailable(false));
   }, []);
 
+  // Counted where the paywall becomes visible rather than at each of the six
+  // places that can open it, so a new entry point can never be added without
+  // being measured.
+  useEffect(() => {
+    if (showPaywall) track("paywall_shown");
+  }, [showPaywall]);
+
   // ── The counter ticks. ──
   // A number that only ever moves when you reload reads as a static image.
   // A number that ticks on a fixed interval reads as a script. This moves on
@@ -357,6 +365,9 @@ export default function Home() {
   // page shipped a dead payment link straight to the customer. One source of
   // truth, and it is configuration.
   const handleCheckout = async () => {
+    // Sent before the request, because the next thing this function does on
+    // the happy path is navigate away from the page.
+    track("checkout_clicked");
     try {
       const res = await fetch("/api/checkout", { method: "POST" });
       if (!res.ok) {

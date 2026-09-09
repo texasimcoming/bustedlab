@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addNotifyEntry, removeNotifyEntry, claimOrder } from "@/lib/redis";
+import { recordEvent } from "@/lib/analytics";
 
 /**
  * INTENT CAPTURE.
@@ -62,6 +63,9 @@ export async function POST(req: NextRequest) {
     }
 
     await addNotifyEntry(email, source);
+    // Counted after the rate-limit gate, so a resubmission of the same address
+    // inside a minute cannot inflate the capture count.
+    await recordEvent("email_captured");
     return NextResponse.json({ saved: true });
   } catch {
     return NextResponse.json({ error: "failed" }, { status: 500 });
