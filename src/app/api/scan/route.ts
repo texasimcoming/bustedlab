@@ -24,8 +24,11 @@ import {
   getMaxMarkup,
   getBustedRate,
   MARKUP_FLOOR,
+  recordScan,
+  newScanId,
 } from "@/lib/redis";
 import { cookies } from "next/headers";
+import { after } from "next/server";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import crypto from "crypto";
@@ -273,48 +276,86 @@ export async function POST(req: NextRequest) {
       result = await runScan();
     }
 
-    // ── Usage accounting. A cache hit still consumes a free scan: otherwise
-    //    the same product could be rescanned forever for free. ──
-    if (!isPaid) {
-      try { await incrementScanCount(ip); } catch { /* ignore */ }
-      if (browserId) {
-        try { await incrementScanCount(`browser:${browserId}`); } catch { /* ignore */ }
-      }
-      if (!servedFromCache) {
-        try { await incrementGlobalScans(); } catch { /* ignore */ }
-      }
+    // ══════════════════════════════════════════════════════════════
+    // THE LEDGER WRITE.
+    //
+    // Every verified verdict becomes a permanent record before the response
+    // leaves. This is the one write on this route that is not a counter, and
+    // it is the reason the company has an asset rather than a website.
+    //
+    // It is awaited rather than deferred to after(), because the scan id is
+    // returned in this response and the person can open /scan/<id> the
+    // instant they see it. One pipelined round trip is a price worth paying
+    // to guarantee the page they were just handed a link to actually exists.
+    // ══════════════════════════════════════════════════════════════
+    let scanId: string | null = null;
+    if (result.mode === "VERDICT" && result.analysis.verdict !== "UNVERIFIED") {
+      scanId = newScanId();
+      const stored = await recordScan({
+        id: scanId,
+        ts: Date.now(),
+        title: result.sourceProduct.title,
+        category: result.category || "other",
+        retailPrice: result.analysis.retailEstimate,
+        wholesalePrice: result.sourceProduct.price,
+        markup: result.analysis.markup,
+        savings: result.analysis.savings,
+        verdict: result.analysis.verdict as "HIGH_MARKUP" | "OVERPRICED" | "FAIR",
+        confidence: result.analysis.confidence,
+        matchConfidence: result.matchConfidence,
+        platform: result.sourceProduct.platform,
+        // The wholesale listing, never the retail URL the person scanned.
+        // See the note on the ledger in src/lib/redis.ts.
+        sourceUrl: result.sourceProduct.productUrl,
+        imageUrl: result.sourceProduct.imageUrl,
+        productKey: cacheKey || "",
+        cached: servedFromCache,
+      });
+      // If the write failed, no permanent page exists, so no link is offered.
+      // A share button pointing at a 404 is worse than no share button.
+      if (!stored) scanId = null;
     }
-    try { await incrementTotalScans(); } catch { /* ignore */ }
-    try { await incrementHourlyScans(); } catch { /* ignore */ }
 
-    // Only a genuine, visually verified VERDICT carries a real dollar amount
-    // worth accumulating. FINDER/UNRESOLVED savings figures aren't confirmed
-    // comparisons and would inflate the public stat with unverified numbers.
-    // Cache hits are excluded so one viral product cannot inflate the
-    // lifetime totals by the number of people who looked at it.
-    if (!servedFromCache && result.mode === "VERDICT") {
-      try { await recordVerdict(result.analysis.verdict === "HIGH_MARKUP"); } catch { /* ignore */ }
-      if (result.analysis.savings > 0) {
-        try { await incrementTotalSavings(result.analysis.savings); } catch { /* ignore */ }
-      }
-      if (result.analysis.markup > 0) {
-        try { await recordMarkup(result.analysis.markup); } catch { /* ignore */ }
-      }
-    }
+    // ── Counters. Deferred until after the response is sent: none of them
+    //    affect what this person sees, and six sequential Redis round trips
+    //    were previously sitting between the finished scan and the render. ──
+    const wasFirstMeasurement = !servedFromCache && result.mode === "VERDICT";
+    const verdictIsBusted = result.analysis.verdict === "HIGH_MARKUP";
+    const savings = result.analysis.savings;
+    const markup = result.analysis.markup;
 
-    // ── Cache write. Only real, verified results are worth keeping: caching
-    //    an UNRESOLVED would pin a failure in place for 24 hours, including
-    //    for the retry the person is about to make. ──
-    if (cacheKey && !servedFromCache && result.found && result.mode === "VERDICT") {
-      try {
-        // Stored without the requester-specific shipping note.
+    after(async () => {
+      // A cache hit still consumes a free scan: otherwise the same product
+      // could be rescanned forever for free.
+      if (!isPaid) {
+        await incrementScanCount(ip).catch(() => {});
+        if (browserId) await incrementScanCount(`browser:${browserId}`).catch(() => {});
+        if (!servedFromCache) await incrementGlobalScans().catch(() => {});
+      }
+      await incrementTotalScans().catch(() => {});
+      await incrementHourlyScans().catch(() => {});
+
+      // Only a genuine, visually verified VERDICT carries a real dollar
+      // amount worth accumulating. Cache hits are excluded so one viral
+      // product cannot inflate the lifetime totals by the number of people
+      // who looked at it.
+      if (wasFirstMeasurement) {
+        await recordVerdict(verdictIsBusted).catch(() => {});
+        if (savings > 0) await incrementTotalSavings(savings).catch(() => {});
+        if (markup > 0) await recordMarkup(markup).catch(() => {});
+      }
+
+      // ── Cache write. Only real, verified results are worth keeping:
+      //    caching an UNRESOLVED would pin a failure in place for 24 hours,
+      //    including for the retry the person is about to make. ──
+      if (cacheKey && !servedFromCache && result.found && result.mode === "VERDICT") {
         const { shippingNote, ...cacheable } = result;
         void shippingNote;
-        await setCachedScan(cacheKey, cacheable);
-      } catch { /* cache write failure is non-fatal */ }
-    }
+        await setCachedScan(cacheKey, cacheable).catch(() => {});
+      }
+    });
 
-    const response = NextResponse.json(result);
+    const response = NextResponse.json({ ...result, scanId });
     if (!browserId) {
       response.cookies.set("bl_bid", newBrowserId(), {
         maxAge: 60 * 60 * 24 * 30,

@@ -24,14 +24,16 @@ npx eslint .       # lint (next build no longer runs it)
 
 ```
 src/app/page.tsx              Landing, scan entry, counters
-src/app/api/scan/route.ts     Scan endpoint: access, rate limits, cache, counters
+src/app/api/scan/route.ts     Scan endpoint: access, rate limits, cache, ledger
+src/app/api/notify/route.ts   Intent capture: the product update list
+src/app/scan/[id]/            Permanent page + per-scan OG image for one verdict
 src/app/api/checkout/route.ts Resolves the payment link from configuration
 src/app/api/webhook/route.ts  Purchase webhook: Gumroad / Lemon Squeezy / Paddle
 src/app/api/auth/route.ts     Magic-link auth
 src/app/api/proxy-image       Same-origin image relay (SSRF-guarded)
 src/app/api/cleanup-blobs     Daily backstop for orphaned scan uploads
 src/lib/scan.ts               The scan engine
-src/lib/redis.ts              Counters, access, sessions, scan cache
+src/lib/redis.ts              Counters, access, sessions, scan cache, THE LEDGER
 src/components/VerdictCard    The card. The product's entire growth loop.
 ```
 
@@ -58,6 +60,22 @@ Nothing below is required to run the app; each one enables a capability.
 | `LEMONSQUEEZY_WEBHOOK_SECRET` / `PADDLE_WEBHOOK_SECRET` | Signature verification for those providers |
 | `GLOBAL_DAILY_SCAN_CAP` | Daily ceiling on uncached scans. Defaults to 25000. |
 | `SCAN_BURST_PER_MINUTE` | Per-IP scan burst limit. Defaults to 12. |
+
+## The ledger
+
+Every confirmed verdict is written permanently to `scan:rec:<id>`, indexed by
+time, by verdict and by markup, with a rolling per-product aggregate. This is
+separate from the 24-hour result cache and it does not expire.
+
+It is the only part of this codebase that cannot be rebuilt by a competitor.
+The scanner is roughly $0.009 a scan and a weekend of work; a few hundred
+million measurements of what things cost against what they are sold for is
+obtainable only by having run for years.
+
+A record describes a product, never a person: no IP, no email, no session, no
+uploaded image, and deliberately not the retail URL that was scanned. That is
+what makes it publishable at `/scan/<id>` and what keeps it outside the scope
+of a subject access request.
 
 ## Rules that are not style preferences
 

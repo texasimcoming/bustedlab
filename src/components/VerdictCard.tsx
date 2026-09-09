@@ -48,6 +48,16 @@ export interface VerdictData {
   confidence?: "high" | "medium" | "low";
   scanId?: string;
   isDemo?: boolean;
+  /**
+   * When this scan happened, as epoch milliseconds.
+   *
+   * Supplied by archived records. Without it the card stamps itself with the
+   * current time, which is correct for a scan that just ran and plainly wrong
+   * on a permanent page: a verdict shared three months ago would render with
+   * today's date on it, and the one artifact whose entire authority rests on
+   * being a dated measurement would be quietly lying about when it was taken.
+   */
+  recordedAt?: number;
 }
 
 const VERDICT_CONFIG = {
@@ -345,12 +355,20 @@ export default function VerdictCard({ data, animate = true, compact = false, car
   const [numbersIn, setNumbersIn] = useState(!animate);
 
   const cfg = data.mode === "UNRESOLVED" ? UNRESOLVED_CONFIG : VERDICT_CONFIG[data.verdict];
-  // toTimeString() returns the BROWSER'S LOCAL time. The previous version
+  // toTimeString() returns the BROWSER'S LOCAL time. An earlier version
   // pasted it next to a hardcoded "UTC" suffix, so every card shipped a
   // timestamp that was wrong by the reader's offset and labelled with a
   // timezone it was not in. Both halves come from the ISO string now.
-  const iso = new Date().toISOString();
-  const timestamp = `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
+  //
+  // The moment is passed in, never read from the clock during render.
+  // Date.now() in a render body is impure: it returns something different on
+  // every re-render, so the stamp on screen could drift away from the stamp
+  // baked into the PNG a person saved from it seconds later. All three callers
+  // supply it: the results page pins the moment the scan resolved, an archived
+  // page passes the moment it was recorded, and the reference card renders a
+  // fixed label instead of a time.
+  const iso = data.recordedAt === undefined ? null : new Date(data.recordedAt).toISOString();
+  const timestamp = iso ? `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC` : "";
 
   useEffect(() => {
     if (!animate) return;
@@ -472,9 +490,9 @@ export default function VerdictCard({ data, animate = true, compact = false, car
             fontSize: compact ? "7px" : "8px", color: "rgba(238,238,246,0.22)", letterSpacing: "0.3px",
             marginTop: "2px", fontFamily: "var(--font-mono), ui-monospace, monospace", lineHeight: "1.5",
           }}
-          // A live clock differs between the server render and the client
-          // hydration by exactly the milliseconds between them. That is the
-          // case this attribute exists for.
+          // The results page pins its moment in a state initialiser, which
+          // runs once on the server and once on the client and can straddle a
+          // second boundary between the two.
           suppressHydrationWarning
           >{data.isDemo ? "VERIFIED REFERENCE RECORD" : timestamp}</div>
         </div>

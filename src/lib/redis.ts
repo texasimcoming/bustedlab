@@ -47,6 +47,17 @@ export const keys = {
   session: (token: string) => `session:${token}`,
   scanCache: (fingerprint: string) => `scan:cache:${fingerprint}`,
   processedOrder: (orderId: string) => `order:${orderId}`,
+
+  // ── The permanent record. See the SCAN LEDGER section below. ──
+  scanRecord: (id: string) => `scan:rec:${id}`,
+  recordIndex: () => `scan:ledger`,
+  bustedIndex: () => `scan:ledger:busted`,
+  markupIndex: () => `scan:ledger:markup`,
+  productAggregate: (productKey: string) => `scan:product:${productKey}`,
+
+  // ── Intent capture ──
+  notifyEntry: (email: string) => `notify:${email.toLowerCase().trim()}`,
+  notifyIndex: () => `notify:index`,
 };
 
 // Real count of scans in the current UTC hour. Genuine data for a "scanned
@@ -260,4 +271,278 @@ export async function getSessionEmail(sessionToken: string): Promise<string | nu
 
 export async function deleteSession(sessionToken: string): Promise<void> {
   await getRedis().del(keys.session(sessionToken));
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// THE SCAN LEDGER
+//
+// Permanent, append-only, and deliberately separate from the 24-hour result
+// cache. The cache exists so a viral product costs the API once; it is keyed
+// by input fingerprint, it expires, and it is not queryable. This is the
+// opposite of all three.
+//
+// Before this existed, the entire historical record of the business was five
+// integers: a scan count, a savings total, a peak markup, and two verdict
+// tallies. Every measurement the engine ever performed - the product, both
+// prices, the markup, the verdict, the platform, the moment - was serialized
+// to the browser and then destroyed.
+//
+// That is the asset. The scanner itself is not defensible: vision plus a
+// shopping API is roughly $0.009 a scan and a competent team rebuilds it in a
+// weekend. Four hundred million real measurements of what things cost versus
+// what they are sold for is not rebuildable by anyone, at any price, because
+// the only way to obtain it is to have been running for years. It is also the
+// precondition for everything already promised: price history, alerts,
+// "this product has been scanned 4,200 times", and every per-scan page.
+//
+// PRIVACY, and this constraint is absolute: a record contains NOTHING about
+// the person who made it. No IP, no hashed IP, no email, no session, no
+// browser id, no uploaded image. It describes a product and two prices. That
+// is what makes it publishable as a permanent page and what keeps a subject
+// access request from ever touching it.
+//
+// It also deliberately does NOT store the retail URL the person scanned.
+// Storing it would be easy and it is the one field that would turn every
+// record into a permanent, indexed, public assertion that a specific named
+// business overcharges - which is precisely the claim the Terms decline to
+// make. The wholesale source link is stored, because that one is an offer to
+// sell, not an accusation.
+//
+// Four writes, one pipeline, one round trip:
+//   scan:rec:<id>          the record
+//   scan:ledger            zset by timestamp   -> feeds, pagination, history
+//   scan:ledger:busted     zset by timestamp   -> the BUSTED feed
+//   scan:ledger:markup     zset by markup      -> worst offenders, all time
+//   scan:product:<key>     rolling aggregate   -> "scanned N times"
+// ════════════════════════════════════════════════════════════════
+
+export interface ScanRecord {
+  id: string;
+  ts: number;
+  title: string;
+  category: string;
+  retailPrice: number;
+  wholesalePrice: number;
+  markup: number;
+  savings: number;
+  verdict: "HIGH_MARKUP" | "OVERPRICED" | "FAIR";
+  confidence: "high" | "medium" | "low";
+  matchConfidence: "exact" | "likely" | "unverified";
+  platform: string;
+  sourceUrl: string;
+  imageUrl: string;
+  /** The product fingerprint, so repeat scans of one product aggregate. */
+  productKey: string;
+  /**
+   * True when this scan was answered from the 24-hour cache rather than a
+   * fresh measurement. Kept because a repeat scan is still real demand data
+   * and worth counting, but it must never be mistaken for an independent
+   * measurement of the price.
+   */
+  cached: boolean;
+}
+
+export interface ProductAggregate {
+  count: number;
+  firstTs: number;
+  lastTs: number;
+  maxMarkup: number;
+  sumMarkup: number;
+  title: string;
+  lastId: string;
+}
+
+// Time-ordered prefix plus 96 bits of randomness. Sortable enough to be
+// useful, unguessable enough that the ledger cannot be walked by anyone who
+// finds one shared link.
+export function newScanId(): string {
+  return `${Date.now().toString(36)}${crypto.randomBytes(12).toString("hex")}`;
+}
+
+function parseJson<T>(raw: unknown): T | null {
+  if (!raw) return null;
+  if (typeof raw === "object") return raw as T;
+  try {
+    return JSON.parse(String(raw)) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Writes one measurement into the ledger. Never throws: a failed ledger write
+ * must never turn a successful scan into an error for the person waiting on
+ * it. Returns whether the record landed, so the caller knows if the permanent
+ * page for it will resolve.
+ */
+export async function recordScan(record: ScanRecord): Promise<boolean> {
+  try {
+    const redis = getRedis();
+    const pipeline = redis.pipeline();
+
+    pipeline.set(keys.scanRecord(record.id), JSON.stringify(record));
+    pipeline.zadd(keys.recordIndex(), { score: record.ts, member: record.id });
+    if (record.verdict === "HIGH_MARKUP") {
+      pipeline.zadd(keys.bustedIndex(), { score: record.ts, member: record.id });
+    }
+    // Scored by markup so the worst offenders of all time are one ZRANGE away.
+    // Only real measurements enter this one: a cached repeat would let a
+    // single viral product colonise the leaderboard with copies of itself.
+    if (!record.cached) {
+      pipeline.zadd(keys.markupIndex(), { score: record.markup, member: record.id });
+    }
+
+    await pipeline.exec();
+    await bumpProductAggregate(record);
+    return true;
+  } catch (err) {
+    console.error("Ledger write failed:", err);
+    return false;
+  }
+}
+
+// Read-modify-write rather than atomic counters, because the aggregate is a
+// small object rather than a set of independent numbers and a lost update
+// under concurrency costs one scan out of a rolling total. If contention ever
+// matters, this becomes a Redis hash with HINCRBY per field.
+async function bumpProductAggregate(record: ScanRecord): Promise<void> {
+  if (!record.productKey) return;
+  try {
+    const redis = getRedis();
+    const key = keys.productAggregate(record.productKey);
+    const existing = parseJson<ProductAggregate>(await redis.get(key));
+
+    const next: ProductAggregate = existing
+      ? {
+          count: existing.count + 1,
+          firstTs: existing.firstTs,
+          lastTs: record.ts,
+          maxMarkup: Math.max(existing.maxMarkup, record.markup),
+          sumMarkup: existing.sumMarkup + record.markup,
+          title: record.title || existing.title,
+          lastId: record.id,
+        }
+      : {
+          count: 1,
+          firstTs: record.ts,
+          lastTs: record.ts,
+          maxMarkup: record.markup,
+          sumMarkup: record.markup,
+          title: record.title,
+          lastId: record.id,
+        };
+
+    await redis.set(key, JSON.stringify(next));
+  } catch {
+    /* aggregate is a nice-to-have; the record itself already landed */
+  }
+}
+
+export async function getScanRecord(id: string): Promise<ScanRecord | null> {
+  try {
+    return parseJson<ScanRecord>(await getRedis().get(keys.scanRecord(id)));
+  } catch {
+    return null;
+  }
+}
+
+export async function getProductAggregate(productKey: string): Promise<ProductAggregate | null> {
+  if (!productKey) return null;
+  try {
+    return parseJson<ProductAggregate>(await getRedis().get(keys.productAggregate(productKey)));
+  } catch {
+    return null;
+  }
+}
+
+async function readRecords(ids: string[]): Promise<ScanRecord[]> {
+  if (ids.length === 0) return [];
+  try {
+    const raw = await getRedis().mget<unknown[]>(...ids.map(keys.scanRecord));
+    return raw
+      .map(r => parseJson<ScanRecord>(r))
+      .filter((r): r is ScanRecord => r !== null);
+  } catch {
+    return [];
+  }
+}
+
+/** Most recent measurements first. */
+export async function getRecentRecords(limit = 12, offset = 0): Promise<ScanRecord[]> {
+  try {
+    const ids = await getRedis().zrange<string[]>(
+      keys.recordIndex(), offset, offset + limit - 1, { rev: true }
+    );
+    return readRecords(ids || []);
+  } catch {
+    return [];
+  }
+}
+
+/** Highest markup ever measured, first. Real measurements only. */
+export async function getTopMarkupRecords(limit = 12): Promise<ScanRecord[]> {
+  try {
+    const ids = await getRedis().zrange<string[]>(
+      keys.markupIndex(), 0, limit - 1, { rev: true }
+    );
+    return readRecords(ids || []);
+  } catch {
+    return [];
+  }
+}
+
+export async function getLedgerSize(): Promise<number> {
+  try {
+    return (await getRedis().zcard(keys.recordIndex())) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// INTENT CAPTURE
+//
+// Everyone who scans, hits the limit and does not pay was previously lost the
+// instant they closed the tab. They are also the single most qualified
+// audience this product will ever have: they did not read about it, they used
+// it, and they ran out. Storing an address is a marketing purpose rather than
+// a contractual one, so it needs consent at the point of entry and a line in
+// the privacy policy, both of which exist.
+// ════════════════════════════════════════════════════════════════
+
+export interface NotifyEntry {
+  email: string;
+  ts: number;
+  /** Where in the product the address was given, for attribution. */
+  source: string;
+}
+
+export async function addNotifyEntry(email: string, source: string): Promise<boolean> {
+  const normalized = email.toLowerCase().trim();
+  try {
+    const redis = getRedis();
+    const entry: NotifyEntry = { email: normalized, ts: Date.now(), source };
+    // NX: the first submission wins, so a resubmit never overwrites the
+    // original consent timestamp, which is the one that has to be defensible.
+    const created = await redis.set(keys.notifyEntry(normalized), JSON.stringify(entry), { nx: true });
+    if (created === "OK") {
+      await redis.zadd(keys.notifyIndex(), { score: entry.ts, member: normalized });
+    }
+    return true;
+  } catch (err) {
+    console.error("Notify capture failed:", err);
+    return false;
+  }
+}
+
+export async function removeNotifyEntry(email: string): Promise<void> {
+  const normalized = email.toLowerCase().trim();
+  try {
+    const redis = getRedis();
+    await redis.del(keys.notifyEntry(normalized));
+    await redis.zrem(keys.notifyIndex(), normalized);
+  } catch {
+    /* nothing to do */
+  }
 }

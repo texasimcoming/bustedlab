@@ -20,6 +20,7 @@ type AppState = "landing" | "scanning" | "results";
 // location instead of hand-duplicating this again next time it changes.
 interface ScanResult {
   found: boolean;
+  scanId?: string | null;
   mode: CardMode;
   matchConfidence: MatchConfidence;
   priceSource: "screenshot" | "estimated" | "shopping";
