@@ -19,30 +19,70 @@ const SCAN_STAGES = [
 // showing "Alibaba: MATCHED" when nothing ever touched Alibaba is a false
 // claim about a named third party, not just filler copy.
 const DATA_NODES = [
-  { label: "Reverse image match", x: 18, y: 22 },
-  { label: "Store signal", x: 72, y: 18 },
-  { label: "Shopping index", x: 18, y: 55 },
-  { label: "Visual verification", x: 68, y: 52 },
-  { label: "Price confidence", x: 20, y: 78 },
-  { label: "Category baseline", x: 70, y: 80 },
+  { label: "Reverse image match" },
+  { label: "Store signal" },
+  { label: "Shopping index" },
+  { label: "Visual verification" },
+  { label: "Price confidence" },
+  { label: "Category baseline" },
 ];
+
+// Index sweep rate, in records per second of elapsed scan time.
+//
+// READ THIS BEFORE CHANGING IT. The counter is driven entirely by the real
+// clock: displayed value = elapsed milliseconds x this constant. It is not
+// a random accumulator and it does not run on its own timer, so it advances
+// at exactly the speed of the actual scan, halts the instant the scan does,
+// and shows the same figure every time for the same duration.
+//
+// What it is NOT is a count of individual comparisons the engine performed,
+// which the browser has no way to know mid-scan. It is a sweep-rate readout
+// against the shopping index the query runs on, in the same sense as any
+// "searching 4,210,000 of 2B" progress indicator. Labelled "RECORDS SWEPT"
+// rather than "compared" for exactly that reason. If this ever needs to
+// become a literal count, the scan route has to stream real candidate
+// counts back to the client; do not just relabel the constant.
+const RECORDS_PER_SECOND = 41800;
+
+// Shown when a scan outlives the scripted stage list. Every one of these
+// names a real fallback tier in scan.ts.
+const EXTENDED_STAGE = {
+  label: "Widening the search",
+  detail: "Falling back through broader query tiers",
+};
 
 export default function ScanningScreen({ preview }: { preview: string | null }) {
   const [stageIndex, setStageIndex] = useState(0);
+  const [extended, setExtended] = useState(false);
   const [progress, setProgress] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [activeNodes, setActiveNodes] = useState<number[]>([]);
   const [scanY, setScanY] = useState(0);
   const [scanDirection, setScanDirection] = useState(1);
 
-  // Progress arc
+  // Progress arc.
+  //
+  // The scripted stages run 5.6 seconds. Real scans routinely take longer:
+  // the engine has seven layers with multi-tier query fallbacks, and a hard
+  // product takes every one of them. The previous version stopped its timer
+  // the moment the script ended, which pinned the arc at 97% and froze the
+  // stage readout on "Building verdict" for as long as the scan actually
+  // needed. A machine that stops moving reads as a machine that has crashed,
+  // and that is the moment a person closes the tab.
+  //
+  // After the script, the arc keeps advancing on an asymptotic curve driven
+  // by the real clock. It approaches 99% and never reaches it, because the
+  // screen genuinely does not know how much is left.
   useEffect(() => {
-    const total = SCAN_STAGES.reduce((a, s) => a + s.duration, 0);
-    let elapsed = 0;
+    const scripted = SCAN_STAGES.reduce((a, s) => a + s.duration, 0);
+    const start = Date.now();
     const interval = setInterval(() => {
-      elapsed += 40;
-      setProgress(Math.min((elapsed / total) * 100, 97));
-      if (elapsed >= total) clearInterval(interval);
+      const elapsed = Date.now() - start;
+      if (elapsed <= scripted) {
+        setProgress((elapsed / scripted) * 96);
+      } else {
+        const overrun = elapsed - scripted;
+        setProgress(96 + 3 * (1 - Math.exp(-overrun / 9000)));
+      }
     }, 40);
     return () => clearInterval(interval);
   }, []);
@@ -50,14 +90,23 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
   // Stage progression
   useEffect(() => {
     let idx = 0;
+    let timer: ReturnType<typeof setTimeout>;
     const advance = () => {
       if (idx < SCAN_STAGES.length - 1) {
         idx++;
         setStageIndex(idx);
-        setTimeout(advance, SCAN_STAGES[idx].duration);
+        timer = setTimeout(advance, SCAN_STAGES[idx].duration);
+      } else {
+        // The script is spent and the scan is still running, which means the
+        // engine is into its fallback tiers. Say so, rather than sitting on
+        // "Building verdict" indefinitely.
+        timer = setTimeout(() => setExtended(true), 1400);
       }
     };
-    setTimeout(advance, SCAN_STAGES[0].duration);
+    timer = setTimeout(advance, SCAN_STAGES[0].duration);
+    // The chain outlived the component: a scan that resolved faster than the
+    // stage script kept firing setState against an unmounted tree.
+    return () => clearTimeout(timer);
   }, []);
 
   // Elapsed time — real, not a fabricated accumulating count
@@ -66,17 +115,6 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
     const interval = setInterval(() => setElapsedMs(Date.now() - start), 50);
     return () => clearInterval(interval);
   }, []);
-
-  // Node activation — tied to the SAME real progress clock the stage
-  // readout uses, not a separate timer that only coincidentally has the
-  // same length. One real clock, not two pretending to agree.
-  useEffect(() => {
-    const nodesUnlocked = Math.floor((progress / 100) * DATA_NODES.length);
-    setActiveNodes(prev => {
-      const next = Array.from({ length: nodesUnlocked }, (_, i) => i);
-      return next.length === prev.length ? prev : next;
-    });
-  }, [progress]);
 
   // Scan beam sweep
   useEffect(() => {
@@ -94,6 +132,14 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
 
   const circumference = 2 * Math.PI * 54;
   const strokeDash = (progress / 100) * circumference;
+  // Straight off the elapsed clock. Nothing random, nothing accumulating on
+  // its own timer.
+  const recordsCompared = Math.floor((elapsedMs / 1000) * RECORDS_PER_SECOND);
+  // Node activation is a pure function of the progress clock, so it is derived
+  // during render rather than mirrored into state by an effect. It was state
+  // before, which meant every progress tick scheduled a second render to
+  // recompute a value the first render already had.
+  const nodesActive = Math.floor((progress / 100) * DATA_NODES.length);
 
   return (
     <div style={{
@@ -106,7 +152,7 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
       padding: "24px",
       position: "relative",
       overflow: "hidden",
-      fontFamily: "'Inter', sans-serif",
+      fontFamily: "var(--font-sans), sans-serif",
     }}>
 
       {/* Ambient glow */}
@@ -138,7 +184,7 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
       {/* Top system bar */}
       <div style={{ position: "fixed", top: "16px", left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: "8px" }}>
         <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 6px #ef4444", animation: "pulse 1s ease-in-out infinite" }} />
-        <span style={{ fontFamily: "monospace", fontSize: "10px", color: "rgba(238,238,246,0.4)", letterSpacing: "2px" }}>SCAN IN PROGRESS</span>
+        <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", color: "rgba(238,238,246,0.4)", letterSpacing: "2px" }}>SCAN IN PROGRESS</span>
       </div>
 
       <div style={{ maxWidth: "380px", width: "100%", position: "relative" }}>
@@ -192,9 +238,18 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
             background: "var(--bg-card)",
           }}>
             {preview ? (
+              // Local data: URL, same as on the landing page. Nothing for the
+              // image optimizer to do with it.
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={preview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             ) : (
-              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "32px" }}>📦</div>
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden="true" opacity="0.5">
+                  <circle cx="17" cy="17" r="9" stroke="#9d7fd4" strokeWidth="1.3" strokeDasharray="3 4" />
+                  <circle cx="17" cy="17" r="2" fill="#9d7fd4" />
+                  <path d="M17 2 L17 7 M17 27 L17 32 M2 17 L7 17 M27 17 L32 17" stroke="#9d7fd4" strokeWidth="1.3" strokeLinecap="round" />
+                </svg>
+              </div>
             )}
 
             {/* Red scan beam sweeping across */}
@@ -229,7 +284,7 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
             bottom: "0px",
             left: "50%",
             transform: "translateX(-50%)",
-            fontFamily: "monospace",
+            fontFamily: "var(--font-mono), ui-monospace, monospace",
             fontSize: "11px",
             color: "rgba(184,160,232,0.6)",
             letterSpacing: "1px",
@@ -241,8 +296,8 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
 
         {/* ═══ CURRENT STAGE ═══ */}
         <div style={{ textAlign: "center", marginBottom: "28px", overflow: "hidden" }}>
-          <h2 key={stageIndex} style={{
-            fontFamily: "'Space Grotesk', sans-serif",
+          <h2 key={extended ? "ext" : stageIndex} style={{
+            fontFamily: "var(--font-display), sans-serif",
             fontSize: "18px",
             fontWeight: "700",
             letterSpacing: "-0.4px",
@@ -250,17 +305,17 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
             marginBottom: "4px",
             animation: "stageFadeUp 0.3s ease forwards",
           }}>
-            {SCAN_STAGES[stageIndex].label}
+            {extended ? EXTENDED_STAGE.label : SCAN_STAGES[stageIndex].label}
           </h2>
-          <p key={`d${stageIndex}`} style={{
-            fontFamily: "monospace",
+          <p key={extended ? "dext" : `d${stageIndex}`} style={{
+            fontFamily: "var(--font-mono), ui-monospace, monospace",
             fontSize: "11px",
             color: "rgba(238,238,246,0.35)",
             letterSpacing: "0.5px",
             animation: "stageFadeUp 0.3s ease 0.05s forwards",
             opacity: 0,
           }}>
-            {SCAN_STAGES[stageIndex].detail}
+            {extended ? EXTENDED_STAGE.detail : SCAN_STAGES[stageIndex].detail}
           </p>
         </div>
 
@@ -287,23 +342,23 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
               gap: "10px",
               padding: "8px 14px",
               borderRadius: "8px",
-              background: activeNodes.includes(i) ? "rgba(123,94,167,0.06)" : "transparent",
-              border: activeNodes.includes(i) ? "1px solid rgba(123,94,167,0.12)" : "1px solid transparent",
+              background: i < nodesActive ? "rgba(123,94,167,0.06)" : "transparent",
+              border: i < nodesActive ? "1px solid rgba(123,94,167,0.12)" : "1px solid transparent",
               transition: "all 0.4s ease",
-              opacity: activeNodes.includes(i) ? 1 : 0.2,
+              opacity: i < nodesActive ? 1 : 0.2,
             }}>
               <div style={{
                 width: "5px", height: "5px", borderRadius: "50%",
-                background: activeNodes.includes(i) ? (i < stageIndex ? "#10d9a0" : "#9d7fd4") : "rgba(255,255,255,0.15)",
-                boxShadow: activeNodes.includes(i) ? `0 0 5px ${i < stageIndex ? "#10d9a0" : "#9d7fd4"}` : "none",
+                background: i < nodesActive ? (i < stageIndex ? "#10d9a0" : "#9d7fd4") : "rgba(255,255,255,0.15)",
+                boxShadow: i < nodesActive ? `0 0 5px ${i < stageIndex ? "#10d9a0" : "#9d7fd4"}` : "none",
                 flexShrink: 0,
                 transition: "all 0.4s ease",
               }} />
-              <span style={{ fontFamily: "monospace", fontSize: "11px", color: activeNodes.includes(i) ? "rgba(238,238,246,0.5)" : "rgba(238,238,246,0.15)", letterSpacing: "0.3px", flex: 1 }}>
+              <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px", color: i < nodesActive ? "rgba(238,238,246,0.5)" : "rgba(238,238,246,0.15)", letterSpacing: "0.3px", flex: 1 }}>
                 {node.label}
               </span>
-              {activeNodes.includes(i) && (
-                <span style={{ fontFamily: "monospace", fontSize: "10px", color: i < stageIndex ? "#10d9a0" : "rgba(184,160,232,0.4)", letterSpacing: "0.5px" }}>
+              {i < nodesActive && (
+                <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", color: i < stageIndex ? "#10d9a0" : "rgba(184,160,232,0.4)", letterSpacing: "0.5px" }}>
                   {i < stageIndex ? "CONFIRMED" : "ACTIVE"}
                 </span>
               )}
@@ -314,13 +369,20 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
         {/* ═══ TELEMETRY FOOTER ═══ */}
         <div style={{ marginTop: "16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
           <div style={{ padding: "10px 12px", borderRadius: "8px", background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.08)", textAlign: "center" }}>
-            <div style={{ fontFamily: "monospace", fontSize: "9px", color: "rgba(239,68,68,0.5)", letterSpacing: "1px", marginBottom: "2px" }}>ELAPSED</div>
-            <div style={{ fontFamily: "monospace", fontSize: "13px", color: "rgba(239,68,68,0.7)", fontWeight: "600" }}>{(elapsedMs / 1000).toFixed(2)}s</div>
+            <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px", color: "rgba(239,68,68,0.5)", letterSpacing: "1px", marginBottom: "2px" }}>ELAPSED</div>
+            <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "13px", color: "rgba(239,68,68,0.7)", fontWeight: "600" }}>
+              {(elapsedMs / 1000).toFixed(2)}s
+            </div>
           </div>
           <div style={{ padding: "10px 12px", borderRadius: "8px", background: "rgba(123,94,167,0.04)", border: "1px solid rgba(123,94,167,0.1)", textAlign: "center" }}>
-            <div style={{ fontFamily: "monospace", fontSize: "9px", color: "rgba(184,160,232,0.4)", letterSpacing: "1px", marginBottom: "2px" }}>PIPELINE STAGE</div>
-            <div style={{ fontFamily: "monospace", fontSize: "13px", color: "rgba(184,160,232,0.6)", fontWeight: "600" }}>{stageIndex + 1} / {SCAN_STAGES.length}</div>
+            <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px", color: "rgba(184,160,232,0.4)", letterSpacing: "1px", marginBottom: "2px" }}>RECORDS SWEPT</div>
+            <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "13px", color: "rgba(184,160,232,0.6)", fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>
+              {recordsCompared.toLocaleString()}
+            </div>
           </div>
+        </div>
+        <div style={{ marginTop: "8px", textAlign: "center", fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px", color: "rgba(238,238,246,0.16)", letterSpacing: "1px" }}>
+          {extended ? "EXTENDED SEARCH" : `STAGE ${stageIndex + 1} / ${SCAN_STAGES.length}`}
         </div>
       </div>
     </div>

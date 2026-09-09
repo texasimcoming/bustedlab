@@ -6,11 +6,12 @@
 // list, which broke the illusion at exactly the moment (the $4.99 ask)
 // that most needs to feel like part of the same machine.
 export default function PaywallModal({
-  onClose, onCheckout, onLogin
+  onClose, onCheckout, onLogin, checkoutAvailable = true,
 }: {
   onClose: () => void;
   onCheckout: () => void;
   onLogin: () => void;
+  checkoutAvailable?: boolean;
 }) {
   return (
     <div
@@ -18,7 +19,7 @@ export default function PaywallModal({
         position: "fixed", inset: 0, background: "rgba(5,5,10,0.88)",
         backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
         zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "24px", fontFamily: "'Inter', sans-serif",
+        padding: "24px", fontFamily: "var(--font-sans), sans-serif",
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
@@ -61,7 +62,7 @@ export default function PaywallModal({
             background: "#f59e0b", boxShadow: "0 0 6px #f59e0b",
           }} className="animate-pulse" />
           <span style={{
-            fontFamily: "monospace", fontSize: "10px", letterSpacing: "2px",
+            fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px",
             color: "rgba(245,158,11,0.75)", textTransform: "uppercase",
           }}>
             FREE ACCESS LIMIT REACHED
@@ -70,13 +71,13 @@ export default function PaywallModal({
 
         <div style={{ padding: "28px 28px 8px", position: "relative", zIndex: 1, textAlign: "center" }}>
           <h2 style={{
-            fontFamily: "'Space Grotesk', sans-serif", fontSize: "24px", fontWeight: "800",
+            fontFamily: "var(--font-display), sans-serif", fontSize: "24px", fontWeight: "800",
             letterSpacing: "-0.6px", color: "#eeeef6", marginBottom: "8px",
           }}>
-            You've used your 2 daily scans
+            Free scan allowance spent
           </h2>
           <p style={{ color: "rgba(238,238,246,0.5)", fontSize: "14px", lineHeight: "1.6" }}>
-            Unlock unlimited X-rays for a one-time $4.99 — no subscription, no renewal, no expiration.
+            One payment of $4.99. Unlimited X-rays. No subscription, no renewal, no expiration.
           </p>
         </div>
 
@@ -97,7 +98,7 @@ export default function PaywallModal({
                 width: "5px", height: "5px", borderRadius: "50%",
                 background: "#10d9a0", boxShadow: "0 0 5px rgba(16,217,160,0.6)", flexShrink: 0,
               }} />
-              <span style={{ fontFamily: "monospace", fontSize: "12px", color: "rgba(238,238,246,0.6)", letterSpacing: "0.2px" }}>
+              <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "12px", color: "rgba(238,238,246,0.6)", letterSpacing: "0.2px" }}>
                 {f}
               </span>
             </div>
@@ -108,20 +109,32 @@ export default function PaywallModal({
           <button
             onClick={onCheckout}
             className="btn-primary"
+            disabled={!checkoutAvailable}
             style={{
               width: "100%", padding: "16px", borderRadius: "12px",
               fontSize: "16px", fontWeight: "700",
-              fontFamily: "'Space Grotesk', sans-serif", marginBottom: "10px",
+              fontFamily: "var(--font-display), sans-serif", marginBottom: "10px",
             }}
           >
-            Unlock unlimited — $4.99
+            {checkoutAvailable ? "Unlock unlimited access. $4.99" : "Checkout offline"}
           </button>
+          {!checkoutAvailable && (
+            // Better a closed door that says so than a button that opens a
+            // dead tab. This state appears only when CHECKOUT_URL is unset.
+            <p style={{
+              fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "1px",
+              color: "rgba(245,158,11,0.6)", textAlign: "center", marginBottom: "8px",
+              textTransform: "uppercase",
+            }}>
+              Payment channel temporarily closed
+            </p>
+          )}
           <button
             onClick={onLogin}
             style={{
               width: "100%", background: "none", border: "none",
               color: "rgba(238,238,246,0.35)", fontSize: "12px",
-              cursor: "pointer", padding: "8px", fontFamily: "'Inter', sans-serif",
+              cursor: "pointer", padding: "8px", fontFamily: "var(--font-sans), sans-serif",
             }}
           >
             Already paid? Sign in with email

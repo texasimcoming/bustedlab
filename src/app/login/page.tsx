@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
+import Link from "next/link";
 
 function LoginInner() {
   const [email, setEmail] = useState("");
@@ -22,7 +23,7 @@ function LoginInner() {
         setSent(true);
       } else {
         const d = await res.json();
-        setError(d.error || "No paid account found for this email.");
+        setError(d.error || "Could not send a link. Try again.");
       }
     } catch {
       setError("Something went wrong. Try again.");
@@ -34,7 +35,7 @@ function LoginInner() {
     <main style={{
       minHeight: "100vh", display: "flex", alignItems: "center",
       justifyContent: "center", padding: "24px",
-      background: "var(--bg)", fontFamily: "'Inter', sans-serif",
+      background: "var(--bg)", fontFamily: "var(--font-sans), sans-serif",
       position: "relative",
     }}>
       {/* Ambient */}
@@ -62,7 +63,7 @@ function LoginInner() {
               <path d="M17.5 16.5L21 20" stroke="white" strokeWidth="2" strokeLinecap="round"/>
             </svg>
             <span style={{
-              fontFamily: "'Space Grotesk', sans-serif",
+              fontFamily: "var(--font-display), sans-serif",
               fontWeight: "700", fontSize: "20px", letterSpacing: "-0.5px",
               color: "var(--text)",
             }}>BustedLab</span>
@@ -88,14 +89,14 @@ function LoginInner() {
                 ✓
               </div>
               <h2 style={{
-                fontFamily: "'Space Grotesk', sans-serif",
+                fontFamily: "var(--font-display), sans-serif",
                 fontSize: "20px", fontWeight: "700", marginBottom: "8px",
               }}>Check your inbox</h2>
               <p style={{ color: "var(--text-2)", fontSize: "14px", lineHeight: "1.6" }}>
-                A sign-in link is on its way to <strong style={{ color: "var(--text)" }}>{email}</strong>. Tap it to get in instantly.
+                If <strong style={{ color: "var(--text)" }}>{email}</strong> has access, a sign-in link is on its way. Tap it to get in.
               </p>
               <p style={{ color: "var(--text-3)", fontSize: "12px", marginTop: "16px" }}>
-                Expires in 15 minutes. Check spam if it doesn't arrive.
+                Expires in 15 minutes. Check spam if it does not arrive.
               </p>
             </div>
           ) : (
@@ -115,7 +116,7 @@ function LoginInner() {
                       border: "1px solid var(--border-mid)",
                       borderRadius: "10px", color: "var(--text)",
                       fontSize: "14px", outline: "none",
-                      fontFamily: "'Inter', sans-serif",
+                      fontFamily: "var(--font-sans), sans-serif",
                       marginBottom: "10px", boxSizing: "border-box",
                     }}
                     onFocus={e => (e.target.style.borderColor = "var(--accent-2)")}
@@ -135,7 +136,7 @@ function LoginInner() {
                       width: "100%", padding: "13px",
                       borderRadius: "10px", fontSize: "14px",
                       fontWeight: "700",
-                      fontFamily: "'Space Grotesk', sans-serif",
+                      fontFamily: "var(--font-display), sans-serif",
                       opacity: sending || !email ? 0.4 : 1,
                     }}
                   >
@@ -152,18 +153,18 @@ function LoginInner() {
           color: "var(--text-3)", marginTop: "20px", lineHeight: "1.6",
         }}>
           Only paid users can sign in.{" "}
-          <a href="/" style={{ color: "var(--accent-bright)", textDecoration: "none" }}>
+          <Link href="/" style={{ color: "var(--accent-bright)", textDecoration: "none" }}>
             Get access for $4.99
-          </a>
+          </Link>
         </p>
 
         <p style={{
           textAlign: "center", fontSize: "11px",
           color: "var(--text-3)", marginTop: "12px",
         }}>
-          <a href="/terms" style={{ color: "var(--text-3)", textDecoration: "none" }}>Terms</a>
+          <Link href="/terms" style={{ color: "var(--text-3)", textDecoration: "none" }}>Terms</Link>
           {" "}&middot;{" "}
-          <a href="/privacy" style={{ color: "var(--text-3)", textDecoration: "none" }}>Privacy</a>
+          <Link href="/privacy" style={{ color: "var(--text-3)", textDecoration: "none" }}>Privacy</Link>
         </p>
       </div>
     </main>

@@ -1,8 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import { scanProduct, scanProductUrl, getUnresolvedResult } from "@/lib/scan";
-import { getScansRemaining, incrementScanCount, incrementTotalScans, getTotalScans, incrementTotalSavings, getTotalSavingsExposed, incrementHourlyScans, getHourlyScans, isPaidUser } from "@/lib/redis";
+import { scanProduct, scanProductUrl, getUnresolvedResult, buildShippingNote, type ScanResult } from "@/lib/scan";
+import {
+  getScansRemaining,
+  incrementScanCount,
+  incrementTotalScans,
+  getTotalScans,
+  incrementTotalSavings,
+  getTotalSavingsExposed,
+  incrementHourlyScans,
+  getHourlyScans,
+  isPaidUser,
+  getSessionEmail,
+  getGlobalScansToday,
+  incrementGlobalScans,
+  GLOBAL_DAILY_CAP,
+  FREE_SCANS_PER_DAY,
+  getCachedScan,
+  setCachedScan,
+  fingerprintUrl,
+  fingerprintImage,
+  recordMarkup,
+  recordVerdict,
+  getMaxMarkup,
+  getBustedRate,
+  MARKUP_FLOOR,
+} from "@/lib/redis";
 import { cookies } from "next/headers";
+import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import crypto from "crypto";
 
 // Vision extraction (~2-8s) + Lens/Shopping search (~2-14s) + parallel
 // verification (~2-10s) can add up past Vercel's default function
@@ -10,6 +36,50 @@ import { Redis } from "@upstash/redis";
 // confirm your Vercel plan's max before relying on it; Hobby plans cap
 // lower than Pro. If scans are timing out in production, check this first.
 export const maxDuration = 60;
+
+const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
+
+// ════════════════════════════════════════════════════════════════
+// Burst limit, applied to EVERY caller including signed-in paid ones.
+//
+// The daily cap protects the month's budget. This protects the next sixty
+// seconds: a single script pointed at this endpoint can otherwise issue
+// thousands of scans before any daily counter reacts, and each uncached scan
+// spends real money across four paid APIs. Paid access is a licence to scan
+// as much as a person can scan, not as fast as a machine can loop, and a
+// leaked session cookie should not be able to run up a bill.
+//
+// A limiter that cannot reach Redis fails open: a Redis outage must degrade
+// to "no burst protection", never to "nobody can scan".
+// ════════════════════════════════════════════════════════════════
+const BURST_LIMIT = Number(process.env.SCAN_BURST_PER_MINUTE || 12);
+
+let _limiter: Ratelimit | null | undefined;
+function getLimiter(): Ratelimit | null {
+  if (_limiter !== undefined) return _limiter;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  _limiter = url && token
+    ? new Ratelimit({
+        redis: new Redis({ url, token }),
+        limiter: Ratelimit.slidingWindow(BURST_LIMIT, "60 s"),
+        prefix: "scan:burst",
+        analytics: false,
+      })
+    : null;
+  return _limiter;
+}
+
+async function withinBurstLimit(identifier: string): Promise<boolean> {
+  const limiter = getLimiter();
+  if (!limiter) return true;
+  try {
+    const { success } = await limiter.limit(identifier);
+    return success;
+  } catch {
+    return true;
+  }
+}
 
 function getClientIp(req: NextRequest): string {
   return (
@@ -19,156 +89,241 @@ function getClientIp(req: NextRequest): string {
   );
 }
 
-// Browser fingerprint from cookie - persists across IP changes on mobile
-async function getBrowserId(req: NextRequest): Promise<string | null> {
+// Browser fingerprint from cookie. Persists across the IP changes that are
+// normal on mobile networks, which is the hole a pure IP limit leaves open.
+async function getBrowserId(): Promise<string | null> {
   const cookieStore = await cookies();
   return cookieStore.get("bl_bid")?.value || null;
 }
 
-const GLOBAL_DAILY_CAP = 500;
-
-function getRedis() {
-  return new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL || "",
-    token: process.env.UPSTASH_REDIS_REST_TOKEN || "",
-  });
+function newBrowserId(): string {
+  return crypto.randomBytes(16).toString("hex");
 }
 
-function getDailyKey(): string {
-  return `global_scans:${new Date().toISOString().split("T")[0]}`;
-}
-
-async function getGlobalScansToday(): Promise<number> {
+// ════════════════════════════════════════════════════════════════
+// Access resolution.
+//
+// The bl_session cookie holds a random SESSION TOKEN, not an email — that
+// is what /api/auth writes into it. The previous version of this route
+// passed the cookie value straight to isPaidUser(), which looked up the key
+// `paid:<random hex>`, which never exists. The effect was that every
+// customer who paid $4.99 was still treated as an anonymous free user and
+// throttled to two scans a day. The token has to be exchanged for the email
+// first, which is what getSessionEmail does.
+// ════════════════════════════════════════════════════════════════
+async function resolveAccess(): Promise<{ email: string | null; isPaid: boolean }> {
+  const cookieStore = await cookies();
+  const sessionToken = cookieStore.get("bl_session")?.value;
+  if (!sessionToken) return { email: null, isPaid: false };
   try {
-    return (await getRedis().get<number>(getDailyKey())) || 0;
+    const email = await getSessionEmail(sessionToken);
+    if (!email) return { email: null, isPaid: false };
+    return { email, isPaid: await isPaidUser(email) };
   } catch {
-    return 0;
+    return { email: null, isPaid: false };
   }
 }
 
-async function incrementGlobalScans(): Promise<void> {
-  try {
-    const redis = getRedis();
-    const key = getDailyKey();
-    await redis.incr(key);
-    const midnight = new Date();
-    midnight.setUTCHours(23, 59, 59, 999);
-    await redis.expireat(key, Math.floor(midnight.getTime() / 1000));
-  } catch { /* silent fail */ }
+// Free allowance is the stricter of the two limits. Both were previously
+// being written, but only the IP side was ever read, so the browser counter
+// was pure write traffic that enforced nothing.
+async function getFreeScansRemaining(ip: string, browserId: string | null): Promise<number> {
+  const checks = [getScansRemaining(ip)];
+  if (browserId) checks.push(getScansRemaining(`browser:${browserId}`));
+  const results = await Promise.all(checks);
+  return Math.min(...results);
 }
 
-// GET - check remaining scans + real total scan count
+// GET — free-tier state plus the real public counters behind the landing page
 export async function GET(req: NextRequest) {
   const ip = getClientIp(req);
-  const cookieStore = await cookies();
-  const sessionEmail = cookieStore.get("bl_session")?.value;
+  const browserId = await getBrowserId();
+  const { isPaid } = await resolveAccess();
 
-  try {
-    if (sessionEmail) {
-      const paid = await isPaidUser(sessionEmail);
-      if (paid) {
-        const [totalScans, totalSavings, hourlyScans] = await Promise.all([getTotalScans(), getTotalSavingsExposed(), getHourlyScans()]);
-        return NextResponse.json({ isPaid: true, remaining: 999, totalScans, totalSavings, hourlyScans });
-      }
+  const withBrowserCookie = (res: NextResponse) => {
+    // Issued on the first page load rather than on the first scan, so the
+    // limit is already anchored to a browser before any API spend happens.
+    if (!browserId) {
+      res.cookies.set("bl_bid", newBrowserId(), {
+        maxAge: 60 * 60 * 24 * 30,
+        httpOnly: true,
+        sameSite: "lax",
+        secure: true,
+        path: "/",
+      });
     }
-    const [remaining, totalScans, totalSavings, hourlyScans] = await Promise.all([
-      getScansRemaining(ip),
-      getTotalScans(),
-      getTotalSavingsExposed(),
-      getHourlyScans(),
-    ]);
-    return NextResponse.json({ isPaid: false, remaining, totalScans, totalSavings, hourlyScans });
-  } catch {
-    return NextResponse.json({ isPaid: false, remaining: 2, totalScans: 0 });
-  }
+    return res;
+  };
+
+  // Each counter resolves independently. A single Promise.all meant one slow
+  // or failing key took the whole payload down to zeros, which the landing
+  // page renders as INDEXING across every tile: a transient Redis blip made
+  // the site look like it had never been used.
+  const settle = async <T,>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await fn();
+    } catch {
+      return fallback;
+    }
+  };
+
+  const [totalScans, totalSavings, hourlyScans, maxMarkup, bustedRate, remaining] = await Promise.all([
+    settle(getTotalScans, 0),
+    settle(getTotalSavingsExposed, 0),
+    settle(getHourlyScans, 0),
+    // Never zero: the floor is the markup on the reference card rendered on
+    // the same page, so the stat is always something a visitor can check.
+    settle(getMaxMarkup, MARKUP_FLOOR),
+    settle(getBustedRate, { total: 0, busted: 0 }),
+    settle(
+      () => (isPaid ? Promise.resolve(FREE_SCANS_PER_DAY) : getFreeScansRemaining(ip, browserId)),
+      FREE_SCANS_PER_DAY
+    ),
+  ]);
+
+  return withBrowserCookie(NextResponse.json({
+    isPaid,
+    remaining,
+    totalScans,
+    totalSavings,
+    hourlyScans,
+    maxMarkup,
+    verdictsRecorded: bustedRate.total,
+    bustedRecorded: bustedRate.busted,
+  }));
 }
 
-// POST - run scan
+// POST — run scan
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
-  const cookieStore = await cookies();
-  const sessionEmail = cookieStore.get("bl_session")?.value;
+  const { isPaid } = await resolveAccess();
+  const browserId = await getBrowserId();
 
-  let isPaid = false;
-  try {
-    if (sessionEmail) isPaid = await isPaidUser(sessionEmail);
-  } catch { /* treat as free */ }
-
-  // Browser fingerprint - secondary rate limit for mobile IP changers
-  const browserId = await getBrowserId(req);
+  if (!(await withinBurstLimit(ip))) {
+    return NextResponse.json(
+      { error: "rate_limited" },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
 
   if (!isPaid) {
     try {
-      const remaining = await getScansRemaining(ip);
+      const remaining = await getFreeScansRemaining(ip, browserId);
       if (remaining <= 0) {
         return NextResponse.json({ error: "scan_limit_reached" }, { status: 429 });
       }
-    } catch { /* allow */ }
-
-    try {
-      const globalCount = await getGlobalScansToday();
-      if (globalCount >= GLOBAL_DAILY_CAP) {
-        return NextResponse.json({ error: "high_demand" }, { status: 503 });
-      }
-    } catch { /* allow */ }
+    } catch { /* Redis unreachable: fail open rather than block a real user */ }
   }
 
   try {
     const contentType = req.headers.get("content-type") || "";
-    let result;
+    let result: ScanResult;
     let cacheKey: string | null = null;
+    let servedFromCache = false;
+    const country = req.headers.get("x-vercel-ip-country") || "us";
+
+    // ── Resolve the input and its cache fingerprint ──
+    let runScan: () => Promise<ScanResult>;
 
     if (contentType.includes("application/json")) {
       const { url } = await req.json();
-      if (!url) return NextResponse.json({ error: "URL required" }, { status: 400 });
-      const country = req.headers.get("x-vercel-ip-country") || "us";
-      result = await scanProductUrl(url, country);
+      if (!url || typeof url !== "string") {
+        return NextResponse.json({ error: "URL required" }, { status: 400 });
+      }
+      cacheKey = fingerprintUrl(url);
+      runScan = () => scanProductUrl(url, country);
     } else {
       const formData = await req.formData();
       const imageFile = formData.get("image") as File | null;
       if (!imageFile) return NextResponse.json({ error: "Image required" }, { status: 400 });
-      const base64 = Buffer.from(await imageFile.arrayBuffer()).toString("base64");
-      const country = req.headers.get("x-vercel-ip-country") || "us";
-      result = await scanProduct(base64, imageFile.type || "image/jpeg", country);
+      if (imageFile.size > MAX_UPLOAD_BYTES) {
+        return NextResponse.json({ error: "image_too_large" }, { status: 413 });
+      }
+      const bytes = Buffer.from(await imageFile.arrayBuffer());
+      cacheKey = fingerprintImage(bytes);
+      const base64 = bytes.toString("base64");
+      const mimeType = imageFile.type || "image/jpeg";
+      runScan = () => scanProduct(base64, mimeType, country);
     }
 
-    // Track usage
+    // ── Cache read. This is the layer that makes a viral moment survivable:
+    //    the same product, or the same screenshot re-shared through a
+    //    comment section, resolves to one cache entry and costs the API
+    //    nothing on every hit after the first. ──
+    const cached = cacheKey ? await getCachedScan<ScanResult>(cacheKey).catch(() => null) : null;
+
+    if (cached) {
+      servedFromCache = true;
+      // The shipping disclosure depends on where THIS requester is, so it is
+      // recomputed rather than served from another country's cache entry.
+      result = {
+        ...cached,
+        shippingNote: buildShippingNote(cached.sourceProduct?.productUrl || "", country),
+      };
+    } else {
+      // ── Global daily spend guard. Only uncached scans can reach the paid
+      //    APIs, so only uncached scans count against the cap. ──
+      if (!isPaid) {
+        try {
+          if (await getGlobalScansToday() >= GLOBAL_DAILY_CAP) {
+            return NextResponse.json({ error: "high_demand" }, { status: 503 });
+          }
+        } catch { /* allow */ }
+      }
+      result = await runScan();
+    }
+
+    // ── Usage accounting. A cache hit still consumes a free scan: otherwise
+    //    the same product could be rescanned forever for free. ──
     if (!isPaid) {
       try { await incrementScanCount(ip); } catch { /* ignore */ }
       if (browserId) {
         try { await incrementScanCount(`browser:${browserId}`); } catch { /* ignore */ }
       }
-      try { await incrementGlobalScans(); } catch { /* ignore */ }
+      if (!servedFromCache) {
+        try { await incrementGlobalScans(); } catch { /* ignore */ }
+      }
     }
-    // Always increment total — every real scan counts regardless of paid status
     try { await incrementTotalScans(); } catch { /* ignore */ }
     try { await incrementHourlyScans(); } catch { /* ignore */ }
-    // Only a genuine, visually-verified VERDICT carries a real dollar amount
-    // worth accumulating — FINDER/UNRESOLVED savings figures aren't confirmed
-    // comparisons and would inflate this stat with unverified numbers.
-    if (result.mode === "VERDICT" && result.analysis?.savings > 0) {
-      try { await incrementTotalSavings(result.analysis.savings); } catch { /* ignore */ }
+
+    // Only a genuine, visually verified VERDICT carries a real dollar amount
+    // worth accumulating. FINDER/UNRESOLVED savings figures aren't confirmed
+    // comparisons and would inflate the public stat with unverified numbers.
+    // Cache hits are excluded so one viral product cannot inflate the
+    // lifetime totals by the number of people who looked at it.
+    if (!servedFromCache && result.mode === "VERDICT") {
+      try { await recordVerdict(result.analysis.verdict === "HIGH_MARKUP"); } catch { /* ignore */ }
+      if (result.analysis.savings > 0) {
+        try { await incrementTotalSavings(result.analysis.savings); } catch { /* ignore */ }
+      }
+      if (result.analysis.markup > 0) {
+        try { await recordMarkup(result.analysis.markup); } catch { /* ignore */ }
+      }
     }
 
-    const response = NextResponse.json(result);
-    // Set browser fingerprint cookie if not already set
-    if (!browserId) {
-      const newBid = Math.random().toString(36).slice(2) + Date.now().toString(36);
-      response.cookies.set("bl_bid", newBid, {
-        maxAge: 60 * 60 * 24 * 30, // 30 days
-        httpOnly: true,
-        sameSite: "lax",
-        secure: true,
-      });
-    }
-    // Cache successful VERDICT results for 24 hours
-    // This is the viral protection layer — same product scanned 10,000 times costs API once
-    if (cacheKey && result.found && result.mode === "VERDICT") {
+    // ── Cache write. Only real, verified results are worth keeping: caching
+    //    an UNRESOLVED would pin a failure in place for 24 hours, including
+    //    for the retry the person is about to make. ──
+    if (cacheKey && !servedFromCache && result.found && result.mode === "VERDICT") {
       try {
-        await getRedis().set(cacheKey, JSON.stringify(result), { ex: 60 * 60 * 24 });
+        // Stored without the requester-specific shipping note.
+        const { shippingNote, ...cacheable } = result;
+        void shippingNote;
+        await setCachedScan(cacheKey, cacheable);
       } catch { /* cache write failure is non-fatal */ }
     }
 
+    const response = NextResponse.json(result);
+    if (!browserId) {
+      response.cookies.set("bl_bid", newBrowserId(), {
+        maxAge: 60 * 60 * 24 * 30,
+        httpOnly: true,
+        sameSite: "lax",
+        secure: true,
+        path: "/",
+      });
+    }
     return response;
   } catch (err) {
     console.error("Scan error:", err);
@@ -176,15 +331,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH - check session
+// PATCH — session check
 export async function PATCH() {
-  const cookieStore = await cookies();
-  const sessionEmail = cookieStore.get("bl_session")?.value;
-  if (!sessionEmail) return NextResponse.json({ authenticated: false });
-  try {
-    const paid = await isPaidUser(sessionEmail);
-    return NextResponse.json({ authenticated: true, email: sessionEmail, paid });
-  } catch {
-    return NextResponse.json({ authenticated: true, email: sessionEmail, paid: false });
-  }
+  const { email, isPaid } = await resolveAccess();
+  if (!email) return NextResponse.json({ authenticated: false });
+  return NextResponse.json({ authenticated: true, email, paid: isPaid });
 }

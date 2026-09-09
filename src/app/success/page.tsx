@@ -22,14 +22,14 @@ function SuccessInner() {
           margin: "0 auto 24px", fontSize: "28px"
         }}>✓</div>
         <h1 style={{
-          fontFamily: "'Space Grotesk',sans-serif",
+          fontFamily: "var(--font-display), sans-serif",
           fontSize: "26px", fontWeight: "700",
           color: "#eeeef8", letterSpacing: "-0.8px", marginBottom: "12px"
         }}>
-          You're in.
+          You&apos;re in.
         </h1>
         <p style={{ color: "rgba(238,238,248,0.55)", fontSize: "15px", lineHeight: "1.65" }}>
-          Check your email - your access link just landed. Tap it to unlock unlimited scans on this device and every device you'll ever use.
+          Your access link just landed. Tap it to unlock unlimited scans on this device and every device you use after it.
         </p>
         <p style={{
           color: "rgba(238,238,248,0.3)", fontSize: "13px", marginTop: "24px"

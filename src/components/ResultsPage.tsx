@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import VerdictCard, { VerdictData, VerdictType, CardMode, MatchConfidence } from "@/components/VerdictCard";
+import SoundToggle from "@/components/SoundToggle";
 
 interface ScanResult {
   found: boolean;
@@ -24,10 +25,9 @@ interface ScanResult {
 }
 
 export default function ResultsPage({
-  result, preview, onReset, isPaid, onUpgrade,
+  result, onReset, isPaid, onUpgrade,
 }: {
   result: ScanResult;
-  preview: string | null;
   onReset: () => void;
   isPaid: boolean;
   onUpgrade: () => void;
@@ -36,6 +36,12 @@ export default function ResultsPage({
   const [isMobile, setIsMobile] = useState(true); // default true, corrected on mount
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 600);
+    // The previous version registered the listener but never ran the check,
+    // so a desktop visitor got the compact phone card until they happened to
+    // resize the window. Every scan on every desktop rendered the wrong
+    // layout: smaller verdict type, tighter padding, a 68px markup ring where
+    // an 88px one belongs.
+    check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
@@ -43,8 +49,10 @@ export default function ResultsPage({
   const [saved, setSaved] = useState(false);
   const { sourceProduct: sp, analysis: an, mode, matchConfidence } = result;
 
-  // Deterministic scan id from a real timestamp — never a fabricated random number
-  const scanId = `SCAN #${Date.now().toString(36).toUpperCase()}`;
+  // Stable for the life of this result. Computed during render, it changed
+  // on every re-render, so the id printed on the card was different from the
+  // one in the image a person saved a second later.
+  const [scanId] = useState(() => `SCAN #${Date.now().toString(36).toUpperCase()}`);
 
   const verdictData: VerdictData = {
     verdict: an.verdict,
@@ -114,9 +122,12 @@ export default function ResultsPage({
     setSaving(false);
   };
 
+  // The dollar figure is the hook, not the percentage: "$47.10 above market"
+  // is a number a person feels, "412% markup" is a statistic. Both go in,
+  // dollars first, because this string is the caption on every repost.
   const shareText = mode === "VERDICT"
-    ? `Just scanned a product. ${an.markup}% markup above verified wholesale price. Check yours: bustedlab.com`
-    : `Ran this through BustedLab. Check what things actually cost before you buy: bustedlab.com`;
+    ? `$${an.savings.toFixed(2)} above market on this one. ${an.markup}% markup, verified. Scan anything: bustedlab.com`
+    : `Ran this through BustedLab. Closest listing found: $${sp.price.toFixed(2)}. Scan anything: bustedlab.com`;
 
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -158,20 +169,27 @@ export default function ResultsPage({
   const isUnresolved = mode === "UNRESOLVED";
 
   return (
-    <main style={{ position: "relative", zIndex: 1, minHeight: "100vh", paddingBottom: "40px", fontFamily: "'Inter', sans-serif" }}>
+    <main style={{ position: "relative", zIndex: 1, minHeight: "100vh", paddingBottom: "40px", fontFamily: "var(--font-sans), sans-serif" }}>
       <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", zIndex: 2, position: "relative", borderBottom: "1px solid rgba(255,255,255,0.055)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
+          {/* Fixed 32px mark. next/image would add an optimizer round trip
+              and a srcset for an asset that is never rendered at another size.
+              eslint-disable-next-line @next/next/no-img-element */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.jpg" alt="BustedLab" width={32} height={32} style={{ borderRadius: "8px", display: "block", objectFit: "cover" }} />
-          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: "700", fontSize: "16px", letterSpacing: "-0.4px", color: "#eeeef6" }}>BustedLab</span>
+          <span style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "700", fontSize: "16px", letterSpacing: "-0.4px", color: "#eeeef6" }}>BustedLab</span>
         </div>
-        <button onClick={onReset} style={{ background: "transparent", color: "rgba(238,238,246,0.5)", border: "1px solid rgba(255,255,255,0.09)", cursor: "pointer", transition: "all 0.18s ease", fontFamily: "'Inter', sans-serif", borderRadius: "8px", padding: "7px 16px", fontSize: "13px" }}>
-          {isUnresolved ? "Try another scan" : "Check another"}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <SoundToggle />
+          <button onClick={onReset} style={{ background: "transparent", color: "rgba(238,238,246,0.5)", border: "1px solid rgba(255,255,255,0.09)", cursor: "pointer", transition: "color 0.18s ease, border-color 0.18s ease", fontFamily: "var(--font-sans), sans-serif", borderRadius: "8px", padding: "7px 16px", fontSize: "13px" }}>
+            {isUnresolved ? "Try another scan" : "Check another"}
+          </button>
+        </div>
       </nav>
 
       <div style={{ maxWidth: "520px", margin: "0 auto", padding: "16px 24px 60px", zIndex: 2, position: "relative" }}>
         <div style={{ marginBottom: "12px" }}>
-          <VerdictCard data={verdictData} animate={true} compact={isMobile} cardRef={cardRef} />
+          <VerdictCard data={verdictData} animate={true} compact={isMobile} cardRef={cardRef} sound />
         </div>
 
         {isUnresolved ? (
@@ -181,17 +199,17 @@ export default function ResultsPage({
         ) : (
           <>
             <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
-              <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "14px", borderRadius: "10px", fontSize: "14px", fontWeight: "600", fontFamily: "'Space Grotesk', sans-serif", background: "linear-gradient(135deg, #9d7fd4, #7b5ea7)", color: "white", border: "none", cursor: "pointer", transition: "all 0.18s ease", opacity: saving ? 0.5 : 1 }}>
+              <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "14px", borderRadius: "10px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif", background: "linear-gradient(135deg, #9d7fd4, #7b5ea7)", color: "white", border: "none", cursor: "pointer", transition: "all 0.18s ease", opacity: saving ? 0.5 : 1 }}>
                 {saving ? "Generating..." : saved ? "Saved" : "Save to photos"}
               </button>
-              <button onClick={handleShare} style={{ padding: "14px 16px", borderRadius: "10px", fontSize: "14px", background: "transparent", color: copied ? "#10d9a0" : "rgba(238,238,246,0.5)", border: copied ? "1px solid rgba(16,217,160,0.3)" : "1px solid rgba(255,255,255,0.09)", cursor: "pointer", transition: "all 0.18s ease", fontFamily: "'Inter', sans-serif" }}>
-                {copied ? "Copied!" : "Share"}
+              <button onClick={handleShare} disabled={sharing} style={{ padding: "14px 16px", borderRadius: "10px", fontSize: "14px", background: "transparent", color: copied ? "#10d9a0" : "rgba(238,238,246,0.5)", border: copied ? "1px solid rgba(16,217,160,0.3)" : "1px solid rgba(255,255,255,0.09)", cursor: sharing ? "default" : "pointer", transition: "color 0.18s ease, border-color 0.18s ease", fontFamily: "var(--font-sans), sans-serif", opacity: sharing ? 0.5 : 1 }}>
+                {sharing ? "Rendering" : copied ? "Copied" : "Share"}
               </button>
             </div>
 
             {sp.affiliateUrl && (
               <>
-                <a href={sp.affiliateUrl} target="_blank" rel="noopener noreferrer" style={{ display: "block", width: "100%", padding: "12px", borderRadius: "10px", fontSize: "13px", textAlign: "center", textDecoration: "none", fontWeight: "500", marginBottom: "8px", color: "rgba(238,238,246,0.5)", border: "1px solid rgba(255,255,255,0.09)", background: "transparent", transition: "all 0.18s ease", fontFamily: "'Inter', sans-serif" }}>
+                <a href={sp.affiliateUrl} target="_blank" rel="noopener noreferrer" style={{ display: "block", width: "100%", padding: "12px", borderRadius: "10px", fontSize: "13px", textAlign: "center", textDecoration: "none", fontWeight: "500", marginBottom: "8px", color: "rgba(238,238,246,0.5)", border: "1px solid rgba(255,255,255,0.09)", background: "transparent", transition: "all 0.18s ease", fontFamily: "var(--font-sans), sans-serif" }}>
                   {mode === "VERDICT" ? "View wholesale source" : "View closest listing found"}
                 </a>
                 {result.shippingNote && (
@@ -208,7 +226,7 @@ export default function ResultsPage({
                 <p style={{ fontSize: "13px", color: "rgba(238,238,246,0.5)", marginBottom: "16px", lineHeight: "1.55" }}>
                   One-time $4.99. Unlimited scans. HD verdict cards. Forever.
                 </p>
-                <button onClick={onUpgrade} style={{ padding: "11px 28px", borderRadius: "9px", fontSize: "14px", fontWeight: "700", fontFamily: "'Space Grotesk', sans-serif", background: "linear-gradient(135deg, #9d7fd4, #7b5ea7)", color: "white", border: "none", cursor: "pointer" }}>
+                <button onClick={onUpgrade} style={{ padding: "11px 28px", borderRadius: "9px", fontSize: "14px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif", background: "linear-gradient(135deg, #9d7fd4, #7b5ea7)", color: "white", border: "none", cursor: "pointer" }}>
                   Get unlimited access
                 </button>
               </div>
@@ -221,7 +239,7 @@ export default function ResultsPage({
             <strong style={{ color: "rgba(238,238,246,0.25)" }}>Market Analysis Disclaimer:</strong> All pricing data shown reflects publicly available wholesale listings for similar or comparable products. Results are editorial market analysis, not verified statements about any specific product or brand.
           </p>
           <p style={{ fontSize: "10px", color: "rgba(238,238,246,0.2)", lineHeight: "1.6" }}>
-            <strong style={{ color: "rgba(238,238,246,0.25)" }}>Affiliate Disclosure:</strong> BustedLab may earn a commission if you purchase through links on this page at no additional cost to you.{" "}
+            <strong style={{ color: "rgba(238,238,246,0.25)" }}>Affiliate Disclosure:</strong> Some outbound links may be affiliate links. Where they are, BustedLab may earn a commission at no additional cost to you.{" "}
             <a href="/terms" style={{ color: "rgba(184,160,232,0.5)", textDecoration: "none" }}>Terms</a>
             {" "}&middot;{" "}
             <a href="/privacy" style={{ color: "rgba(184,160,232,0.5)", textDecoration: "none" }}>Privacy</a>
