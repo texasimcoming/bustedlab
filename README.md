@@ -27,6 +27,9 @@ src/app/page.tsx              Landing, scan entry, counters
 src/app/api/scan/route.ts     Scan endpoint: access, rate limits, cache, ledger
 src/app/api/notify/route.ts   Intent capture: the product update list
 src/app/scan/[id]/            Permanent page + per-scan OG image for one verdict
+src/app/the-index/            The public index: ranked, filterable, all real records
+src/app/api/leaderboard/      The three boards, edge-cached
+src/app/sitemap.ts            Hands the crawler the ledger
 src/app/api/checkout/route.ts Resolves the payment link from configuration
 src/app/api/webhook/route.ts  Purchase webhook: Gumroad / Lemon Squeezy / Paddle
 src/app/api/auth/route.ts     Magic-link auth
@@ -77,6 +80,14 @@ uploaded image, and deliberately not the retail URL that was scanned. That is
 what makes it publishable at `/scan/<id>` and what keeps it outside the scope
 of a subject access request.
 
+## Routing note that will bite you
+
+The public index lives at `/the-index`, not `/index`. Next.js normalizes the
+request path `/index` to `/` before routing, inherited from the Pages Router
+where `pages/index.js` was the root. An `app/index/page.tsx` builds cleanly,
+appears in the route manifest, and is unreachable forever: every request
+silently renders the home page instead.
+
 ## Rules that are not style preferences
 
 - **No em dashes in rendered text.** Anywhere.
@@ -86,6 +97,11 @@ of a subject access request.
 - **No invented people.** No testimonials, no activity notifications, no names.
 - **Animation is light, not motion.** No `translateY` on hover, nothing that
   borrows the physics of a physical object.
+- **Every verdict message states the exact dollar gap**, and the copy is
+  written to be shared rather than to be safe. It stays anchored to what was
+  measured: "it sells for $X" is an observation about a public listing, "they
+  paid $X for it" is an assertion about a business's costs that no scan can
+  see. The first one is also the one that cannot be argued with.
 - **The verdict tone fires only on a card the user asked for.** It defaults on,
   it is muted from the nav on every screen, and it never fires on the landing
   page reference card. `VerdictCard`'s `sound` prop defaults to `false` for

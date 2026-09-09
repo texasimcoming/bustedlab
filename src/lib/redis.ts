@@ -55,6 +55,10 @@ export const keys = {
   markupIndex: () => `scan:ledger:markup`,
   productAggregate: (productKey: string) => `scan:product:${productKey}`,
 
+  // ── Index and leaderboards ──
+  trendingWeek: (week: string) => `scan:trending:${week}`,
+  categoryStats: (category: string) => `scan:cat:${category}`,
+
   // ── Intent capture ──
   notifyEntry: (email: string) => `notify:${email.toLowerCase().trim()}`,
   notifyIndex: () => `notify:index`,
@@ -356,6 +360,25 @@ export interface ProductAggregate {
 // Time-ordered prefix plus 96 bits of randomness. Sortable enough to be
 // useful, unguessable enough that the ledger cannot be walked by anyone who
 // finds one shared link.
+// The vision layer's category enum. Fixed and small, so the "most expensive
+// categories" board reads every category with one bounded MGET rather than
+// scanning for keys.
+export const CATEGORIES = [
+  "beauty", "skincare", "fitness", "tech", "fashion",
+  "accessories", "home", "pet", "food", "other",
+] as const;
+
+// ISO-8601 week, e.g. 2026-W37. Used to bucket "most scanned this week" so the
+// board resets on its own rather than needing a sweeper.
+export function isoWeek(date = new Date()): string {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  // Thursday of the current week determines the year the week belongs to.
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
 export function newScanId(): string {
   return `${Date.now().toString(36)}${crypto.randomBytes(12).toString("hex")}`;
 }
@@ -386,14 +409,31 @@ export async function recordScan(record: ScanRecord): Promise<boolean> {
     if (record.verdict === "HIGH_MARKUP") {
       pipeline.zadd(keys.bustedIndex(), { score: record.ts, member: record.id });
     }
+
+    // "Most scanned this week" counts every scan, including cache hits: a
+    // repeat scan is a real person looking the product up, which is exactly
+    // what this board is measuring. The week key expires itself.
+    if (record.productKey) {
+      pipeline.zincrby(keys.trendingWeek(isoWeek()), 1, record.productKey);
+    }
+
     // Scored by markup so the worst offenders of all time are one ZRANGE away.
-    // Only real measurements enter this one: a cached repeat would let a
-    // single viral product colonise the leaderboard with copies of itself.
+    // Category averages likewise. Neither takes cached repeats: a single viral
+    // product would otherwise colonise the leaderboard with copies of itself
+    // and drag its whole category's average along with it.
     if (!record.cached) {
       pipeline.zadd(keys.markupIndex(), { score: record.markup, member: record.id });
+      const catKey = keys.categoryStats(record.category || "other");
+      pipeline.hincrby(catKey, "count", 1);
+      pipeline.hincrby(catKey, "sumMarkup", Math.round(record.markup));
     }
 
     await pipeline.exec();
+    // Eight weeks of trending history is plenty for a weekly board and keeps
+    // the keyspace from growing without bound.
+    try {
+      await redis.expire(keys.trendingWeek(isoWeek()), 60 * 60 * 24 * 56);
+    } catch { /* non-fatal */ }
     await bumpProductAggregate(record);
     return true;
   } catch (err) {
@@ -545,4 +585,188 @@ export async function removeNotifyEntry(email: string): Promise<void> {
   } catch {
     /* nothing to do */
   }
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// THE PUBLIC INDEX AND THE LEADERBOARDS
+//
+// Everything below reads the ledger. Before these existed the ledger was
+// write-only: a dataset nobody could see, which is a dataset that persuades
+// nobody. These are what turn a lookup tool into an instrument pointed at the
+// whole consumer economy, and every figure in them is a count of something
+// that actually happened.
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Records measured since a timestamp, newest first.
+ *
+ * Bounded by `cap` deliberately. The window is queried through the
+ * time-ordered index, so this is exact while a window holds fewer records than
+ * the cap. Past that it becomes "the most recent `cap` in the window", which
+ * is the point at which the markup index needs sharding into day buckets and a
+ * union across them. That is a real threshold, not a hypothetical: it arrives
+ * somewhere around a thousand verdicts per window.
+ */
+export async function getRecordsSince(sinceTs: number, cap = 1000): Promise<ScanRecord[]> {
+  try {
+    const ids = await getRedis().zrange<string[]>(
+      keys.recordIndex(), sinceTs, "+inf",
+      { byScore: true, rev: false, offset: 0, count: cap }
+    );
+    return readRecords(ids || []);
+  } catch {
+    return [];
+  }
+}
+
+export interface IndexEntry extends ScanRecord {
+  /** How many times this product has been scanned in total. */
+  scanCount: number;
+}
+
+/**
+ * The public index: the steepest markups measured inside a window, one row per
+ * product rather than one per scan.
+ *
+ * Deduping by product is what makes it readable. Without it, a product scanned
+ * two hundred times fills the entire first page with itself and the index
+ * stops being an index of the market and becomes an index of one item.
+ */
+export async function getIndexEntries(options: {
+  days?: number;
+  category?: string;
+  limit?: number;
+} = {}): Promise<IndexEntry[]> {
+  const { days = 30, category, limit = 60 } = options;
+  const since = Date.now() - days * 24 * 60 * 60 * 1000;
+
+  const records = await getRecordsSince(since);
+
+  const byProduct = new Map<string, ScanRecord>();
+  const counts = new Map<string, number>();
+
+  for (const r of records) {
+    // Cached repeats are not measurements, so they never define a row. They
+    // still count toward how often a product was looked up.
+    const key = r.productKey || r.id;
+    counts.set(key, (counts.get(key) || 0) + 1);
+    if (r.cached) continue;
+    if (category && r.category !== category) continue;
+    const held = byProduct.get(key);
+    if (!held || r.markup > held.markup) byProduct.set(key, r);
+  }
+
+  return [...byProduct.values()]
+    .sort((a, b) => b.markup - a.markup)
+    .slice(0, limit)
+    .map(r => ({ ...r, scanCount: counts.get(r.productKey || r.id) || 1 }));
+}
+
+/** How many measurements sit behind each category inside a window. */
+export function countByCategory(entries: ScanRecord[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const e of entries) out[e.category] = (out[e.category] || 0) + 1;
+  return out;
+}
+
+export interface TrendingProduct {
+  productKey: string;
+  title: string;
+  scans: number;
+  maxMarkup: number;
+  lastId: string;
+}
+
+/** Most scanned products in the current ISO week. */
+export async function getTrendingProducts(limit = 10): Promise<TrendingProduct[]> {
+  try {
+    const redis = getRedis();
+    const raw = await redis.zrange<(string | number)[]>(
+      keys.trendingWeek(isoWeek()), 0, limit - 1, { rev: true, withScores: true }
+    );
+    if (!raw || raw.length === 0) return [];
+
+    const pairs: { key: string; scans: number }[] = [];
+    for (let i = 0; i + 1 < raw.length; i += 2) {
+      pairs.push({ key: String(raw[i]), scans: Number(raw[i + 1]) });
+    }
+    if (pairs.length === 0) return [];
+
+    const aggregates = await redis.mget<unknown[]>(...pairs.map(p => keys.productAggregate(p.key)));
+    return pairs
+      .map((p, i) => {
+        const agg = parseJson<ProductAggregate>(aggregates[i]);
+        if (!agg) return null;
+        return {
+          productKey: p.key,
+          title: agg.title,
+          scans: p.scans,
+          maxMarkup: agg.maxMarkup,
+          lastId: agg.lastId,
+        };
+      })
+      .filter((t): t is TrendingProduct => t !== null);
+  } catch {
+    return [];
+  }
+}
+
+export interface CategoryStat {
+  category: string;
+  count: number;
+  averageMarkup: number;
+}
+
+/**
+ * Average measured markup per category, steepest first.
+ *
+ * A minimum sample is enforced because "the most expensive category on
+ * BustedLab" resting on two scans is not a finding, it is an accident, and it
+ * is the kind of number a journalist would quote and a competitor would
+ * disprove in an afternoon.
+ */
+export async function getCategoryStats(minSample = 5): Promise<CategoryStat[]> {
+  const redis = getRedis();
+
+  // Per-category isolation, deliberately. Most categories hold nothing until
+  // the ledger has real breadth, and hgetall against a key that does not exist
+  // rejects rather than returning empty. Under Promise.all a single untouched
+  // category would take the whole board down with it, so the board would be
+  // invisible for precisely as long as the product is young.
+  const rows = await Promise.all(
+    CATEGORIES.map(async c => {
+      try {
+        return await redis.hgetall<Record<string, string | number>>(keys.categoryStats(c));
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return CATEGORIES
+    .map((category, i) => {
+      const row = rows[i];
+      const count = Number(row?.count ?? 0);
+      const sum = Number(row?.sumMarkup ?? 0);
+      return { category, count, averageMarkup: count > 0 ? Math.round(sum / count) : 0 };
+    })
+    .filter(c => c.count >= minSample)
+    .sort((a, b) => b.averageMarkup - a.averageMarkup);
+}
+
+/** Highest markups ever measured, one row per product. */
+export async function getTopMarkupProducts(limit = 10): Promise<ScanRecord[]> {
+  // Over-fetch, because the raw index is per scan and collapses once deduped.
+  const records = await getTopMarkupRecords(limit * 6);
+  const seen = new Set<string>();
+  const out: ScanRecord[] = [];
+  for (const r of records) {
+    const key = r.productKey || r.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+    if (out.length >= limit) break;
+  }
+  return out;
 }

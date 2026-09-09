@@ -50,6 +50,13 @@ const nextConfig: NextConfig = {
         source: "/api/proxy-image",
         headers: [{ key: "Cache-Control", value: "public, max-age=86400, s-maxage=86400" }],
       },
+      {
+        // Public leaderboard data, identical for every visitor and containing
+        // nothing personal. Without this exception the blanket no-store above
+        // would force a Redis read for every person who loads the homepage.
+        source: "/api/leaderboard",
+        headers: [{ key: "Cache-Control", value: "public, s-maxage=120, stale-while-revalidate=600" }],
+      },
     ];
   },
 };

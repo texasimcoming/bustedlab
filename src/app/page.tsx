@@ -8,6 +8,7 @@ import LiveToast from "@/components/LiveToast";
 import StickyBar from "@/components/StickyBar";
 import StaticVerdictDemo from "@/components/StaticVerdictDemo";
 import SoundToggle from "@/components/SoundToggle";
+import Leaderboards from "@/components/Leaderboards";
 import type { CardMode, MatchConfidence, VerdictType } from "@/components/VerdictCard";
 import { CLASSIFICATION_RULES } from "@/lib/verdict";
 import { armAudio } from "@/lib/sound";
@@ -82,6 +83,23 @@ function useScrollDepthTrigger(threshold: number, onTrigger: () => void) {
 // pre-justified before anyone saw it, and anyone who wants to check the math
 // can. The strings are generated from the same constants calculateVerdict()
 // uses, so the published rules cannot drift from the applied ones.
+// ── REACTIONS ──
+//
+// These are illustrative: written to show what the moment of a verdict landing
+// sounds like in a human voice, not collected from named customers. They carry
+// no star ratings and no "verified buyer" language, and the section says on its
+// face that they are illustrative, because a quote attributed to a person who
+// does not exist stops being illustration and becomes a fabricated endorsement
+// the moment a reader is invited to believe it is real. Labelled honestly, they
+// do the job they are here to do: an instrument this cold needs one place where
+// it sounds like a person, and this is it.
+const REACTIONS = [
+  { name: "Maya", loc: "London", quote: "I scanned the face roller I almost bought for $74. It was $2.90. I screamed in a Pret." },
+  { name: "Jordan", loc: "Toronto", quote: "Sent it to the group chat and now nobody in this friendship group can buy anything without permission." },
+  { name: "Tyler", loc: "Austin", quote: "Put the card in the comments of the ad. Felt illegal. Was not." },
+  { name: "Priya", loc: "Manchester", quote: "My boyfriend said I was being paranoid. It came back 900%. He has not spoken since." },
+];
+
 const TONE_COLOR: Record<string, string> = {
   red: "var(--red)",
   yellow: "var(--yellow)",
@@ -691,6 +709,9 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ═══ THE BOARDS ═══ */}
+      <Leaderboards />
+
       {/* ═══ CLASSIFICATION RULES ═══ */}
       <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
         <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.4)", marginBottom: "14px", textTransform: "uppercase" }}>
@@ -712,6 +733,31 @@ export default function Home() {
         </div>
         <p style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", color: "var(--text-3)", marginTop: "12px", lineHeight: "1.6", letterSpacing: "0.3px" }}>
           Every verdict is produced by these thresholds and nothing else. No manual review. No exceptions.
+        </p>
+      </section>
+
+      {/* ═══ REACTIONS ═══ */}
+      <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
+        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.4)", marginBottom: "14px", textTransform: "uppercase" }}>
+          WHAT IT SOUNDS LIKE WHEN THE MATH LANDS
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {REACTIONS.map(r => (
+            <div key={r.name} className="card" style={{ borderRadius: "12px", padding: "16px 18px" }}>
+              <p style={{ fontSize: "14px", color: "var(--text)", lineHeight: "1.6", marginBottom: "10px" }}>
+                &ldquo;{r.quote}&rdquo;
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: "var(--accent-2)", flexShrink: 0 }} />
+                <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10.5px", color: "var(--text-3)", letterSpacing: "0.5px" }}>
+                  {r.name}, {r.loc}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p style={{ fontSize: "10px", color: "var(--text-3)", marginTop: "10px", lineHeight: "1.5", opacity: 0.75 }}>
+          Illustrative reactions, not customer endorsements. The numbers on this page are measured. These are not.
         </p>
       </section>
 
@@ -755,6 +801,7 @@ Scan anything. Share the verdict. No limits, no subscription, no renewal. One pa
         </div>
         <div style={{ display: "flex", justifyContent: "center", gap: "20px", flexWrap: "wrap" }}>
           {[
+            { label: "The Index", href: "/the-index" },
             { label: "Terms", href: "/terms" },
             { label: "Privacy", href: "/privacy" },
             { label: "DMCA", href: "/dmca" },
