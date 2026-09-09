@@ -26,6 +26,9 @@ npx eslint .       # lint (next build no longer runs it)
 src/app/page.tsx              Landing, scan entry, counters
 src/app/api/scan/route.ts     Scan endpoint: access, rate limits, cache, ledger
 src/app/api/notify/route.ts   Intent capture: the product update list
+src/app/api/event/route.ts    Analytics beacon (3 browser events, allowlisted)
+src/app/api/stats/route.ts    The funnel. Token-protected.
+src/lib/analytics.ts          Six events, daily counters, no third parties
 src/app/scan/[id]/            Permanent page + per-scan OG image for one verdict
 src/app/the-index/            The public index: ranked, filterable, all real records
 src/app/api/leaderboard/      The three boards, edge-cached
@@ -63,6 +66,8 @@ Nothing below is required to run the app; each one enables a capability.
 | `LEMONSQUEEZY_WEBHOOK_SECRET` / `PADDLE_WEBHOOK_SECRET` | Signature verification for those providers |
 | `GLOBAL_DAILY_SCAN_CAP` | Daily ceiling on uncached scans. Defaults to 25000. |
 | `SCAN_BURST_PER_MINUTE` | Per-IP scan burst limit. Defaults to 12. |
+| `ANALYTICS_TOKEN` | Bearer token for `GET /api/stats`. Unset means the endpoint is closed entirely. |
+| `EVENT_BURST_PER_MINUTE` | Per-IP limit on the analytics beacon. Defaults to 60. |
 
 ## The ledger
 
@@ -79,6 +84,22 @@ A record describes a product, never a person: no IP, no email, no session, no
 uploaded image, and deliberately not the retail URL that was scanned. That is
 what makes it publishable at `/scan/<id>` and what keeps it outside the scope
 of a subject access request.
+
+## Analytics
+
+Six events as daily counters in Redis. No third-party script, no cookie, no
+identifier: a row says "on this date, this many scans finished" and nothing
+more. `scan_completed`, the three verdict counters and `email_captured` are
+counted server-side and cannot be forged; `share_tapped`, `paywall_shown` and
+`checkout_clicked` arrive from the browser through an allowlisted beacon and
+are labelled `client` in the output so nobody mistakes them for evidence.
+
+```bash
+curl -H "Authorization: Bearer $ANALYTICS_TOKEN" https://bustedlab.com/api/stats?days=30
+```
+
+The number that matters is `sharesPerScan`. It is the loop coefficient, and
+the entire growth model is a function of it.
 
 ## Routing note that will bite you
 
