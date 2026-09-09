@@ -7,8 +7,10 @@ import PaywallModal from "@/components/PaywallModal";
 import LiveToast from "@/components/LiveToast";
 import StickyBar from "@/components/StickyBar";
 import StaticVerdictDemo from "@/components/StaticVerdictDemo";
+import SoundToggle from "@/components/SoundToggle";
 import type { CardMode, MatchConfidence, VerdictType } from "@/components/VerdictCard";
 import { CLASSIFICATION_RULES } from "@/lib/verdict";
+import { armAudio } from "@/lib/sound";
 
 type AppState = "landing" | "scanning" | "results";
 
@@ -257,6 +259,14 @@ export default function Home() {
   const runScan = async (type: "image" | "url") => {
     if (!userStatus.isPaid && userStatus.remaining <= 0) { setShowPaywall(true); return; }
     if (type === "image" && !uploadedFile) return;
+
+    // Unlock the audio context HERE, inside the click that starts the scan.
+    // Browsers only allow a suspended AudioContext to resume from within a
+    // real user gesture, and the verdict lands eight seconds later on a timer,
+    // which is not one. Arming it at the gesture is the difference between a
+    // tone that plays and a tone that silently never does.
+    armAudio();
+
     setState("scanning");
 
     // A request with no ceiling leaves the scanning screen running forever if
@@ -436,6 +446,7 @@ export default function Home() {
             <div style={{ width: "5px", height: "5px", borderRadius: "50%", background: "var(--green)" }} className="animate-pulse" />
             <span style={{ fontSize: "11px", color: "var(--text-3)" }}>{totalScans.toLocaleString()} scanned</span>
           </div>
+          <SoundToggle />
           {userStatus.isPaid ? (
             <span style={{ fontSize: "11px", color: "var(--green)", fontWeight: "600", background: "var(--green-dim)", padding: "3px 10px", borderRadius: "20px", border: "1px solid var(--green-border)" }}>Unlimited</span>
           ) : (

@@ -26,6 +26,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { playVerdictTone } from "@/lib/sound";
 
 export type VerdictType = "HIGH_MARKUP" | "OVERPRICED" | "FAIR" | "UNVERIFIED";
 export type CardMode = "VERDICT" | "FINDER" | "UNRESOLVED";
@@ -222,6 +223,18 @@ interface Props {
   animate?: boolean;
   compact?: boolean;
   cardRef?: React.RefObject<HTMLDivElement | null>;
+  /**
+   * Fire the confirmation tone when the verdict stamps.
+   *
+   * Defaults to false, and that default is load-bearing. This same component
+   * renders the reference card on the landing page, which animates on mount
+   * with no user gesture behind it. A card that made noise on page load would
+   * be hostile, would be blocked by every browser's autoplay policy anyway,
+   * and would spend the one sound this product owns on someone who did not
+   * ask for it. Only a card that came back from a scan the person actually
+   * started passes true.
+   */
+  sound?: boolean;
 }
 
 // Small proof-strip brackets — a compact version of the corner brackets
@@ -322,7 +335,7 @@ function SignalBars({ confidence, color }: { confidence: MatchConfidence; color:
   );
 }
 
-export default function VerdictCard({ data, animate = true, compact = false, cardRef }: Props) {
+export default function VerdictCard({ data, animate = true, compact = false, cardRef, sound = false }: Props) {
   const [scanComplete, setScanComplete] = useState(!animate);
   const [stampIn, setStampIn] = useState(!animate);
   const [dataIn, setDataIn] = useState(!animate);
@@ -354,6 +367,12 @@ export default function VerdictCard({ data, animate = true, compact = false, car
         // change; nothing about it eases, fades, or settles.
         setScanComplete(true);
         setShowFlash(true);
+        // Same frame as the slam and the flash. Visual and audio confirmation
+        // are one event, not two: a tone that trails the stamp by even 100ms
+        // reads as a reaction to the card rather than as part of it.
+        if (sound) {
+          playVerdictTone(data.mode === "UNRESOLVED" ? "UNVERIFIED" : data.verdict);
+        }
         // One frame of verdict colour across the viewport. The class runs a
         // 90ms in-and-out, and the node is unmounted right after so it can
         // never linger as a coloured wash over the page, which is what the
@@ -371,7 +390,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
       clearInterval(raf);
       timers.forEach(clearTimeout);
     };
-  }, [animate]);
+  }, [animate, sound, data.mode, data.verdict]);
 
   const isVerdict = data.mode === "VERDICT";
   const isFinder = data.mode === "FINDER";

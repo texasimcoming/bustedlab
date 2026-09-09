@@ -68,5 +68,9 @@ Nothing below is required to run the app; each one enables a capability.
 - **No invented people.** No testimonials, no activity notifications, no names.
 - **Animation is light, not motion.** No `translateY` on hover, nothing that
   borrows the physics of a physical object.
+- **The verdict tone fires only on a card the user asked for.** It defaults on,
+  it is muted from the nav on every screen, and it never fires on the landing
+  page reference card. `VerdictCard`'s `sound` prop defaults to `false` for
+  exactly that reason.
 - **A confident verdict requires an observed retail price**, a verified visual
   match, and a real gap. Two out of three renders as `FINDER`.

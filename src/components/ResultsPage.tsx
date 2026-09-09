@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import VerdictCard, { VerdictData, VerdictType, CardMode, MatchConfidence } from "@/components/VerdictCard";
+import SoundToggle from "@/components/SoundToggle";
 
 interface ScanResult {
   found: boolean;
@@ -178,14 +179,17 @@ export default function ResultsPage({
           <img src="/logo.jpg" alt="BustedLab" width={32} height={32} style={{ borderRadius: "8px", display: "block", objectFit: "cover" }} />
           <span style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "700", fontSize: "16px", letterSpacing: "-0.4px", color: "#eeeef6" }}>BustedLab</span>
         </div>
-        <button onClick={onReset} style={{ background: "transparent", color: "rgba(238,238,246,0.5)", border: "1px solid rgba(255,255,255,0.09)", cursor: "pointer", transition: "all 0.18s ease", fontFamily: "var(--font-sans), sans-serif", borderRadius: "8px", padding: "7px 16px", fontSize: "13px" }}>
-          {isUnresolved ? "Try another scan" : "Check another"}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <SoundToggle />
+          <button onClick={onReset} style={{ background: "transparent", color: "rgba(238,238,246,0.5)", border: "1px solid rgba(255,255,255,0.09)", cursor: "pointer", transition: "color 0.18s ease, border-color 0.18s ease", fontFamily: "var(--font-sans), sans-serif", borderRadius: "8px", padding: "7px 16px", fontSize: "13px" }}>
+            {isUnresolved ? "Try another scan" : "Check another"}
+          </button>
+        </div>
       </nav>
 
       <div style={{ maxWidth: "520px", margin: "0 auto", padding: "16px 24px 60px", zIndex: 2, position: "relative" }}>
         <div style={{ marginBottom: "12px" }}>
-          <VerdictCard data={verdictData} animate={true} compact={isMobile} cardRef={cardRef} />
+          <VerdictCard data={verdictData} animate={true} compact={isMobile} cardRef={cardRef} sound />
         </div>
 
         {isUnresolved ? (
