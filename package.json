@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "check:verdicts": "node --experimental-strip-types --no-warnings scripts/check-verdicts.mjs",
-    "check": "tsc --noEmit && eslint . && npm run check:verdicts"
+    "check:identification": "node --experimental-strip-types --no-warnings scripts/check-identification.mjs",
+    "check": "tsc --noEmit && eslint . && npm run check:verdicts && npm run check:identification"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",

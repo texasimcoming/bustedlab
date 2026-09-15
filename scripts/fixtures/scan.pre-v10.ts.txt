@@ -1,64 +1,19 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * FROZEN FIXTURE - the scan engine as it was BEFORE the v10 identification
+ * fix. Do not edit, do not "improve", do not fix its bugs. It exists for one
+ * reason: scripts/check-identification.mjs runs it against the same mocked
+ * Lens responses as the current engine, so the claim "the old code returned
+ * the wrong product here" is demonstrated rather than asserted. If this file
+ * ever starts passing those scenarios, the check fails on purpose - it would
+ * mean the fixture no longer contains the bug it documents.
+ *
+ * Deliberately named .ts.txt so no compiler, linter or bundler in this repo
+ * ever looks at it. The check script reads it as text and loads it directly.
+ * ───────────────────────────────────────────────────────────────────────── */
 /**
- * BustedLab Scan Engine v10 - identify first, price second. Lens-first,
- * verified against the real photo, price/link always from the same record,
+ * BustedLab Scan Engine v9.1 - Lens-first, verified, reads the real product
+ * page whenever one can be found, price/link always from the same record,
  * and honest about locality without sacrificing search depth for it.
- *
- * v10 — IDENTIFICATION IS NEVER SUBORDINATED TO PRICE. This is the
- * accuracy rewrite, and it is worth stating plainly what was wrong,
- * because the failure was not one bug but one mistaken idea repeated in
- * five places: that a candidate's price is a reasonable thing to rank and
- * filter by BEFORE anyone has established what the candidate is.
- *
- *   1. Both Lens readers deleted every visual match that carried no price,
- *      as their first operation. Lens returns visual matches whether or
- *      not Google parsed a price from them, and the single most visually
- *      identical result very often has none (a brand's own product page,
- *      an editorial piece, a marketplace listing with the price behind a
- *      script). Those were thrown away before anything looked at them.
- *   2. Every candidate producer then sorted what survived cheapest-first,
- *      which destroyed Lens's best-match-first ordering — the one
- *      identification signal in the whole response.
- *   3. The verification gate checked the first five candidates, which
- *      after (2) meant the five CHEAPEST, never the five most similar.
- *   4. When none of those five matched, the gate returned candidates[0] —
- *      the cheapest arbitrary row in the list — as the "closest match".
- *   5. The rebrand and direct-retailer layers replaced the chosen product
- *      on price alone, so a cheaper "maybe" could evict a confirmed match.
- *
- * Together those produced exactly the reported failures: a photo of Ralph
- * Lauren eyeglasses answered with an unrelated brand (correct match
- * unpriced, deleted at step 1; nothing else matched; step 4 returned the
- * cheapest row), and a photo of one Under Armour bag answered with a
- * different, cheaper Under Armour bag (correct match priced but not
- * cheapest, buried by step 2, outside the window at step 3).
- *
- * What replaces it, which is the same two-step Google itself runs:
- *   - Every visual match with an image is kept, in the engine's own order.
- *     A missing image disqualifies a candidate (the gate has nothing to
- *     compare); a missing price never does.
- *   - Candidates are reordered only by identity evidence — engine rank,
- *     plus a boost for carrying the brand the vision pass read off the
- *     photo — and that reordering can never remove a candidate.
- *   - The gate checks a wide window in two waves, the second spent only
- *     when the first confirmed nothing, so a correct match sitting at rank
- *     seven is reachable.
- *   - Within the best confidence tier it found, the CHEAPEST record wins.
- *     Identity first, price second. That single rule serves "am I being
- *     overcharged?" and "where is it cheapest?" identically, which is why
- *     there is no longer any asymmetry between the two intents: both need
- *     the real floor price for the object in the photo, and neither is
- *     served by a cheap price for a different object.
- *   - A confirmed product with no price of its own is then PRICED by a
- *     second search against its now-accurate name, whose results go back
- *     through the same visual gate before any of their prices are
- *     believed.
- *   - Nothing verified at all still returns the engine's best-ranked
- *     candidate, labeled unverified, never the cheapest arbitrary one.
- *   - A challenger from a later layer only displaces the chosen product if
- *     it is at least as well identified (shouldReplace).
- *   - If a confirmed product has no price anywhere, the scan resolves to
- *     UNRESOLVED rather than hanging a category-average estimate off a
- *     real merchant link.
  *
  * v9.1 — locality is a DISCLOSURE, not a search filter. Every Serper/SerpApi
  * shopping, Lens, organic-search, and merchant-link-resolution call is
@@ -127,16 +82,9 @@
  * overlapping generic category term) — this is what stops a "jade roller"
  * search from accepting a "needle roller" result.
  *
- * Cost per scan. The identification calls run on the strongest available
- * model deliberately (see IDENTIFY_MODEL / VERIFY_MODEL below), so this is
- * materially higher than a Haiku-only pipeline: roughly $0.02-0.04 for a
- * typical scan where Lens hits and a top candidate confirms, and up to
- * ~$0.10-0.15 in the worst case where every fallback layer fires and every
- * verification window is fully spent. The prompt-cached reference image is
- * what keeps a wide candidate window from multiplying that figure. Search
- * calls (Lens/Shopping/retailer/link resolution) remain ~$0.004-0.01.
- * Moving the two identification calls to a smaller model is a one-line
- * change and an explicit accuracy-for-cost decision.
+ * Cost per scan (worst case, all layers + fallback tiers hit):
+ *   ~$0.0017 Haiku vision (extract) + ~$0.0005 Haiku (query enrichment)
+ *   + ~$0.0017 Haiku vision (verify) + ~$0.004 Lens/Shopping/Search calls = ~$0.009
  */
 
 import { put, del } from "@vercel/blob";
@@ -146,63 +94,6 @@ import { LENS_BLOB_PREFIX } from "@/lib/constants";
 // can publish the same thresholds the engine applies, and so the calibration
 // check can execute the real function rather than a copy of it.
 import { calculateVerdict } from "@/lib/verdict";
-
-// ════════════════════════════════════════════════════════════════
-// MODELS.
-//
-// Two calls in this file decide WHAT the photo shows: the vision
-// extraction that reads the product off the image, and the verification
-// gate that decides whether a candidate listing is the same physical
-// object. Every number on the card is downstream of those two decisions,
-// so neither is a place to economise: a weaker model here does not
-// produce a slightly less polished answer, it produces a confident answer
-// about the wrong object, which is the one failure this product cannot
-// survive. Both run on the strongest available model, pinned at
-// temperature 0 so the same photo always resolves the same way.
-//
-// The verification gate is the expensive one because it runs once per
-// candidate. Two things keep a wide candidate window affordable rather
-// than something to trim: the reference image is sent as a cached prompt
-// prefix (see verifyVisualMatch), so only the first comparison in a scan
-// pays full price for it, and the window is checked in waves, with the
-// second wave only spent when the first found no confirmed match.
-//
-// Moving either of these to a cheaper model is a one-line change and a
-// deliberate accuracy-for-cost trade, not a tuning knob.
-const IDENTIFY_MODEL = "claude-opus-5";
-const VERIFY_MODEL = "claude-opus-5";
-
-// ════════════════════════════════════════════════════════════════
-// TIME BUDGET.
-//
-// The API route this runs behind has a hard ceiling, and a response that
-// never arrives is not a more accurate response - it is no result at all,
-// which is strictly the worst outcome available. So the layers that ADD
-// to an answer already established (the second verification wave, the
-// pricing search for a confirmed-but-unpriced product, the rebrand and
-// direct-retailer sweeps) check the clock before they start and are
-// skipped when there is not enough time left to finish them honestly.
-//
-// Nothing that establishes identity is ever skipped for time: the Lens
-// call and the first verification wave always run.
-const SCAN_BUDGET_MS = 47_000;
-const VERIFY_WAVE_COST_MS = 13_000;
-const PRICING_SEARCH_COST_MS = 22_000;
-const ALTERNATIVE_LAYER_COST_MS = 24_000;
-
-function createBudget(totalMs = SCAN_BUDGET_MS) {
-  const startedAt = Date.now();
-  return {
-    remaining: () => totalMs - (Date.now() - startedAt),
-    allows: (costMs: number) => totalMs - (Date.now() - startedAt) >= costMs,
-  };
-}
-type Budget = ReturnType<typeof createBudget>;
-
-const CONFIDENCE_RANK = { unverified: 0, likely: 1, exact: 2 } as const;
-function rankConfidence(confidence: "exact" | "likely" | "unverified"): number {
-  return CONFIDENCE_RANK[confidence];
-}
 
 export interface ScanResult {
   found: boolean;
@@ -264,32 +155,12 @@ interface VisionExtraction {
 }
 
 interface ShoppingCandidate {
-  // 0 means this record publishes no price. That is a normal, common state
-  // for a Google Lens visual match (a brand's own page, an editorial
-  // write-up, a marketplace listing Google parsed no price from) and it is
-  // NOT a reason to discard the record: it is frequently the most visually
-  // identical result in the whole response. A price for it gets found
-  // separately, after identification (see priceVerifiedIdentity).
   price: number;
   imageUrl: string;
   productUrl: string;
   source: string;
   title: string;
   productId?: string; // SerpApi product_id, when present — enables merchant-link resolution
-  // Position in the ENGINE's own ordering, 0 being its best match. Google
-  // Lens returns visual matches best-match-first, and that ordering is the
-  // identification signal — it is the part of the response that says "this
-  // is the same object". It used to be destroyed by a price sort before
-  // anything had looked at it, which is how price became a precondition
-  // for being identified at all.
-  rank: number;
-}
-
-// What an earlier layer already read about the product, used to ORDER
-// candidates for the identification gate. Never used to filter them.
-interface IdentityHints {
-  brand?: string;
-  productName?: string;
 }
 
 interface ShoppingMatch {
@@ -375,7 +246,7 @@ async function extractFromImage(imageBase64: string, mimeType: string): Promise<
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: IDENTIFY_MODEL,
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 350,
         temperature: 0,
         messages: [{
@@ -407,7 +278,7 @@ CRITICAL: productName must include the defining material/type descriptor wheneve
           ],
         }],
       }),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(10000),
     });
 
     const data = await res.json();
@@ -442,49 +313,30 @@ async function verifyVisualMatch(
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: VERIFY_MODEL,
-        max_tokens: 200,
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 150,
         temperature: 0,
         messages: [{
           role: "user",
           content: [
-            { type: "text", text: "IMAGE A (the photo being scanned):" },
-            {
-              type: "image",
-              source: { type: "base64", media_type: originalMimeType, data: originalImageBase64 },
-              // The reference photo is byte-identical for every candidate
-              // in a scan, so it is marked as a cache breakpoint: the
-              // first comparison writes it and every later one reads it
-              // back at a fraction of the cost. This is what makes
-              // checking a WIDE candidate window affordable, which is the
-              // whole point — a narrow window is how a correct match
-              // sitting at rank seven stayed invisible.
-              cache_control: { type: "ephemeral" },
-            },
-            { type: "text", text: "IMAGE B (a candidate product listing):" },
+            { type: "text", text: "IMAGE A (original):" },
+            { type: "image", source: { type: "base64", media_type: originalMimeType, data: originalImageBase64 } },
+            { type: "text", text: "IMAGE B (candidate product listing):" },
             { type: "image", source: { type: "base64", media_type: candidateBase64.mimeType, data: candidateBase64.data } },
             {
               type: "text",
-              text: `Is IMAGE B the exact same physical product as IMAGE A — same model, same design, same distinguishing features — or merely a similar item of the same kind?
-
-Judge the product only. IMAGE A is usually a photo or a screenshot, so ignore background, cropping, lighting, viewing angle, scale, watermarks, captions, on-screen text and app interface elements. IMAGE B is usually a catalogue photo of the same class of object on a plain background.
-
-Weigh these in order:
-1. Brand markings. If both images show a logo, wordmark or label and they belong to DIFFERENT brands, the answer is "different" no matter how alike the shapes are.
-2. Model-defining structure: silhouette, proportions, panel and seam layout, hardware, closures, frame and lens shape, control layout, and the number and placement of parts.
-3. Colourway and finish. A different colour of the same model is "similar", not "exact".
-
+              text: `Is IMAGE B showing the exact same physical product as IMAGE A, with the same design, same shape and same distinguishing features, and not just a similar item in the same category?
 Return ONLY JSON:
-{"match": "exact" | "similar" | "different", "reasoning": "one short sentence naming the feature that decided it"}
-"exact" = the same specific product and the same model, high confidence.
-"similar" = same category, or same brand, but you cannot confirm it is the identical model (different colorway, different design details, a generic stock photo).
+{"match": "exact" | "similar" | "different", "reasoning": "one short sentence"}
+"exact" = same specific product, high confidence.
+"similar" = same category/type but cannot confirm it's the identical item (different colorway, different design details, generic stock photo, etc).
 "different" = clearly not the same product.
 Be strict. Default to "similar" or "different" when uncertain. Never guess "exact".`,
             },
           ],
         }],
       }),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(10000),
     });
 
     const data = await res.json();
@@ -574,71 +426,25 @@ async function searchLensViaSerpApi(imageUrl: string): Promise<ShoppingMatch | n
     if (!res.ok) return null;
     const data = await res.json();
 
-    // ── THE IDENTIFICATION FIX ──
-    // Lens answers "what is this object". It only sometimes also answers
-    // "what does it cost", and those are two different questions.
-    //
-    // What used to happen here: every match without a price was deleted as
-    // the very first operation, and what survived was then sorted
-    // cheapest-first. Both halves of that destroyed identification. The
-    // filter threw away the most visually identical result in the response
-    // whenever Google had no price for it — routine for a brand's own
-    // product page — and the sort replaced Lens's best-match-first
-    // ordering, the one real identification signal in the payload, with an
-    // ordering that knows nothing about what the photo shows. The
-    // verification gate downstream then saw the five CHEAPEST rows instead
-    // of the five most similar ones, and when none of them matched it
-    // presented the cheapest row as the "closest match". That is the exact
-    // mechanism by which a photo of Ralph Lauren eyeglasses came back as an
-    // unrelated brand, and by which a photo of one Under Armour bag came
-    // back as a different, cheaper Under Armour bag.
-    //
-    // Now: every match Google returned is kept in the order Google returned
-    // it, with `exact_matches` (its own "this is the same image" set, when
-    // present) ahead of `visual_matches`. Price is recorded when there is
-    // one and left at 0 when there is not. Nothing is ranked, filtered or
-    // discarded by price before the gate has had a chance to check it.
-    //
-    // (The exact_matches shape is SerpApi-documented but not verified
-    // against a live response from here, so it is parsed defensively: a
-    // missing or differently-shaped field simply contributes nothing.)
-    const ordered = [
-      ...(Array.isArray(data.exact_matches) ? data.exact_matches : []),
-      ...(Array.isArray(data.visual_matches) ? data.visual_matches : []),
-    ] as Record<string, unknown>[];
+    const matches = (data.visual_matches || [])
+      .filter((m: Record<string, unknown>) => {
+        const price = m.price as { extracted_value?: number } | undefined;
+        return typeof price?.extracted_value === "number" && price.extracted_value > 0.5 && m.thumbnail;
+      })
+      .map((m: Record<string, unknown>) => {
+        const price = m.price as { extracted_value: number };
+        return {
+          price: price.extracted_value,
+          title: String(m.title || ""),
+          imageUrl: String(m.thumbnail || ""),
+          productUrl: String(m.link || ""),
+          source: String(m.source || ""),
+          productId: m.product_id ? String(m.product_id) : undefined,
+        };
+      })
+      .sort((a: { price: number }, b: { price: number }) => a.price - b.price);
 
-    const candidates: ShoppingCandidate[] = [];
-    const seen = new Set<string>();
-    for (const m of ordered) {
-      // A thumbnail is the ONE genuinely required field. The gate compares
-      // images, so a candidate with no image cannot be checked, and an
-      // uncheckable candidate is not a candidate. Everything else,
-      // including the price, is optional.
-      const imageUrl = String(m.thumbnail || "");
-      if (!imageUrl) continue;
-
-      const productUrl = String(m.link || "");
-      const dedupeKey = productUrl || imageUrl;
-      if (seen.has(dedupeKey)) continue;
-      seen.add(dedupeKey);
-
-      const price = m.price as { extracted_value?: number } | undefined;
-      const extracted = typeof price?.extracted_value === "number" ? price.extracted_value : 0;
-      candidates.push({
-        price: extracted > 0.5 ? extracted : 0,
-        title: String(m.title || ""),
-        imageUrl,
-        productUrl,
-        source: String(m.source || ""),
-        productId: m.product_id ? String(m.product_id) : undefined,
-        rank: candidates.length,
-      });
-      // Far more than the gate will ever check. Bounded only so a
-      // hundred-row response does not get carried around for no reason.
-      if (candidates.length >= 40) break;
-    }
-
-    return buildShoppingMatch(candidates);
+    return buildShoppingMatch(matches);
   } catch {
     return null;
   }
@@ -666,30 +472,23 @@ async function searchLensViaSerper(imageUrl: string): Promise<ShoppingMatch | nu
     if (!res.ok) return null;
     const data = await res.json();
 
-    // Same two fixes as the SerpApi path above: an unpriced visual match
-    // is kept (it is often the best match), and the engine's own
-    // best-match-first order is preserved instead of being replaced with a
-    // price sort. A missing image is still disqualifying, because the
-    // verification gate has nothing to compare without one.
     const raw: Record<string, unknown>[] = data.organic || data.visualMatches || data.matches || [];
-    const candidates: ShoppingCandidate[] = [];
-    for (const m of raw) {
-      const imageUrl = String(m.imageUrl || m.thumbnail || "");
-      if (!imageUrl) continue;
-      const priceRaw = m.price ?? m.extractedPrice;
-      const parsedPrice = parseFloat(String(priceRaw ?? "").replace(/[^0-9.]/g, "")) || 0;
-      candidates.push({
-        price: parsedPrice > 0.5 ? parsedPrice : 0,
-        title: String(m.title || ""),
-        imageUrl,
-        productUrl: String(m.link || m.url || ""),
-        source: String(m.source || m.domain || ""),
-        rank: candidates.length,
-      });
-      if (candidates.length >= 40) break;
-    }
+    const matches = raw
+      .map((m) => {
+        const priceRaw = m.price ?? m.extractedPrice;
+        const priceStr = String(priceRaw ?? "0").replace(/[^0-9.]/g, "");
+        return {
+          price: parseFloat(priceStr) || 0,
+          title: String(m.title || ""),
+          imageUrl: String(m.imageUrl || m.thumbnail || ""),
+          productUrl: String(m.link || m.url || ""),
+          source: String(m.source || m.domain || ""),
+        };
+      })
+      .filter((m) => m.price > 0.5 && m.imageUrl)
+      .sort((a, b) => a.price - b.price);
 
-    return buildShoppingMatch(candidates);
+    return buildShoppingMatch(matches);
   } catch {
     return null;
   }
@@ -750,25 +549,17 @@ async function searchShoppingViaSerper(query: string): Promise<ShoppingMatch | n
     if (!res.ok) return null;
     const data = await res.json();
 
-    // A text shopping search is a PRICE source, so a row with no price
-    // contributes nothing here — unlike a Lens visual match, which is an
-    // IDENTIFICATION source and is kept whether it carries a price or not.
-    // What is no longer done is the price sort: the engine's own relevance
-    // order is what decides which rows the verification gate looks at, and
-    // sorting by price meant a correct match could only be identified if
-    // it also happened to be the cheapest thing in the response. The
-    // cheapest CONFIRMED row is still what wins — chosen after
-    // identification, in verifyCandidates, rather than before it.
-    const priced = ((data.shopping || []) as Record<string, unknown>[])
-      .map((r) => ({
+    const results = (data.shopping || [])
+      .filter((r: Record<string, unknown>) => r.price)
+      .map((r: Record<string, unknown>) => ({
         price: parseFloat(String(r.price || "0").replace(/[^0-9.]/g, "")) || 0,
         title: String(r.title || ""),
         imageUrl: String(r.imageUrl || r.thumbnailUrl || ""),
         productUrl: String(r.link || ""),
         source: String(r.source || ""),
       }))
-      .filter((r) => r.price > 0.5 && r.imageUrl);
-    const results: ShoppingCandidate[] = priced.map((r, i) => ({ ...r, rank: i }));
+      .filter((r: { price: number }) => r.price > 0.5)
+      .sort((a: { price: number }, b: { price: number }) => a.price - b.price);
 
     return buildShoppingMatch(filterRelevantCandidates(results, query));
   } catch {
@@ -787,19 +578,17 @@ async function searchShoppingViaSerpApi(query: string): Promise<ShoppingMatch | 
     if (!res.ok) return null;
     const data = await res.json();
 
-    // Relevance order preserved, price sort removed — same reasoning as
-    // the Serper shopping path above.
-    const results: ShoppingCandidate[] = ((data.shopping_results || []) as Record<string, unknown>[])
-      .filter((r) => typeof r.extracted_price === "number" && (r.extracted_price as number) > 0.5 && r.thumbnail)
-      .map((r, i) => ({
+    const results = (data.shopping_results || [])
+      .filter((r: Record<string, unknown>) => typeof r.extracted_price === "number" && r.extracted_price > 0.5 && r.thumbnail)
+      .map((r: Record<string, unknown>) => ({
         price: r.extracted_price as number,
         title: String(r.title || ""),
         imageUrl: String(r.thumbnail || ""),
         productUrl: String(r.product_link || r.link || ""),
         source: String(r.source || ""),
         productId: r.product_id ? String(r.product_id) : undefined,
-        rank: i,
-      }));
+      }))
+      .sort((a: { price: number }, b: { price: number }) => a.price - b.price);
 
     return buildShoppingMatch(filterRelevantCandidates(results, query));
   } catch {
@@ -919,11 +708,9 @@ async function searchDirectRetailer(provider: RetailerProvider, query: string): 
     if (!res.ok) return null;
     const data = await res.json();
 
-    // The retailer's own relevance ranking is a better first guess at
-    // WHICH product this is than its price is, so that order is kept and
-    // the cheapest verified listing is picked downstream, after the gate.
-    const results: ShoppingCandidate[] = provider.parse(data)
-      .map((r, i) => ({ ...r, source: provider.name, rank: i }));
+    const results = provider.parse(data)
+      .map(r => ({ ...r, source: provider.name }))
+      .sort((a, b) => a.price - b.price);
 
     return buildShoppingMatch(filterRelevantCandidates(results, query));
   } catch {
@@ -971,37 +758,16 @@ async function searchShoppingWithFallbacks(
   return null;
 }
 
-// ════════════════════════════════════════════════════════════════
-// Candidate lists are no longer price-ordered, so nothing here may be read
-// positionally. `candidates` arrives in the engine's own best-match-first
-// order and stays that way, because that order is what the identification
-// gate needs; the price range is computed across the whole list instead of
-// being taken from its two ends, and the list may legitimately contain
-// records with no price at all.
-//
-// The pre-verification lead is still the cheapest priced record — what it
-// has always been — and lowestPrice is still that same record's own price
-// rather than a minimum borrowed from a different row, because price and
-// link have to come from one record (see applyVerifiedCandidate). Every
-// path that has a reference image overwrites this lead with the verified
-// winner. The one path that does not is a URL scan of a page with no
-// usable product photo, where there is no visual identification signal to
-// prefer and "cheapest relevant listing" is the honest answer.
-// ════════════════════════════════════════════════════════════════
 function buildShoppingMatch(candidates: ShoppingCandidate[]): ShoppingMatch | null {
   if (candidates.length === 0) return null;
-  const priced = candidates.filter(c => c.price > 0);
-  const lead = priced.length > 0
-    ? priced.reduce((best, c) => (c.price < best.price ? c : best), priced[0])
-    : candidates[0];
   return {
-    title: lead.title,
-    lowestPrice: lead.price,
-    highestPrice: priced.length > 0 ? Math.max(...priced.map(c => c.price)) : 0,
-    imageUrl: lead.imageUrl,
-    productUrl: lead.productUrl,
-    source: lead.source,
-    productId: lead.productId,
+    title: candidates[0].title,
+    lowestPrice: candidates[0].price,
+    highestPrice: candidates[candidates.length - 1].price,
+    imageUrl: candidates[0].imageUrl,
+    productUrl: candidates[0].productUrl,
+    source: candidates[0].source,
+    productId: candidates[0].productId,
     candidates,
   };
 }
@@ -1274,226 +1040,26 @@ function cleanTitle(raw: string): string {
 }
 
 // ════════════════════════════════════════════════════════════════
-// THE IDENTIFICATION GATE.
-//
-// This function decides what the photo shows. Everything on the card —
-// the price, the link, the markup, the verdict — is downstream of it, so
-// it is the single most accuracy-critical function in the codebase. Four
-// things about it are deliberate:
-//
-// 1. It reads candidates in the ENGINE's relevance order, not in price
-//    order. Price order used to decide which five candidates got checked
-//    at all, which made being cheap a precondition for being identified.
-// 2. It reorders that list by the identity hints an earlier layer already
-//    read off the photo — the brand, the product words — as a ranking
-//    boost that never deletes anything. This is what puts a listing that
-//    actually carries the brand on the photo ahead of an unrelated brand
-//    with a similar shape.
-// 3. It checks a WIDE window, in two waves. The first wave covers the
-//    engine's top few; the second only runs when nothing in the first
-//    came back "exact", which is exactly the case where the right answer
-//    is sitting further down the list. A correct match at rank seven used
-//    to be unreachable.
-// 4. Within the best confidence tier it found, it picks the CHEAPEST
-//    record. That one rule serves both questions this product answers:
-//    "am I being overcharged" needs the real floor price for the thing in
-//    the photo, and "where is it cheapest" needs the same floor price for
-//    the same thing. Neither is served by a cheap listing for a different
-//    object, which is what price-first ordering produced.
-//
-// When nothing verifies at all, it returns the engine's own best-ranked
-// candidate and the caller labels it unverified. The old fallback returned
-// candidates[0] of a price-sorted list: an arbitrary cheap item, presented
-// as "closest match". That is how a clear photo of Ralph Lauren glasses
-// came back as a completely unrelated brand.
+// Verify a shopping candidate list against a real reference image. Runs
+// all candidate checks concurrently to bound worst-case latency.
 // ════════════════════════════════════════════════════════════════
-const VERIFY_WAVE_ONE = 5;
-const VERIFY_WINDOW = 12;
-
-// A free relevance boost, applied to the ORDER candidates are checked in
-// and never used to remove any of them. The vision pass has already read
-// the brand and the product words off the photo, so a candidate whose
-// title or merchant carries that brand is likelier to be the same object
-// than one that does not, and it deserves to be looked at first. It cannot
-// manufacture a false positive on its own: every candidate it promotes
-// still has to pass the visual gate to count for anything.
-function rankForVerification(candidates: ShoppingCandidate[], hints?: IdentityHints): ShoppingCandidate[] {
-  const brandWords = significantWords(hints?.brand || "");
-  const nameWords = significantWords(hints?.productName || "");
-  if (brandWords.length === 0 && nameWords.length === 0) return candidates;
-
-  const scored = candidates.map((candidate, index) => {
-    const titleWords = new Set(significantWords(candidate.title));
-    const sourceWords = new Set(significantWords(candidate.source));
-    const brandHit = brandWords.length > 0 && brandWords.every(w => titleWords.has(w) || sourceWords.has(w));
-    const nameHits = nameWords.filter(w => titleWords.has(w)).length;
-    // Engine rank stays the primary signal. A full brand match is worth
-    // four places and each matching product word half a place: enough to
-    // pull the right candidate into the first wave, never enough to bury a
-    // strong visual match under keyword noise.
-    return { candidate, index, score: candidate.rank - (brandHit ? 4 : 0) - nameHits * 0.5 };
-  });
-
-  scored.sort((a, b) => (a.score === b.score ? a.index - b.index : a.score - b.score));
-  return scored.map(s => s.candidate);
-}
-
 async function verifyCandidates(
   match: ShoppingMatch,
   referenceImageBase64: string,
-  referenceMimeType: string,
-  hints?: IdentityHints,
-  budget?: Budget
+  referenceMimeType: string
 ): Promise<{ best: ShoppingCandidate; confidence: "exact" | "likely" | "unverified" }> {
-  const ordered = rankForVerification(match.candidates, hints).slice(0, VERIFY_WINDOW);
-  if (ordered.length === 0) return { best: match.candidates[0], confidence: "unverified" };
+  const pool = match.candidates.slice(0, 5);
+  const verifications = await Promise.all(
+    pool.map(candidate => verifyVisualMatch(referenceImageBase64, referenceMimeType, candidate.imageUrl))
+  );
 
-  const checked: { candidate: ShoppingCandidate; result: VerificationResult }[] = [];
-
-  // The head of the first wave is checked on its own so the reference
-  // image lands in the prompt cache before the rest of the wave fires
-  // concurrently against it. It is also the likeliest match, so this is
-  // usually the comparison that matters most anyway. Every later wave runs
-  // fully concurrent against the now-warm cache.
-  const [head, ...firstRest] = ordered.slice(0, VERIFY_WAVE_ONE);
-  checked.push({
-    candidate: head,
-    result: await verifyVisualMatch(referenceImageBase64, referenceMimeType, head.imageUrl),
-  });
-  if (firstRest.length > 0) {
-    const results = await Promise.all(
-      firstRest.map(c => verifyVisualMatch(referenceImageBase64, referenceMimeType, c.imageUrl))
-    );
-    firstRest.forEach((c, i) => checked.push({ candidate: c, result: results[i] }));
+  for (let i = 0; i < pool.length; i++) {
+    if (verifications[i].match === "exact") return { best: pool[i], confidence: "exact" };
   }
-
-  // Second wave, only when the first produced no confirmed identity. A
-  // buried correct match is precisely what a narrow window misses, and it
-  // is worth the extra calls. When the top of the list has already
-  // confirmed, spending them would only be hunting for a cheaper copy of
-  // something the direct-retailer layer downstream already hunts for.
-  const secondWave = ordered.slice(VERIFY_WAVE_ONE);
-  const confirmed = () => checked.some(c => c.result.match === "exact");
-  if (!confirmed() && secondWave.length > 0 && (!budget || budget.allows(VERIFY_WAVE_COST_MS))) {
-    const results = await Promise.all(
-      secondWave.map(c => verifyVisualMatch(referenceImageBase64, referenceMimeType, c.imageUrl))
-    );
-    secondWave.forEach((c, i) => checked.push({ candidate: c, result: results[i] }));
+  for (let i = 0; i < pool.length; i++) {
+    if (verifications[i].match === "similar") return { best: pool[i], confidence: "likely" };
   }
-
-  // The two tiers are not the same decision, and treating them as one
-  // would smuggle the original bug back in a smaller form.
-  //
-  // "exact" means identity is CONFIRMED, so the cheapest confirmed record
-  // wins: identity first, price second. Every record in that tier is the
-  // same object, so choosing the cheapest is choosing a better price for
-  // the thing in the photo, which is what both intents want.
-  //
-  // "similar" means identity is NOT confirmed — same category, or same
-  // brand, nothing more. In that tier the engine's own ranking is the
-  // strongest evidence available, and price must not override it: a
-  // cheaper lookalike eight places down is not a better price, it is a
-  // likelier wrong product wearing a smaller number. So the best-ranked
-  // record wins there, preferring one that publishes a price because a
-  // record without one cannot carry the figure on the card.
-  //
-  // In both tiers, when the chosen record has no price at all — normal for
-  // Lens, where the best match is often a brand's own page — the caller
-  // prices it with a second, now-accurate search (priceVerifiedIdentity).
-  const pick = (tier: "exact" | "similar", rule: "cheapest" | "best-ranked"): ShoppingCandidate | null => {
-    // `checked` is in ranked order (wave one head, then the rest of wave
-    // one, then wave two), so index 0 of a tier is its best-ranked member.
-    const inTier = checked.filter(c => c.result.match === tier).map(c => c.candidate);
-    if (inTier.length === 0) return null;
-    const priced = inTier.filter(c => c.price > 0);
-    if (rule === "best-ranked") return priced[0] || inTier[0];
-    if (priced.length === 0) return inTier[0];
-    return priced.reduce((best, c) => (c.price < best.price ? c : best), priced[0]);
-  };
-
-  const exact = pick("exact", "cheapest");
-  if (exact) return { best: exact, confidence: "exact" };
-  const similar = pick("similar", "best-ranked");
-  if (similar) return { best: similar, confidence: "likely" };
-
-  // Nothing verified. The honest answer is the engine's own top-ranked
-  // candidate, labeled unverified — not the cheapest thing in the list.
-  // The highest-ranked PRICED candidate is preferred only because a record
-  // with no price cannot carry the one number this product exists to show;
-  // if none of them has a price, the top-ranked one is returned and the
-  // caller refuses to invent a number for it.
-  return { best: ordered.find(c => c.price > 0) || ordered[0], confidence: "unverified" };
-}
-
-// ════════════════════════════════════════════════════════════════
-// IDENTIFY, THEN PRICE.
-//
-// Google Lens answers "what is this". It answers "what does it cost" only
-// when a merchant happened to publish a price Google could parse, which
-// for the single most visually identical result is often not the case.
-// Deleting those results was the original bug. Finding their price is the
-// fix, and it is the same two-step Google itself runs: once the gate has
-// CONFIRMED which product the photo shows, the confirmed product's own
-// title is a far better search string than anything a vision pass could
-// guess, so it drives a precise pricing search — and every listing that
-// search returns goes back through the same visual gate before a single
-// one of its prices is believed.
-//
-// The price is only adopted from a listing verified at no less confidence
-// than the identification it is pricing, and price, link, image and title
-// then all come from that one record. A title search can drift onto a
-// different variant, and an unverified price hung off a verified identity
-// would be exactly the "price from one listing, link to another" failure
-// this engine is built to refuse.
-// ════════════════════════════════════════════════════════════════
-function queryFromTitle(title: string): string {
-  const cleaned = (title || "").replace(/\s+/g, " ").trim();
-  return cleaned.length <= 110 ? cleaned : cleaned.slice(0, 110).replace(/\s+\S*$/, "");
-}
-
-async function priceVerifiedIdentity(
-  identified: ShoppingMatch,
-  confidence: "exact" | "likely",
-  referenceImageBase64: string,
-  referenceMimeType: string,
-  hints: IdentityHints,
-  budget: Budget
-): Promise<{ match: ShoppingMatch; engineUsed: string } | null> {
-  const title = queryFromTitle(identified.title);
-  if (title.length < 3) return null;
-  if (!budget.allows(PRICING_SEARCH_COST_MS)) return null;
-
-  const queries = [title, simplifyQuery(title, 6)];
-  const hinted = `${hints.brand || ""} ${hints.productName || ""}`.trim();
-  if (hinted.length >= 3) queries.push(hinted);
-
-  const found = await searchShoppingWithFallbacks(queries);
-  if (!found || found.match.lowestPrice <= 0) return null;
-
-  const verified = await verifyCandidates(found.match, referenceImageBase64, referenceMimeType, hints, budget);
-  if (rankConfidence(verified.confidence) < rankConfidence(confidence)) return null;
-  if (verified.best.price <= 0) return null;
-
-  return { match: applyVerifiedCandidate(found.match, verified), engineUsed: found.engineUsed };
-}
-
-// A challenger from a later layer only displaces the incumbent if it is at
-// least as well identified. Price alone used to be enough, which meant a
-// cheaper "likely" match could evict a confirmed "exact" one — trading the
-// thing in the photo for something that merely resembles it. A strictly
-// better identification wins even at a higher price, because a price for
-// the wrong product is not a cheaper price, it is a wrong answer.
-function shouldReplace(
-  incumbentConfidence: "exact" | "likely" | "unverified",
-  incumbentPrice: number,
-  challengerConfidence: "exact" | "likely" | "unverified",
-  challengerPrice: number
-): boolean {
-  if (challengerConfidence === "unverified" || challengerPrice <= 0) return false;
-  const incumbentRank = rankConfidence(incumbentConfidence);
-  const challengerRank = rankConfidence(challengerConfidence);
-  if (challengerRank !== incumbentRank) return challengerRank > incumbentRank;
-  return challengerPrice < (incumbentPrice > 0 ? incumbentPrice : Infinity);
+  return { best: match.candidates[0], confidence: "unverified" };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1752,21 +1318,11 @@ async function extractPageProductData(html: string): Promise<PageProductData> {
 // ════════════════════════════════════════════════════════════════
 export async function scanProduct(imageBase64: string, mimeType: string, country?: string, intent?: "verdict" | "finder"): Promise<ScanResult> {
   const requesterCountry = sanitizeCountry(country);
-  const budget = createBudget();
   const vision = await extractFromImage(imageBase64, mimeType);
-  // What the vision pass read off the photo. Used to ORDER candidates for
-  // the identification gate and to build fallback queries — never to
-  // filter a candidate out. See rankForVerification.
-  const hints: IdentityHints = { brand: vision.brand, productName: vision.productName };
 
   let shopping: ShoppingMatch | null = null;
   let engineUsed = "none";
   let confidence: "exact" | "likely" | "unverified" = "unverified";
-  // The image every candidate is compared against. It is the scanned photo,
-  // unless identification ends up running off a product photo found on the
-  // seller's own page, in which case the whole verification chain stays
-  // consistent with the image that actually established the identity.
-  let reference = { data: imageBase64, mimeType };
 
   // ── Try Lens first: match on pixels, not words ──
   const lensImageUrl = await uploadForLensSearch(imageBase64, mimeType);
@@ -1783,7 +1339,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
   }
 
   if (shopping) {
-    const verified = await verifyCandidates(shopping, reference.data, reference.mimeType, hints, budget);
+    const verified = await verifyCandidates(shopping, imageBase64, mimeType);
     // Honest pass-through: a genuinely unverified visual match stays
     // unverified. It used to be silently upgraded to "likely" here, which
     // rendered as "VISUAL MATCH CONFIRMED" on a product that was never
@@ -1815,11 +1371,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
             await discardLensUpload(lensUrl);
           }
           if (shopping) {
-            // Identity is being established from the photo on the seller's
-            // own product page, so that photo becomes the reference every
-            // later check in this scan compares against.
-            reference = { data: pageImage.data, mimeType: pageImage.mimeType };
-            const verified = await verifyCandidates(shopping, reference.data, reference.mimeType, hints, budget);
+            const verified = await verifyCandidates(shopping, pageImage.data, pageImage.mimeType);
             // Same honesty fix as above - no artificial upgrade of a
             // genuinely unverified match.
             confidence = verified.confidence;
@@ -1835,7 +1387,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
         if (found) {
           shopping = found.match;
           engineUsed = `store_page_${found.engineUsed}`;
-          const verified = await verifyCandidates(shopping, reference.data, reference.mimeType, hints, budget);
+          const verified = await verifyCandidates(shopping, imageBase64, mimeType);
           confidence = verified.confidence;
           shopping = applyVerifiedCandidate(shopping, verified);
         }
@@ -1851,7 +1403,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
     if (found) {
       shopping = found.match;
       engineUsed = `store_${found.engineUsed}`;
-      const verified = await verifyCandidates(shopping, reference.data, reference.mimeType, hints, budget);
+      const verified = await verifyCandidates(shopping, imageBase64, mimeType);
       confidence = verified.confidence;
       shopping = applyVerifiedCandidate(shopping, verified);
     }
@@ -1866,105 +1418,59 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
       if (found) {
         shopping = found.match;
         engineUsed = `generic_${found.engineUsed}`;
-        const verified = await verifyCandidates(shopping, reference.data, reference.mimeType, hints, budget);
+        const verified = await verifyCandidates(shopping, imageBase64, mimeType);
         confidence = verified.confidence;
         shopping = applyVerifiedCandidate(shopping, verified);
       }
     }
   }
 
-  // ── Identify, then price. The gate has confirmed WHAT this is; if the
-  //    record it confirmed publishes no price of its own, the confirmed
-  //    name now drives a precise pricing search whose results go back
-  //    through the same gate. This is what makes keeping unpriced visual
-  //    matches safe, and it is the half of the flow Google performs
-  //    separately too. ──
-  if (shopping && confidence !== "unverified" && shopping.lowestPrice <= 0) {
-    const priced = await priceVerifiedIdentity(
-      shopping, confidence, reference.data, reference.mimeType, hints, budget
-    );
-    if (priced) {
-      shopping = priced.match;
-      engineUsed = `${engineUsed}+priced_${priced.engineUsed}`;
-    }
-  }
-
-  // ── Rebrand check + direct-retailer check, run as one step.
-  //
-  //    Rebrand: many products sold under a brand name are the same
-  //    unbranded item from the original manufacturer with a label added,
-  //    so the product gets searched once more with the brand stripped and
-  //    described only by its generic features.
-  //
-  //    Direct retailer: Google's Shopping graph structurally
-  //    under-represents several major retailers' own catalogs — a niche or
-  //    smaller-brand product frequently shows up there only via the
-  //    brand's own paid listing, with a genuinely cheaper Amazon, Walmart
-  //    or eBay listing entirely invisible to that search. Now that the
-  //    product has been identified, the CONFIRMED title drives that query
-  //    instead of the vision pass's guess at a name, which is a better
-  //    search string for the same reason it is a better pricing query.
-  //
-  //    Both are independent searches for a cheaper source of the same
-  //    product, both verified against the same reference image, and
-  //    neither depends on the other's result — running them sequentially
-  //    only spent a clock this scan does not have. Both apply to every
-  //    scan regardless of which intent the visitor chose: they happen
-  //    before the VERDICT/FINDER branch below, not after it.
-  //
-  //    Adoption goes through shouldReplace(), so a cheaper challenger can
-  //    no longer evict a better-identified incumbent. ──
-  if (shopping && budget.allows(ALTERNATIVE_LAYER_COST_MS)) {
-    const identifiedTitle = confidence !== "unverified" ? queryFromTitle(shopping.title) : "";
-    const visionQuery = (vision.brand ? `${vision.brand} ${vision.productName}` : (vision.productName || "")).trim();
-    const retailerQuery = identifiedTitle.length >= 3 ? identifiedTitle : visionQuery;
+  // ── Rebrand check: many products sold under a brand name are the same
+  //    unbranded item from the original manufacturer with a label added.
+  //    If a branded match was found, search once more with the brand name
+  //    stripped and the product described only by its generic features.
+  //    A genuinely cheaper, visually-verified unbranded match replaces the
+  //    branded one — that is the real source, not the relabeled resale. ──
+  if (shopping && vision.brand && vision.productName) {
     const unbrandedQuery = `${vision.productName} ${vision.category} ${vision.quantity}`.trim();
-    const canRebrand = !!(vision.brand && vision.productName);
-
-    const [unbrandedFound, retailerFound] = await Promise.all([
-      canRebrand
-        ? searchShoppingWithFallbacks([unbrandedQuery, vision.productName])
-        : Promise.resolve(null),
-      retailerQuery.length >= 3
-        ? searchAllDirectRetailers(retailerQuery)
-        : Promise.resolve(null),
-    ]);
-
+    const unbrandedFound = await searchShoppingWithFallbacks([unbrandedQuery, vision.productName]);
     if (unbrandedFound && unbrandedFound.match.lowestPrice > 0) {
-      const unbrandedVerified = await verifyCandidates(
-        unbrandedFound.match, reference.data, reference.mimeType, hints, budget
-      );
-      if (shouldReplace(confidence, shopping.lowestPrice, unbrandedVerified.confidence, unbrandedVerified.best.price)) {
+      const unbrandedVerified = await verifyCandidates(unbrandedFound.match, imageBase64, mimeType);
+      const unbrandedConfident = unbrandedVerified.confidence !== "unverified";
+      const currentLow = shopping.lowestPrice > 0 ? shopping.lowestPrice : Infinity;
+      if (unbrandedConfident && unbrandedFound.match.lowestPrice < currentLow) {
         shopping = applyVerifiedCandidate(unbrandedFound.match, unbrandedVerified);
         engineUsed = `unbranded_${unbrandedFound.engineUsed}`;
         confidence = unbrandedVerified.confidence;
       }
     }
+  }
 
-    if (retailerFound && retailerFound.match.lowestPrice > 0 && budget.allows(VERIFY_WAVE_COST_MS)) {
-      const retailerVerified = await verifyCandidates(
-        retailerFound.match, reference.data, reference.mimeType, hints, budget
-      );
-      if (shouldReplace(confidence, shopping.lowestPrice, retailerVerified.confidence, retailerVerified.best.price)) {
-        shopping = applyVerifiedCandidate(retailerFound.match, retailerVerified);
-        engineUsed = `direct_${retailerFound.source.toLowerCase()}`;
-        confidence = retailerVerified.confidence;
+  // ── Direct-retailer check: Google's Shopping graph structurally
+  //    under-represents several major retailers' own catalogs — a niche
+  //    or smaller-brand product frequently shows up there only via the
+  //    brand's own paid listing, with a genuinely cheaper Amazon,
+  //    Walmart, or eBay listing entirely invisible to that search. Query
+  //    those retailers' own search systems directly and, if a genuinely
+  //    cheaper verified match turns up, use it. This applies to every
+  //    scan regardless of which intent the visitor chose - it happens
+  //    before the VERDICT/FINDER branch below, not after it. ──
+  if (shopping) {
+    const retailerQuery = vision.brand ? `${vision.brand} ${vision.productName}` : (vision.productName || "");
+    if (retailerQuery.trim().length >= 3) {
+      const retailerFound = await searchAllDirectRetailers(retailerQuery.trim());
+      if (retailerFound && retailerFound.match.lowestPrice > 0) {
+        const retailerVerified = await verifyCandidates(retailerFound.match, imageBase64, mimeType);
+        const retailerConfident = retailerVerified.confidence !== "unverified";
+        const currentLow = shopping.lowestPrice > 0 ? shopping.lowestPrice : Infinity;
+        if (retailerConfident && retailerFound.match.lowestPrice < currentLow) {
+          shopping = applyVerifiedCandidate(retailerFound.match, retailerVerified);
+          engineUsed = `direct_${retailerFound.source.toLowerCase()}`;
+          confidence = retailerVerified.confidence;
+        }
       }
     }
   }
-
-  // ── Identified, but unpriceable.
-  //    Every layer above has run, including a pricing search against the
-  //    confirmed product name, and nothing anywhere published a price for
-  //    this item. There is no honest card to render: the whole result is
-  //    built around a real number attached to a real link, and pulling a
-  //    number out of a category average while linking to a listing that
-  //    never stated a price is precisely the fabrication this engine
-  //    refuses to commit. Same outcome the URL pipeline has always
-  //    produced in this situation. Only reachable now that unpriced
-  //    candidates survive to the gate at all. ──
-  const hasSourcePrice = !!shopping && shopping.lowestPrice > 0;
-  if (shopping && !hasSourcePrice) return getUnresolvedResult();
 
   // ── Determine retail price ──
   let retailPrice: number;
@@ -2014,10 +1520,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
   //    result with the real source price attached; it just never carries a
   //    confident BUSTED. ──
   const engineHadRealMatch = !!shopping;
-  // hasSourcePrice is stated explicitly rather than inferred: a wholesale
-  // figure derived from a category ratio is an estimate, and an estimate
-  // can never be the basis of a markup accusation against a named seller.
-  const pricingSupportsVerdict = hasSourcePrice && wholesalePrice > 0 && wholesalePrice < retailPrice;
+  const pricingSupportsVerdict = wholesalePrice > 0 && wholesalePrice < retailPrice;
   const retailPriceWasObserved = retailSource === "screenshot";
   // "Where is it cheapest?" is an explicit request to skip the markup
   // framing entirely, even when a confirmed verdict would otherwise be
@@ -2083,7 +1586,6 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
 // ════════════════════════════════════════════════════════════════
 export async function scanProductUrl(url: string, country?: string, intent?: "verdict" | "finder"): Promise<ScanResult> {
   const requesterCountry = sanitizeCountry(country);
-  const budget = createBudget();
 
   try {
     let parsed: URL;
@@ -2108,11 +1610,6 @@ export async function scanProductUrl(url: string, country?: string, intent?: "ve
     if (!baseQuery || baseQuery.length < 3) return getUnresolvedResult();
 
     const pageImage = pageData.imageUrl ? await fetchImageAsBase64(pageData.imageUrl) : null;
-    // There is no vision pass on this path, so the page's own title is the
-    // only identity hint available for ordering candidates. Same rule as
-    // the image path: it affects the order candidates are checked in,
-    // never whether they are checked.
-    const hints: IdentityHints = { productName: pageData.title };
 
     // ── Step 2: search, Lens-first if we have a real photo ──
     let shopping: ShoppingMatch | null = null;
@@ -2152,23 +1649,9 @@ export async function scanProductUrl(url: string, country?: string, intent?: "ve
     // ── Step 3: visual verification — only possible with a real photo.
     //    Without one, confidence honestly stays "unverified" (FINDER). ──
     if (pageImage) {
-      const verified = await verifyCandidates(shopping, pageImage.data, pageImage.mimeType, hints, budget);
+      const verified = await verifyCandidates(shopping, pageImage.data, pageImage.mimeType);
       confidence = verified.confidence;
       shopping = applyVerifiedCandidate(shopping, verified);
-
-      // Identify, then price — same second step as the image pipeline. A
-      // Lens match confirmed against this page's own product photo can
-      // easily be a record with no published price; the confirmed name is
-      // then what finds one.
-      if (confidence !== "unverified" && shopping.lowestPrice <= 0) {
-        const priced = await priceVerifiedIdentity(
-          shopping, confidence, pageImage.data, pageImage.mimeType, hints, budget
-        );
-        if (priced) {
-          shopping = priced.match;
-          engineUsed = `${engineUsed}+priced_${priced.engineUsed}`;
-        }
-      }
     }
 
     // ── Direct-retailer check: same structural fix as the image-scan
@@ -2177,25 +1660,16 @@ export async function scanProductUrl(url: string, country?: string, intent?: "ve
     //    to only show that brand's own listing, with a cheaper Amazon,
     //    Walmart, or eBay copy invisible to it. Applies before the
     //    VERDICT/FINDER branch below, so it holds for every intent. ──
-    if (shopping && pageImage && budget.allows(ALTERNATIVE_LAYER_COST_MS)) {
-      // Once the product has been identified, the confirmed title is a
-      // better retailer query than the page-derived one, for the same
-      // reason it is a better pricing query.
-      const identifiedTitle = confidence !== "unverified" ? queryFromTitle(shopping.title) : "";
-      const retailerQuery = identifiedTitle.length >= 3 ? identifiedTitle : baseQuery.trim();
-      if (retailerQuery.length >= 3) {
-        const retailerFound = await searchAllDirectRetailers(retailerQuery);
-        if (retailerFound && retailerFound.match.lowestPrice > 0) {
-          const retailerVerified = await verifyCandidates(
-            retailerFound.match, pageImage.data, pageImage.mimeType, hints, budget
-          );
-          // Same rule as the image pipeline: a cheaper challenger never
-          // evicts a better-identified incumbent.
-          if (shouldReplace(confidence, shopping.lowestPrice, retailerVerified.confidence, retailerVerified.best.price)) {
-            shopping = applyVerifiedCandidate(retailerFound.match, retailerVerified);
-            engineUsed = `url_direct_${retailerFound.source.toLowerCase()}`;
-            confidence = retailerVerified.confidence;
-          }
+    if (shopping && pageImage && baseQuery.trim().length >= 3) {
+      const retailerFound = await searchAllDirectRetailers(baseQuery.trim());
+      if (retailerFound && retailerFound.match.lowestPrice > 0) {
+        const retailerVerified = await verifyCandidates(retailerFound.match, pageImage.data, pageImage.mimeType);
+        const retailerConfident = retailerVerified.confidence !== "unverified";
+        const currentLow = shopping.lowestPrice > 0 ? shopping.lowestPrice : Infinity;
+        if (retailerConfident && retailerFound.match.lowestPrice < currentLow) {
+          shopping = applyVerifiedCandidate(retailerFound.match, retailerVerified);
+          engineUsed = `url_direct_${retailerFound.source.toLowerCase()}`;
+          confidence = retailerVerified.confidence;
         }
       }
     }
