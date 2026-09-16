@@ -59,7 +59,18 @@ async function loadEngine(sourcePath, label) {
   // Path aliases the pre-fix fixture predates, so these are optional.
   src = src
     .replace('from "@/lib/model-budget"', `from "${localModule("model-budget")}"`)
-    .replace('from "@/lib/identity-cache"', `from "${localModule("identity-cache")}"`);
+    .replace('from "@/lib/identity-cache"', `from "${localModule("identity-cache")}"`)
+    .replace('from "@/lib/gate-prompt"', `from "${localModule("gate-prompt")}"`);
+  // A path alias that reaches this point unrewritten would fail at import
+  // time with a confusing "cannot find package @/lib" - catch it here and
+  // say which one, since this is a normal thing to forget when adding a
+  // module to the engine.
+  const unresolved = src.match(/from "@\/lib\/[a-z-]+"/g);
+  if (unresolved) {
+    throw new Error(
+      `${label}: these imports need a rewrite rule in loadEngine: ${[...new Set(unresolved)].join(", ")}`
+    );
+  }
   const dir = mkdtempSync(join(tmpdir(), "bustedlab-ident-"));
   const file = join(dir, `${label}.ts`);
   writeFileSync(file, src, "utf8");
@@ -405,6 +416,42 @@ const SCENARIO_DEGRADED = {
 };
 
 // ════════════════════════════════════════════════════════════════
+// SCENARIO 9 and 10 - the gate's answer arrives broken.
+//
+// These exist because batching moved the cost of a malformed answer. With
+// one call per candidate, a truncated reply cost one candidate; with one
+// call per wave it would cost six, and a correct identification would be
+// lost to a formatting accident rather than to a judgement. Both scenarios
+// use the glasses case, where the correct product is the first candidate in
+// the wave, and both must still reach the same answer a clean run reaches.
+// ════════════════════════════════════════════════════════════════
+const SCENARIO_TRUNCATED = {
+  ...SCENARIO_GLASSES,
+  name: "Gate answer truncated mid-array (salvage guard)",
+  fault: { kind: "truncate", calls: 1 },
+  guardOnly: true,
+  expect: { titleIncludes: "PH2083", price: 99.0, confidence: "exact", platform: "Amazon" },
+  expectPreFix: null,
+};
+
+const SCENARIO_CALL_FAILS = {
+  ...SCENARIO_GLASSES,
+  name: "First gate call fails outright (retry guard)",
+  fault: { kind: "fail", calls: 1 },
+  guardOnly: true,
+  expect: { titleIncludes: "PH2083", price: 99.0, confidence: "exact", platform: "Amazon" },
+  expectPreFix: null,
+  expectStats: (stats) => {
+    // A clean run of this scenario takes four gate calls. The failed one
+    // must be retried, not absorbed as six "different" verdicts.
+    if (stats.gateCalls !== 5) {
+      return [`${stats.gateCalls} gate call(s); expected 5 (four plus one retry)`];
+    }
+    return [];
+  },
+};
+
+// ════════════════════════════════════════════════════════════════
 // The mocked internet.
 // ════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════
@@ -519,10 +566,30 @@ function installFetch(scenario, stats) {
           Buffer.from(b.source.data, "base64").toString("utf8").replace(/^IMG::/, "")
         );
         stats.gateCalls++;
-        stats.candidatesJudged += candidateUrls.length;
         stats.models.push(`gate:${payload.model}(${candidateUrls.length})`);
         if (payload.model.includes("opus")) stats.opusGateCalls++;
 
+        // Injected faults, applied to the first N gate calls only.
+        if (scenario.fault && stats.gateCalls <= scenario.fault.calls) {
+          if (scenario.fault.kind === "fail") {
+            stats.faultsInjected++;
+            return { ok: false, status: 500, headers: { get: () => "application/json" },
+                     json: async () => ({ error: "injected" }), text: async () => "injected" };
+          }
+          if (scenario.fault.kind === "truncate") {
+            stats.faultsInjected++;
+            const full = JSON.stringify(candidateUrls.map((candidateUrl, i) => ({
+              candidate: i + 1,
+              match: scenario.verdicts[candidateUrl],
+              why: "mocked",
+            })));
+            // Cut mid-array, the way a max_tokens ceiling would.
+            const cut = full.slice(0, Math.floor(full.length * 0.55));
+            return jsonResponse({ usage, content: [{ type: "text", text: cut }] });
+          }
+        }
+
+        stats.candidatesJudged += candidateUrls.length;
         const verdicts = candidateUrls.map((candidateUrl, i) => {
           const match = scenario.verdicts[candidateUrl];
           if (!match) throw new Error(`scenario "${scenario.name}" has no verification verdict for ${candidateUrl}`);
@@ -598,7 +665,7 @@ const { resetSpendModeCache } = await import(localModule("model-budget"));
 
 function freshStats() {
   return {
-    visionCalls: 0, gateCalls: 0, opusGateCalls: 0, candidatesJudged: 0,
+    visionCalls: 0, gateCalls: 0, opusGateCalls: 0, candidatesJudged: 0, faultsInjected: 0,
     lensCalls: 0, retailerCalls: 0, imageFetches: 0, redisCalls: 0,
     verified: [], models: [],
   };
@@ -662,7 +729,7 @@ const line = (s = "") => console.log(s);
 const SCENARIOS = [
   SCENARIO_GLASSES, SCENARIO_BAG, SCENARIO_NO_MATCH,
   SCENARIO_UNPRICEABLE, SCENARIO_VERDICT, SCENARIO_SIMILAR_TIER,
-  SCENARIO_SPIKE, SCENARIO_DEGRADED,
+  SCENARIO_SPIKE, SCENARIO_DEGRADED, SCENARIO_TRUNCATED, SCENARIO_CALL_FAILS,
 ];
 
 for (const scenario of SCENARIOS) {
@@ -699,6 +766,7 @@ for (const scenario of SCENARIOS) {
   line(`    gate      : ${now.stats.gateCalls} call(s), ${now.stats.candidatesJudged} candidates judged, ` +
        `${now.stats.opusGateCalls} on the strong model`);
   line(`    models    : ${now.stats.models.join("  ")}`);
+  if (now.stats.faultsInjected > 0) line(`    faults    : ${now.stats.faultsInjected} injected`);
   for (const v of now.stats.verified) line(`                ${v}`);
   for (const p of problems) line(`    PROBLEM   : ${p}`);
   if (problems.length > 0) failures++;

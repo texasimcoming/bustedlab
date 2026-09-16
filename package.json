@@ -10,6 +10,7 @@
     "check:verdicts": "node --experimental-strip-types --no-warnings scripts/check-verdicts.mjs",
     "check:identification": "node --experimental-strip-types --no-warnings scripts/check-identification.mjs",
     "cost-model": "node --experimental-strip-types --no-warnings scripts/cost-model.mjs",
+    "eval:gate": "node --experimental-strip-types --no-warnings scripts/eval-gate.mjs",
     "check": "tsc --noEmit && eslint . && npm run check:verdicts && npm run check:identification"
   },
   "dependencies": {

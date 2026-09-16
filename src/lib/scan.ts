@@ -170,6 +170,10 @@ import { LENS_BLOB_PREFIX } from "@/lib/constants";
 // can publish the same thresholds the engine applies, and so the calibration
 // check can execute the real function rather than a copy of it.
 import { calculateVerdict } from "@/lib/verdict";
+// The gate's prompt and answer parsing live in their own dependency-free
+// module so scripts/eval-gate.mjs can measure the REAL prompt against real
+// photographs rather than a copy of it.
+import { buildBatchPrompt, coerceVerdict, salvageVerdictObjects } from "@/lib/gate-prompt";
 import {
   currentSpendMode, priceUsage, recordModelSpend, reportModelFailure,
   type SpendMode,
@@ -576,53 +580,30 @@ function readFailed(read: VisionExtraction): boolean {
 // ════════════════════════════════════════════════════════════════
 const VERIFY_BATCH_MAX = 6;
 
-function buildBatchPrompt(count: number): string {
-  return `You are shown IMAGE A (one photo) and ${count} candidate product listing image${count === 1 ? "" : "s"}, numbered 1 to ${count}.
-
-For EACH candidate, decide whether it is the exact same physical product as IMAGE A — same model, same design, same distinguishing features — or merely a similar item of the same kind.
-
-Judge the product only. IMAGE A is usually a photo or a screenshot, so ignore background, cropping, lighting, viewing angle, scale, watermarks, captions, on-screen text and app interface elements. A candidate is usually a catalogue photo of the same class of object on a plain background.
-
-Weigh these in order, for every candidate:
-1. Brand markings. If IMAGE A and a candidate both show a logo, wordmark or label and they belong to DIFFERENT brands, that candidate is "different" no matter how alike the shapes are.
-2. Model-defining structure: silhouette, proportions, panel and seam layout, hardware, closures, frame and lens shape, control layout, and the number and placement of parts.
-3. Colourway and finish. A different colour of the same model is "similar", not "exact".
-
-Judge each candidate INDEPENDENTLY, in absolute terms, not against the other candidates. Do not rank them, and do not assume one of them must be the match: it is normal and expected for every candidate to be "different", and being the closest of the ones shown is never a reason to call something "exact".
-
-Return ONLY a JSON array, one entry per candidate, in order:
-[{"candidate": 1, "match": "exact" | "similar" | "different", "why": "a few words naming the feature that decided it"}]
-"exact" = the same specific product and the same model, high confidence.
-"similar" = same category, or same brand, but you cannot confirm it is the identical model.
-"different" = clearly not the same product.
-Be strict. Default to "similar" or "different" when uncertain. Never guess "exact".`;
-}
-
-function coerceVerdict(raw: unknown): VerificationResult | null {
-  const entry = raw as { match?: unknown; why?: unknown; reasoning?: unknown } | null;
-  const match = entry?.match;
-  if (match !== "exact" && match !== "similar" && match !== "different") return null;
-  const why = typeof entry?.why === "string" ? entry.why
-    : typeof entry?.reasoning === "string" ? entry.reasoning
-    : "";
-  return { match, reasoning: why };
+interface BatchOutcome {
+  results: VerificationResult[];
+  /** False when the call produced no usable verdict, so it is worth a retry. */
+  ok: boolean;
 }
 
 async function verifyVisualMatchBatch(
   reference: { data: string; mimeType: string },
   candidateImageUrls: string[],
   model: string
-): Promise<VerificationResult[]> {
+): Promise<BatchOutcome> {
   const unavailable = (): VerificationResult => ({ match: "different", reasoning: "verification unavailable" });
   const results: VerificationResult[] = candidateImageUrls.map(unavailable);
-  if (!process.env.ANTHROPIC_API_KEY || candidateImageUrls.length === 0) return results;
+  let judged = 0;
+  if (!process.env.ANTHROPIC_API_KEY || candidateImageUrls.length === 0) return { results, ok: false };
 
   const images = await Promise.all(
     candidateImageUrls.map(url => (url ? fetchImageAsBase64(url) : Promise.resolve(null)))
   );
   const present: { index: number; image: { data: string; mimeType: string } }[] = [];
   images.forEach((image, index) => { if (image) present.push({ index, image }); });
-  if (present.length === 0) return results;
+  // No candidate image loaded at all. Nothing was judged, but nothing can
+  // be judged either, so a retry would not help: not a failed call.
+  if (present.length === 0) return { results, ok: true };
 
   const content: Record<string, unknown>[] = [
     { type: "text", text: "IMAGE A (the photo being scanned):" },
@@ -653,17 +634,24 @@ async function verifyVisualMatchBatch(
   content.push({ type: "text", text: buildBatchPrompt(present.length) });
 
   const data = await callClaude(model, {
-    max_tokens: 120 + present.length * 60,
+    // Generous on purpose: see salvageVerdictObjects. A wave truncated
+    // mid-answer is a far more expensive failure than an unused ceiling.
+    max_tokens: 250 + present.length * 90,
     messages: [{ role: "user", content }],
   }, 30000);
 
   const parsed = parseModelJson(data);
-  const list: unknown[] = Array.isArray(parsed)
+  let list: unknown[] = Array.isArray(parsed)
     ? parsed
     : Array.isArray((parsed as { verdicts?: unknown[] } | null)?.verdicts)
       ? (parsed as { verdicts: unknown[] }).verdicts
       : [];
-  if (list.length === 0) return results;
+
+  if (list.length === 0) {
+    const rawText = ((data?.content as { text?: string }[] | undefined) || [])[0]?.text || "";
+    list = salvageVerdictObjects(rawText);
+  }
+  if (list.length === 0) return { results, ok: false };
 
   // Read the candidate number the model echoed back rather than trusting
   // position, and fall back to position when it omitted one. A verdict that
@@ -678,9 +666,10 @@ async function verifyVisualMatchBatch(
       : position;
     if (slot < 0 || slot >= present.length) return;
     results[present[slot].index] = verdict;
+    judged++;
   });
 
-  return results;
+  return { results, ok: judged > 0 };
 }
 
 async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
@@ -1577,8 +1566,17 @@ async function verifyCandidates(
   const runWave = async (wave: ShoppingCandidate[]) => {
     for (let i = 0; i < wave.length; i += VERIFY_BATCH_MAX) {
       const slice = wave.slice(i, i + VERIFY_BATCH_MAX);
-      const results = await verifyVisualMatchBatch(reference, slice.map(c => c.imageUrl), model);
-      slice.forEach((candidate, j) => checked.push({ candidate, result: results[j] }));
+      const urls = slice.map(c => c.imageUrl);
+      let outcome = await verifyVisualMatchBatch(reference, urls, model);
+      // One retry when the call produced no verdict at all. A timeout or a
+      // malformed answer is not a judgement, and treating it as one loses a
+      // whole wave of candidates to an accident. Retried once, on the same
+      // model - a cheaper model here would be a different judge, not a
+      // second opinion.
+      if (!outcome.ok && (!options.budget || options.budget.allows(VERIFY_WAVE_COST_MS))) {
+        outcome = await verifyVisualMatchBatch(reference, urls, model);
+      }
+      slice.forEach((candidate, j) => checked.push({ candidate, result: outcome.results[j] }));
     }
   };
 
@@ -1779,10 +1777,12 @@ async function reuseIdentification(
   });
   if (!hit) return null;
 
-  const [confirmation] = await verifyVisualMatchBatch(
+  const confirmation = await verifyVisualMatchBatch(
     reference, [hit.entry.imageUrl], GATE_MODEL_DEGRADED
   );
-  if (confirmation.match !== "exact") return null;
+  // A failed confirmation call is not a confirmation. Falling through to the
+  // full gate costs money; accepting an unconfirmed reuse costs correctness.
+  if (!confirmation.ok || confirmation.results[0].match !== "exact") return null;
 
   return {
     title: hit.entry.title,
