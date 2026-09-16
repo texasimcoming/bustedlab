@@ -127,16 +127,40 @@
  * overlapping generic category term) — this is what stops a "jade roller"
  * search from accepting a "needle roller" result.
  *
- * Cost per scan. The identification calls run on the strongest available
- * model deliberately (see IDENTIFY_MODEL / VERIFY_MODEL below), so this is
- * materially higher than a Haiku-only pipeline: roughly $0.02-0.04 for a
- * typical scan where Lens hits and a top candidate confirms, and up to
- * ~$0.10-0.15 in the worst case where every fallback layer fires and every
- * verification window is fully spent. The prompt-cached reference image is
- * what keeps a wide candidate window from multiplying that figure. Search
- * calls (Lens/Shopping/retailer/link resolution) remain ~$0.004-0.01.
- * Moving the two identification calls to a smaller model is a one-line
- * change and an explicit accuracy-for-cost decision.
+ * Cost per scan. The gate keeps the strongest model - a confident wrong
+ * identification is the one failure this product cannot survive, and a
+ * cheap one that goes viral is the worst version of it. What makes that
+ * affordable is not a weaker model, it is three structural things, all
+ * priced in scripts/cost-model.mjs from the published rates:
+ *
+ *   - The gate compares a whole wave of candidates in ONE call rather than
+ *     one call per candidate. Verification input is image-dominated and the
+ *     photo is the dominant image, so sending it once with six thumbnails
+ *     costs about what six cheap-model calls would and roughly half what
+ *     six strong-model calls would.
+ *   - The photo is a cached prompt prefix, so later waves and later passes
+ *     read it at a tenth of the price. This only works on the strong model
+ *     (512-token cache minimum against the cheap model's 4,096, which no
+ *     image reaches) - the reason batching beats downgrading here.
+ *   - An identification is published for the next person to scan the same
+ *     product, so a viral spike pays for identification once rather than
+ *     ten thousand times. See reuseIdentification().
+ *
+ * Against roughly $0.009 of model spend for the pre-v10 Haiku-only engine:
+ * about $0.035 for a cold typical scan, about $0.09 for a cold hard scan
+ * where nothing confirms in the first wave and every fallback fires, and
+ * under $0.01 for a scan of a product already identified in the last hour -
+ * which is most scans during the traffic this product exists to create.
+ * Search calls (Lens/Shopping/retailer/link resolution) remain ~$0.004-0.01
+ * and are skipped entirely on a reused identification.
+ *
+ * Spend is measured from the usage the API reports, counted against a daily
+ * budget, and when that budget is gone the engine degrades instead of either
+ * failing or spending without a ceiling: cheap gate, cache-first, the
+ * enhancement layers dropped, and the gate's strongest label withheld (it
+ * can no longer return "exact", so no card can say PIXEL-MATCH VERIFIED on
+ * a cheap judgement). A reused identification keeps full confidence even
+ * then, because the strong model made it. See model-budget.ts.
  */
 
 import { put, del } from "@vercel/blob";
@@ -146,31 +170,116 @@ import { LENS_BLOB_PREFIX } from "@/lib/constants";
 // can publish the same thresholds the engine applies, and so the calibration
 // check can execute the real function rather than a copy of it.
 import { calculateVerdict } from "@/lib/verdict";
+import {
+  currentSpendMode, priceUsage, recordModelSpend, reportModelFailure,
+  type SpendMode,
+} from "@/lib/model-budget";
+import {
+  lensFingerprint, lookupIdentity, storeIdentity, normalizeListingUrl,
+  type CachedIdentity, type Fingerprint,
+} from "@/lib/identity-cache";
 
 // ════════════════════════════════════════════════════════════════
-// MODELS.
+// MODELS, AND WHY THE EXPENSIVE ONE IS STILL ON THE GATE.
 //
-// Two calls in this file decide WHAT the photo shows: the vision
-// extraction that reads the product off the image, and the verification
-// gate that decides whether a candidate listing is the same physical
-// object. Every number on the card is downstream of those two decisions,
-// so neither is a place to economise: a weaker model here does not
-// produce a slightly less polished answer, it produces a confident answer
-// about the wrong object, which is the one failure this product cannot
-// survive. Both run on the strongest available model, pinned at
-// temperature 0 so the same photo always resolves the same way.
+// One decision in this file matters more than everything else in the
+// repository: whether a candidate listing is the same physical object as
+// the photo. Every number on the card is downstream of it. A weaker model
+// there does not produce a slightly less polished answer, it produces a
+// confident answer about the wrong object, and a confident wrong answer
+// that goes viral is worse than no answer at all. So the gate keeps the
+// strongest model.
 //
-// The verification gate is the expensive one because it runs once per
-// candidate. Two things keep a wide candidate window affordable rather
-// than something to trim: the reference image is sent as a cached prompt
-// prefix (see verifyVisualMatch), so only the first comparison in a scan
-// pays full price for it, and the window is checked in waves, with the
-// second wave only spent when the first found no confirmed match.
+// Paying for that without a runaway bill came from two measurements, not
+// from moving the gate down a tier. Both are in scripts/cost-model.mjs,
+// which prices real call shapes from the published rates:
 //
-// Moving either of these to a cheaper model is a one-line change and a
-// deliberate accuracy-for-cost trade, not a tuning knob.
-const IDENTIFY_MODEL = "claude-opus-5";
-const VERIFY_MODEL = "claude-opus-5";
+//   1. THE CHEAP MODEL CANNOT AMORTISE THE PHOTO. Opus 5 will cache a
+//      prefix from 512 tokens; Haiku 4.5 needs 4,096. A scanned photo is
+//      about 1,600 tokens and an image can never reach 4,096 at the sizes
+//      the API accepts. So the reference photo is a cached prefix on the
+//      strong model and can never be one on the cheap model. Per candidate
+//      compared, the cheap model is therefore only about four times
+//      cheaper, not twenty-five times - the gap that makes a cheap-first
+//      screen look attractive mostly is not there.
+//
+//   2. BATCHING BEATS DOWNGRADING. Verification input is image-dominated
+//      and the photo is the dominant image. Sending it ONCE with six
+//      candidate thumbnails costs roughly what six separate cheap-model
+//      calls cost, and about half what six separate strong-model calls
+//      cost - while the strong model still judges every candidate. So the
+//      gate now compares a whole wave in a single call. Cheaper than a
+//      cheap-model screen, and it gives up nothing.
+//
+// What did move to the cheap model is the vision EXTRACTION, which reads
+// the brand, product name and any visible price off the photo. That is a
+// transcription task, its output only ranks candidates and builds queries
+// rather than deciding identity, and it escalates to the strong model by
+// itself when the read comes back structurally suspect (see
+// extractFromImage). Everything stays pinned at temperature 0 so the same
+// photo always resolves the same way.
+const EXTRACT_MODEL = "claude-haiku-4-5-20251001";
+const EXTRACT_ESCALATION_MODEL = "claude-opus-5";
+const GATE_MODEL = "claude-opus-5";
+// Used only when the spend governor has degraded the engine. See
+// model-budget.ts, and DEGRADED CONFIDENCE in verifyCandidates.
+const GATE_MODEL_DEGRADED = "claude-haiku-4-5-20251001";
+// Text-only extractions: reading a price off page text, writing a search
+// query. Wrong output costs a retry, not a wrong product.
+const TEXT_MODEL = "claude-haiku-4-5-20251001";
+
+// ════════════════════════════════════════════════════════════════
+// The one entry point to the model. Centralised so that every call is
+// measured: the cost is taken from the `usage` the API itself reports, not
+// estimated, and added to the day's total before the call returns. The
+// spend is awaited rather than fired and forgotten because a floating
+// promise on a serverless runtime can be killed when the response goes
+// out, and a budget that loses writes is not a budget.
+//
+// API backpressure (429 from a rate limit, 402 from billing, 529 from an
+// overloaded API) trips the breaker rather than being retried, so the next
+// scan takes the cheap path instead of hammering a limit that is already
+// saying no.
+// ════════════════════════════════════════════════════════════════
+async function callClaude(
+  model: string,
+  payload: Record<string, unknown>,
+  timeoutMs: number
+): Promise<Record<string, unknown> | null> {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({ model, temperature: 0, ...payload }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) {
+      await reportModelFailure(res.status);
+      return null;
+    }
+    const data = await res.json();
+    await recordModelSpend(priceUsage(model, data?.usage));
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function parseModelJson(data: Record<string, unknown> | null): unknown {
+  const content = (data?.content as { text?: string }[] | undefined) || [];
+  const text = content[0]?.text;
+  if (!text) return null;
+  try {
+    return JSON.parse(text.replace(/```json|```/g, "").trim());
+  } catch {
+    return null;
+  }
+}
 
 // ════════════════════════════════════════════════════════════════
 // TIME BUDGET.
@@ -357,7 +466,11 @@ export function buildShippingNote(sourceUrl: string, country: string): string | 
 // ════════════════════════════════════════════════════════════════
 // LAYER 1: Claude Haiku Vision — extraction
 // ════════════════════════════════════════════════════════════════
-async function extractFromImage(imageBase64: string, mimeType: string): Promise<VisionExtraction> {
+async function extractFromImage(
+  imageBase64: string,
+  mimeType: string,
+  mode: SpendMode = "full"
+): Promise<VisionExtraction> {
   const defaults: VisionExtraction = {
     productName: "", brand: "", visiblePrice: null,
     currency: "USD", quantity: "", category: "other", platform: "unknown",
@@ -366,25 +479,15 @@ async function extractFromImage(imageBase64: string, mimeType: string): Promise<
 
   if (!process.env.ANTHROPIC_API_KEY) return defaults;
 
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: IDENTIFY_MODEL,
-        max_tokens: 350,
-        temperature: 0,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: mimeType, data: imageBase64 } },
-            {
-              type: "text",
-              text: `Product intelligence scan. Return ONLY JSON:
+  const body = {
+    max_tokens: 350,
+    messages: [{
+      role: "user",
+      content: [
+        { type: "image", source: { type: "base64", media_type: mimeType, data: imageBase64 } },
+        {
+          type: "text",
+          text: `Product intelligence scan. Return ONLY JSON:
 {
   "productName": "exact product name, generic type if brand unknown",
   "brand": "brand or empty",
@@ -403,100 +506,181 @@ CRITICAL: check every part of the image for a price, not just near the product. 
 CRITICAL: storeName must be read directly from visible text/logos/handles/URLs in the image. Never guess or infer a store name that isn't actually shown.
 CRITICAL: visibleUrl must be an actual URL string visible as text in the image. Never invent one from a store name or brand guess.
 CRITICAL: productName must include the defining material/type descriptor whenever visible or inferable. Use "jade roller" not "roller", "rose quartz gua sha" not "gua sha tool", "copper straightening brush" not "hair brush". A bare generic category word causes wrong-product matches against visually similar but materially different items (e.g. jade rollers vs needle/derma rollers both being "rollers"). Never drop a visible distinguishing word to make the name shorter.`,
-            },
-          ],
-        }],
-      }),
-      signal: AbortSignal.timeout(20000),
-    });
+        },
+      ],
+    }],
+  };
 
-    const data = await res.json();
-    const text = data.content?.[0]?.text || "{}";
-    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-    return { ...defaults, ...parsed };
-  } catch {
-    return defaults;
-  }
+  const first = parseModelJson(await callClaude(EXTRACT_MODEL, body, 20000)) as Partial<VisionExtraction> | null;
+  const read: VisionExtraction = { ...defaults, ...(first || {}) };
+  if (mode === "degraded" || !readFailed(read)) return read;
+
+  // Escalation. The brand and the product words this pass returns are what
+  // order candidates for the gate, and a missed brand is how a listing that
+  // actually carries the logo on the photo fails to reach the front of the
+  // queue. When the read comes back weak on an image the model itself called
+  // good, the one call is worth spending on the strong model - it is a
+  // single call per scan, and only on the scans where the cheap read
+  // visibly underperformed.
+  const second = parseModelJson(await callClaude(EXTRACT_ESCALATION_MODEL, body, 25000)) as Partial<VisionExtraction> | null;
+  return second ? { ...defaults, ...second } : read;
+}
+
+/**
+ * Worth a second, stronger look? The trigger is deliberately narrow: an
+ * INTERNALLY INCONSISTENT read, where the model called the photo good and
+ * then returned no product name at all. That is a read that plainly failed,
+ * as opposed to a photo that genuinely has little to read.
+ *
+ * The wider triggers are tempting and wrong. "No brand" is the obvious one -
+ * the brand feeds the ranking boost that pulls a matching listing forward -
+ * but plenty of photos genuinely show no brand at all, and a stronger model
+ * will not invent one, so escalating there pays full price for the same
+ * empty field. It also is not load-bearing: the boost changes the ORDER
+ * candidates are judged in, while the thing that guarantees a buried match
+ * is still reached is the twelve-wide window, and that runs either way. Same
+ * for a one-word product name next to a brand that did read: "Ralph Lauren"
+ * plus "eyeglasses" is a perfectly usable hint.
+ *
+ * Getting this wrong is expensive rather than harmful, and the first version
+ * of it got it wrong: it escalated on nearly every scan in the test suite,
+ * which is how a cheap extraction quietly becomes an expensive one.
+ */
+function readFailed(read: VisionExtraction): boolean {
+  return read.imageQuality === "good" && !(read.productName || "").trim();
 }
 
 // ════════════════════════════════════════════════════════════════
-// LAYER 6: Claude Haiku Vision — visual verification gate
+// LAYER 6: the visual verification gate.
+//
+// ONE CALL PER WAVE, NOT ONE CALL PER CANDIDATE. The reference photo is
+// roughly 1,600 tokens and a candidate thumbnail roughly 150, so a
+// pairwise call spends nearly all of its input re-sending the same photo.
+// Sending that photo once alongside six candidates costs about half what
+// six pairwise calls cost even with the photo cached, and roughly what six
+// calls to a cheap model would cost without it - which is how the strong
+// model stays on every candidate. Numbers in scripts/cost-model.mjs.
+//
+// The risk this shape introduces is real and is handled in the prompt: a
+// model shown six candidates at once can slide from judging each one
+// absolutely into ranking them against each other, and "the closest of
+// these six" is exactly the wrong answer. The instruction says so
+// explicitly, and says that every candidate being "different" is a normal
+// outcome. Comparative context also cuts the other way and helps: a
+// different colourway is easier to spot next to the right colourway than
+// alone.
+//
+// A candidate whose image will not load cannot be judged and stays
+// "different". An unjudgeable candidate is not given the benefit of the
+// doubt.
 // ════════════════════════════════════════════════════════════════
-async function verifyVisualMatch(
-  originalImageBase64: string,
-  originalMimeType: string,
-  candidateImageUrl: string
-): Promise<VerificationResult> {
-  const fallback: VerificationResult = { match: "different", reasoning: "verification unavailable" };
-  if (!process.env.ANTHROPIC_API_KEY || !candidateImageUrl) return fallback;
+const VERIFY_BATCH_MAX = 6;
 
-  const candidateBase64 = await fetchImageAsBase64(candidateImageUrl);
-  if (!candidateBase64) return fallback;
+function buildBatchPrompt(count: number): string {
+  return `You are shown IMAGE A (one photo) and ${count} candidate product listing image${count === 1 ? "" : "s"}, numbered 1 to ${count}.
 
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: VERIFY_MODEL,
-        max_tokens: 200,
-        temperature: 0,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "text", text: "IMAGE A (the photo being scanned):" },
-            {
-              type: "image",
-              source: { type: "base64", media_type: originalMimeType, data: originalImageBase64 },
-              // The reference photo is byte-identical for every candidate
-              // in a scan, so it is marked as a cache breakpoint: the
-              // first comparison writes it and every later one reads it
-              // back at a fraction of the cost. This is what makes
-              // checking a WIDE candidate window affordable, which is the
-              // whole point — a narrow window is how a correct match
-              // sitting at rank seven stayed invisible.
-              cache_control: { type: "ephemeral" },
-            },
-            { type: "text", text: "IMAGE B (a candidate product listing):" },
-            { type: "image", source: { type: "base64", media_type: candidateBase64.mimeType, data: candidateBase64.data } },
-            {
-              type: "text",
-              text: `Is IMAGE B the exact same physical product as IMAGE A — same model, same design, same distinguishing features — or merely a similar item of the same kind?
+For EACH candidate, decide whether it is the exact same physical product as IMAGE A — same model, same design, same distinguishing features — or merely a similar item of the same kind.
 
-Judge the product only. IMAGE A is usually a photo or a screenshot, so ignore background, cropping, lighting, viewing angle, scale, watermarks, captions, on-screen text and app interface elements. IMAGE B is usually a catalogue photo of the same class of object on a plain background.
+Judge the product only. IMAGE A is usually a photo or a screenshot, so ignore background, cropping, lighting, viewing angle, scale, watermarks, captions, on-screen text and app interface elements. A candidate is usually a catalogue photo of the same class of object on a plain background.
 
-Weigh these in order:
-1. Brand markings. If both images show a logo, wordmark or label and they belong to DIFFERENT brands, the answer is "different" no matter how alike the shapes are.
+Weigh these in order, for every candidate:
+1. Brand markings. If IMAGE A and a candidate both show a logo, wordmark or label and they belong to DIFFERENT brands, that candidate is "different" no matter how alike the shapes are.
 2. Model-defining structure: silhouette, proportions, panel and seam layout, hardware, closures, frame and lens shape, control layout, and the number and placement of parts.
 3. Colourway and finish. A different colour of the same model is "similar", not "exact".
 
-Return ONLY JSON:
-{"match": "exact" | "similar" | "different", "reasoning": "one short sentence naming the feature that decided it"}
-"exact" = the same specific product and the same model, high confidence.
-"similar" = same category, or same brand, but you cannot confirm it is the identical model (different colorway, different design details, a generic stock photo).
-"different" = clearly not the same product.
-Be strict. Default to "similar" or "different" when uncertain. Never guess "exact".`,
-            },
-          ],
-        }],
-      }),
-      signal: AbortSignal.timeout(20000),
-    });
+Judge each candidate INDEPENDENTLY, in absolute terms, not against the other candidates. Do not rank them, and do not assume one of them must be the match: it is normal and expected for every candidate to be "different", and being the closest of the ones shown is never a reason to call something "exact".
 
-    const data = await res.json();
-    const text = data.content?.[0]?.text || "{}";
-    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-    if (parsed.match === "exact" || parsed.match === "similar" || parsed.match === "different") {
-      return parsed;
-    }
-    return fallback;
-  } catch {
-    return fallback;
-  }
+Return ONLY a JSON array, one entry per candidate, in order:
+[{"candidate": 1, "match": "exact" | "similar" | "different", "why": "a few words naming the feature that decided it"}]
+"exact" = the same specific product and the same model, high confidence.
+"similar" = same category, or same brand, but you cannot confirm it is the identical model.
+"different" = clearly not the same product.
+Be strict. Default to "similar" or "different" when uncertain. Never guess "exact".`;
+}
+
+function coerceVerdict(raw: unknown): VerificationResult | null {
+  const entry = raw as { match?: unknown; why?: unknown; reasoning?: unknown } | null;
+  const match = entry?.match;
+  if (match !== "exact" && match !== "similar" && match !== "different") return null;
+  const why = typeof entry?.why === "string" ? entry.why
+    : typeof entry?.reasoning === "string" ? entry.reasoning
+    : "";
+  return { match, reasoning: why };
+}
+
+async function verifyVisualMatchBatch(
+  reference: { data: string; mimeType: string },
+  candidateImageUrls: string[],
+  model: string
+): Promise<VerificationResult[]> {
+  const unavailable = (): VerificationResult => ({ match: "different", reasoning: "verification unavailable" });
+  const results: VerificationResult[] = candidateImageUrls.map(unavailable);
+  if (!process.env.ANTHROPIC_API_KEY || candidateImageUrls.length === 0) return results;
+
+  const images = await Promise.all(
+    candidateImageUrls.map(url => (url ? fetchImageAsBase64(url) : Promise.resolve(null)))
+  );
+  const present: { index: number; image: { data: string; mimeType: string } }[] = [];
+  images.forEach((image, index) => { if (image) present.push({ index, image }); });
+  if (present.length === 0) return results;
+
+  const content: Record<string, unknown>[] = [
+    { type: "text", text: "IMAGE A (the photo being scanned):" },
+    {
+      type: "image",
+      source: { type: "base64", media_type: reference.mimeType, data: reference.data },
+      // The reference photo is byte-identical for every wave and every pass
+      // in a scan, so it is marked as a cache breakpoint: the first wave
+      // writes it and every later one reads it back at a tenth of the
+      // price. Note this only works on the strong model — its minimum
+      // cacheable prefix is 512 tokens, while the cheap model's is 4,096,
+      // which no image can reach. That asymmetry is the reason the gate
+      // batches rather than downgrades.
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+  present.forEach((_, slot) => {
+    content.push({ type: "text", text: `CANDIDATE ${slot + 1}:` });
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: present[slot].image.mimeType,
+        data: present[slot].image.data,
+      },
+    });
+  });
+  content.push({ type: "text", text: buildBatchPrompt(present.length) });
+
+  const data = await callClaude(model, {
+    max_tokens: 120 + present.length * 60,
+    messages: [{ role: "user", content }],
+  }, 30000);
+
+  const parsed = parseModelJson(data);
+  const list: unknown[] = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray((parsed as { verdicts?: unknown[] } | null)?.verdicts)
+      ? (parsed as { verdicts: unknown[] }).verdicts
+      : [];
+  if (list.length === 0) return results;
+
+  // Read the candidate number the model echoed back rather than trusting
+  // position, and fall back to position when it omitted one. A verdict that
+  // cannot be tied to a candidate is dropped, leaving that candidate
+  // unjudged rather than mislabeled.
+  list.forEach((raw, position) => {
+    const verdict = coerceVerdict(raw);
+    if (!verdict) return;
+    const stated = (raw as { candidate?: unknown }).candidate;
+    const slot = typeof stated === "number" && stated >= 1 && stated <= present.length
+      ? stated - 1
+      : position;
+    if (slot < 0 || slot >= present.length) return;
+    results[present[slot].index] = verdict;
+  });
+
+  return results;
 }
 
 async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
@@ -1307,8 +1491,48 @@ function cleanTitle(raw: string): string {
 // as "closest match". That is how a clear photo of Ralph Lauren glasses
 // came back as a completely unrelated brand.
 // ════════════════════════════════════════════════════════════════
-const VERIFY_WAVE_ONE = 5;
+// How wide the gate looks. Two different numbers, because two different
+// things are at stake.
+//
+// When IDENTITY is being established, the window is wide: this is where a
+// correct match sitting at rank seven has to be reachable, and it is the
+// whole reason the narrow window was a bug. Batching makes the width nearly
+// free - two calls cover twelve candidates.
+//
+// When identity is already established and only a PRICE REPLACEMENT is at
+// stake - the pricing search for a confirmed-but-unpriced product, the
+// rebrand sweep, the direct-retailer sweep - the window is narrow. Those
+// pools are searched with a name the gate has already confirmed, and the
+// worst case for missing an entry is that the incumbent listing (already
+// confirmed, already priced) is kept. Failing to find a cheaper copy of the
+// right product is a smaller harm than naming the wrong product, and it is
+// the only place in this engine where that asymmetry is used to save money.
+const VERIFY_WAVE_ONE = 6;
 const VERIFY_WINDOW = 12;
+const VERIFY_WINDOW_PRICING = 4;
+
+interface GateOptions {
+  hints?: IdentityHints;
+  budget?: Budget;
+  /** Defaults to the wide identification window. */
+  window?: number;
+  /** "degraded" moves the gate to the cheap model and caps what it may claim. */
+  mode?: SpendMode;
+}
+
+/**
+ * Does this candidate carry the brand the vision pass read off the photo?
+ * Used twice: to pull such candidates forward in the queue, and - when the
+ * gate has been degraded to the cheap model - as the second, independent
+ * signal without which a cheap "exact" is not allowed to claim anything.
+ */
+function brandConsistent(candidate: ShoppingCandidate, hints?: IdentityHints): boolean {
+  const brandWords = significantWords(hints?.brand || "");
+  if (brandWords.length === 0) return false;
+  const titleWords = new Set(significantWords(candidate.title));
+  const sourceWords = new Set(significantWords(candidate.source));
+  return brandWords.every(w => titleWords.has(w) || sourceWords.has(w));
+}
 
 // A free relevance boost, applied to the ORDER candidates are checked in
 // and never used to remove any of them. The vision pass has already read
@@ -1324,14 +1548,13 @@ function rankForVerification(candidates: ShoppingCandidate[], hints?: IdentityHi
 
   const scored = candidates.map((candidate, index) => {
     const titleWords = new Set(significantWords(candidate.title));
-    const sourceWords = new Set(significantWords(candidate.source));
-    const brandHit = brandWords.length > 0 && brandWords.every(w => titleWords.has(w) || sourceWords.has(w));
     const nameHits = nameWords.filter(w => titleWords.has(w)).length;
     // Engine rank stays the primary signal. A full brand match is worth
     // four places and each matching product word half a place: enough to
     // pull the right candidate into the first wave, never enough to bury a
     // strong visual match under keyword noise.
-    return { candidate, index, score: candidate.rank - (brandHit ? 4 : 0) - nameHits * 0.5 };
+    const score = candidate.rank - (brandConsistent(candidate, hints) ? 4 : 0) - nameHits * 0.5;
+    return { candidate, index, score };
   });
 
   scored.sort((a, b) => (a.score === b.score ? a.index - b.index : a.score - b.score));
@@ -1340,45 +1563,36 @@ function rankForVerification(candidates: ShoppingCandidate[], hints?: IdentityHi
 
 async function verifyCandidates(
   match: ShoppingMatch,
-  referenceImageBase64: string,
-  referenceMimeType: string,
-  hints?: IdentityHints,
-  budget?: Budget
+  reference: { data: string; mimeType: string },
+  options: GateOptions = {}
 ): Promise<{ best: ShoppingCandidate; confidence: "exact" | "likely" | "unverified" }> {
-  const ordered = rankForVerification(match.candidates, hints).slice(0, VERIFY_WINDOW);
+  const window = options.window ?? VERIFY_WINDOW;
+  const degraded = options.mode === "degraded";
+  const model = degraded ? GATE_MODEL_DEGRADED : GATE_MODEL;
+
+  const ordered = rankForVerification(match.candidates, options.hints).slice(0, window);
   if (ordered.length === 0) return { best: match.candidates[0], confidence: "unverified" };
 
   const checked: { candidate: ShoppingCandidate; result: VerificationResult }[] = [];
+  const runWave = async (wave: ShoppingCandidate[]) => {
+    for (let i = 0; i < wave.length; i += VERIFY_BATCH_MAX) {
+      const slice = wave.slice(i, i + VERIFY_BATCH_MAX);
+      const results = await verifyVisualMatchBatch(reference, slice.map(c => c.imageUrl), model);
+      slice.forEach((candidate, j) => checked.push({ candidate, result: results[j] }));
+    }
+  };
 
-  // The head of the first wave is checked on its own so the reference
-  // image lands in the prompt cache before the rest of the wave fires
-  // concurrently against it. It is also the likeliest match, so this is
-  // usually the comparison that matters most anyway. Every later wave runs
-  // fully concurrent against the now-warm cache.
-  const [head, ...firstRest] = ordered.slice(0, VERIFY_WAVE_ONE);
-  checked.push({
-    candidate: head,
-    result: await verifyVisualMatch(referenceImageBase64, referenceMimeType, head.imageUrl),
-  });
-  if (firstRest.length > 0) {
-    const results = await Promise.all(
-      firstRest.map(c => verifyVisualMatch(referenceImageBase64, referenceMimeType, c.imageUrl))
-    );
-    firstRest.forEach((c, i) => checked.push({ candidate: c, result: results[i] }));
-  }
+  await runWave(ordered.slice(0, VERIFY_WAVE_ONE));
 
   // Second wave, only when the first produced no confirmed identity. A
   // buried correct match is precisely what a narrow window misses, and it
-  // is worth the extra calls. When the top of the list has already
-  // confirmed, spending them would only be hunting for a cheaper copy of
+  // is worth the extra call. When the top of the list has already
+  // confirmed, spending it would only be hunting for a cheaper copy of
   // something the direct-retailer layer downstream already hunts for.
   const secondWave = ordered.slice(VERIFY_WAVE_ONE);
   const confirmed = () => checked.some(c => c.result.match === "exact");
-  if (!confirmed() && secondWave.length > 0 && (!budget || budget.allows(VERIFY_WAVE_COST_MS))) {
-    const results = await Promise.all(
-      secondWave.map(c => verifyVisualMatch(referenceImageBase64, referenceMimeType, c.imageUrl))
-    );
-    secondWave.forEach((c, i) => checked.push({ candidate: c, result: results[i] }));
+  if (!confirmed() && secondWave.length > 0 && (!options.budget || options.budget.allows(VERIFY_WAVE_COST_MS))) {
+    await runWave(secondWave);
   }
 
   // The two tiers are not the same decision, and treating them as one
@@ -1401,8 +1615,8 @@ async function verifyCandidates(
   // Lens, where the best match is often a brand's own page — the caller
   // prices it with a second, now-accurate search (priceVerifiedIdentity).
   const pick = (tier: "exact" | "similar", rule: "cheapest" | "best-ranked"): ShoppingCandidate | null => {
-    // `checked` is in ranked order (wave one head, then the rest of wave
-    // one, then wave two), so index 0 of a tier is its best-ranked member.
+    // `checked` is in ranked order (wave one, then wave two), so index 0 of
+    // a tier is its best-ranked member.
     const inTier = checked.filter(c => c.result.match === tier).map(c => c.candidate);
     if (inTier.length === 0) return null;
     const priced = inTier.filter(c => c.price > 0);
@@ -1411,10 +1625,30 @@ async function verifyCandidates(
     return priced.reduce((best, c) => (c.price < best.price ? c : best), priced[0]);
   };
 
+  // DEGRADED CONFIDENCE. When the spend governor has taken the gate down to
+  // the cheap model, the gate is no longer allowed to say "exact" — the
+  // card's strongest label has to mean what it says, and what produced it
+  // was not the judge that label was calibrated on. Its best available
+  // answer becomes "likely", and only for a candidate that ALSO carries the
+  // brand read off the photo, which is a second signal the model did not
+  // produce. Anything less corroborated is "unverified", which still
+  // returns a full FINDER result and simply never carries a markup
+  // accusation. That is the honest shape of "we are running cheap right
+  // now", and it is why degrading is survivable: the product keeps
+  // answering, it just stops making its strongest claim.
+  const settle = (
+    candidate: ShoppingCandidate,
+    confidence: "exact" | "likely"
+  ): { best: ShoppingCandidate; confidence: "exact" | "likely" | "unverified" } => {
+    if (!degraded) return { best: candidate, confidence };
+    if (brandConsistent(candidate, options.hints)) return { best: candidate, confidence: "likely" };
+    return { best: candidate, confidence: "unverified" };
+  };
+
   const exact = pick("exact", "cheapest");
-  if (exact) return { best: exact, confidence: "exact" };
+  if (exact) return settle(exact, "exact");
   const similar = pick("similar", "best-ranked");
-  if (similar) return { best: similar, confidence: "likely" };
+  if (similar) return settle(similar, "likely");
 
   // Nothing verified. The honest answer is the engine's own top-ranked
   // candidate, labeled unverified — not the cheapest thing in the list.
@@ -1454,27 +1688,112 @@ function queryFromTitle(title: string): string {
 async function priceVerifiedIdentity(
   identified: ShoppingMatch,
   confidence: "exact" | "likely",
-  referenceImageBase64: string,
-  referenceMimeType: string,
-  hints: IdentityHints,
-  budget: Budget
+  reference: { data: string; mimeType: string },
+  gate: GateOptions
 ): Promise<{ match: ShoppingMatch; engineUsed: string } | null> {
   const title = queryFromTitle(identified.title);
   if (title.length < 3) return null;
-  if (!budget.allows(PRICING_SEARCH_COST_MS)) return null;
+  if (gate.budget && !gate.budget.allows(PRICING_SEARCH_COST_MS)) return null;
 
   const queries = [title, simplifyQuery(title, 6)];
-  const hinted = `${hints.brand || ""} ${hints.productName || ""}`.trim();
+  const hinted = `${gate.hints?.brand || ""} ${gate.hints?.productName || ""}`.trim();
   if (hinted.length >= 3) queries.push(hinted);
 
   const found = await searchShoppingWithFallbacks(queries);
   if (!found || found.match.lowestPrice <= 0) return null;
 
-  const verified = await verifyCandidates(found.match, referenceImageBase64, referenceMimeType, hints, budget);
+  // Identity is already settled; this pool exists only to attach a price to
+  // it, so the narrow window applies.
+  const verified = await verifyCandidates(found.match, reference, { ...gate, window: VERIFY_WINDOW_PRICING });
   if (rankConfidence(verified.confidence) < rankConfidence(confidence)) return null;
   if (verified.best.price <= 0) return null;
 
   return { match: applyVerifiedCandidate(found.match, verified), engineUsed: found.engineUsed };
+}
+
+// ════════════════════════════════════════════════════════════════
+// REUSING AN IDENTIFICATION SOMEONE ELSE ALREADY PAID FOR.
+//
+// The traffic pattern this product is built to create is thousands of
+// people photographing ONE product within a few hours. Every one of those
+// photos is a different file, so the byte-keyed scan cache in redis.ts
+// misses on all of them, and each one paid for a fresh identification.
+// That is the largest avoidable cost in exactly the moment that matters.
+//
+// What makes reuse safe here is that a cache hit is a HYPOTHESIS, not a
+// conclusion, and it is checked against this specific photo before it is
+// used:
+//
+//   1. The fingerprint has to match (see identity-cache.ts - it is derived
+//      from Google's own answer, not from the pixels, so no client can
+//      forge it).
+//   2. The cached listing has to appear in THIS scan's candidate set too,
+//      which means Google, looking at this photo, returned the same listing
+//      it returned for the earlier one.
+//   3. The brand read off THIS photo has to be consistent with the cached
+//      title.
+//   4. One visual comparison has to come back "exact".
+//
+// That fourth check runs on the cheap model on purpose, and it is the one
+// place in this engine where the cheap model touches identification. It is
+// safe because of what it is allowed to do: it can only ACCEPT an
+// identification the strong model already made for a photo that
+// fingerprinted the same way, and anything short of "exact" falls straight
+// through to the full gate. It cannot produce a new identification, and a
+// wrong answer from it costs a wasted call, not a wrong product.
+//
+// A hit keeps full confidence even when the engine is degraded, because the
+// identification being reused was not made by the cheap model. That is what
+// keeps a viral product producing full-strength verdicts during exactly the
+// spike that would otherwise have spent the budget.
+// ════════════════════════════════════════════════════════════════
+async function reuseIdentification(
+  pool: ShoppingMatch,
+  fingerprint: Fingerprint | null,
+  reference: { data: string; mimeType: string },
+  gate: GateOptions
+): Promise<ShoppingMatch | null> {
+  if (!fingerprint) return null;
+
+  const present = new Set(
+    pool.candidates.map(c => normalizeListingUrl(c.productUrl)).filter(Boolean)
+  );
+  const hit = await lookupIdentity(fingerprint, (entry: CachedIdentity, via) => {
+    // Overlap is measured against the LENS LISTINGS the entry was
+    // identified from, not against the winning record's own URL - the
+    // winner usually comes from a downstream pricing layer and is not in
+    // any Lens pool. See CachedIdentity.anchors.
+    const overlap = (entry.anchors || []).filter(url => present.has(url)).length;
+    // The two lookup paths do not carry the same weight. A "set" hit means
+    // the whole top-of-response listing set was identical, which is already
+    // a strong same-product signal, so one confirming listing is enough. A
+    // "listing" hit means only ONE listing matched - and one shared listing
+    // can happen between two different products of the same brand, which is
+    // exactly the confusion this engine exists to avoid - so that path has
+    // to show at least two.
+    if (overlap < (via === "set" ? 1 : 2)) return false;
+    const brandWords = significantWords(gate.hints?.brand || "");
+    if (brandWords.length === 0) return true;
+    const titleWords = new Set(significantWords(entry.title));
+    return brandWords.every(w => titleWords.has(w));
+  });
+  if (!hit) return null;
+
+  const [confirmation] = await verifyVisualMatchBatch(
+    reference, [hit.entry.imageUrl], GATE_MODEL_DEGRADED
+  );
+  if (confirmation.match !== "exact") return null;
+
+  return {
+    title: hit.entry.title,
+    lowestPrice: hit.entry.price,
+    highestPrice: Math.max(hit.entry.highestPrice, hit.entry.price),
+    imageUrl: hit.entry.imageUrl,
+    productUrl: hit.entry.productUrl,
+    source: hit.entry.source,
+    productId: hit.entry.productId,
+    candidates: pool.candidates,
+  };
 }
 
 // A challenger from a later layer only displaces the incumbent if it is at
@@ -1629,43 +1948,27 @@ async function extractProductViaClaudeText(html: string): Promise<Partial<PagePr
   const text = stripHtmlForText(html);
   if (text.length < 50) return {};
 
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 200,
-        temperature: 0,
-        messages: [{
-          role: "user",
-          content: `Extract the product name and price from this product page text. Return ONLY JSON:
+  const data = await callClaude(TEXT_MODEL, {
+    max_tokens: 200,
+    messages: [{
+      role: "user",
+      content: `Extract the product name and price from this product page text. Return ONLY JSON:
 {"title": "product name or empty string", "price": null or number, "currency": "USD"}
 CRITICAL: price must be the main one-time purchase price of this exact product as currently displayed by default. Never a per-installment amount ("4 payments of $X"), a subscription/subscribe-and-save price, a shipping cost, or a price for a different variant/bundle than the one shown by default. If several prices appear and it's unclear which is the main displayed price, return null rather than guessing.
 CRITICAL: title must include defining material/type descriptors, not a bare generic category word. Use "jade roller" not "roller".
 
 PAGE TEXT:
 ${text}`,
-        }],
-      }),
-      signal: AbortSignal.timeout(10000),
-    });
+    }],
+  }, 12000);
 
-    const data = await res.json();
-    const raw = data.content?.[0]?.text || "{}";
-    const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-    return {
-      title: typeof parsed.title === "string" && parsed.title ? parsed.title : undefined,
-      price: typeof parsed.price === "number" ? parsed.price : null,
-      currency: typeof parsed.currency === "string" ? parsed.currency : undefined,
-    };
-  } catch {
-    return {};
-  }
+  const parsed = parseModelJson(data) as { title?: unknown; price?: unknown; currency?: unknown } | null;
+  if (!parsed) return {};
+  return {
+    title: typeof parsed.title === "string" && parsed.title ? parsed.title : undefined,
+    price: typeof parsed.price === "number" ? parsed.price : null,
+    currency: typeof parsed.currency === "string" ? parsed.currency : undefined,
+  };
 }
 
 async function buildEnrichedSearchQuery(title: string, description: string, rawText: string): Promise<string> {
@@ -1675,21 +1978,11 @@ async function buildEnrichedSearchQuery(title: string, description: string, rawT
   const context = [title, description, rawText].filter(Boolean).join("\n\n").slice(0, 8000);
   if (context.length < 20) return fallback;
 
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 120,
-        temperature: 0,
-        messages: [{
-          role: "user",
-          content: `Based on this product page content, write the single most specific shopping search query for finding this exact product (or the closest possible match) elsewhere online.
+  const data = await callClaude(TEXT_MODEL, {
+    max_tokens: 120,
+    messages: [{
+      role: "user",
+      content: `Based on this product page content, write the single most specific shopping search query for finding this exact product (or the closest possible match) elsewhere online.
 
 Include distinguishing descriptors the content actually mentions: material, specific type or variant, notable features (e.g. "dual-head", "2-in-1", number of pieces, mechanism, size). Do not include the brand or store name. Do not include marketing filler words ("premium", "best-selling", "amazing"). Do not invent details the text doesn't support.
 
@@ -1699,17 +1992,12 @@ PRODUCT TITLE: ${title || "(none given)"}
 
 PAGE CONTENT:
 ${context}`,
-        }],
-      }),
-      signal: AbortSignal.timeout(10000),
-    });
+    }],
+  }, 12000);
 
-    const data = await res.json();
-    const query = String(data.content?.[0]?.text || "").trim().replace(/^["']|["']$/g, "");
-    return query.length >= 3 ? query : fallback;
-  } catch {
-    return fallback;
-  }
+  const content = (data?.content as { text?: string }[] | undefined) || [];
+  const query = String(content[0]?.text || "").trim().replace(/^["']|["']$/g, "");
+  return query.length >= 3 ? query : fallback;
 }
 
 async function extractPageProductData(html: string): Promise<PageProductData> {
@@ -1753,7 +2041,12 @@ async function extractPageProductData(html: string): Promise<PageProductData> {
 export async function scanProduct(imageBase64: string, mimeType: string, country?: string, intent?: "verdict" | "finder"): Promise<ScanResult> {
   const requesterCountry = sanitizeCountry(country);
   const budget = createBudget();
-  const vision = await extractFromImage(imageBase64, mimeType);
+  // Read once, applied for the whole scan. "degraded" means the day's model
+  // budget is spent or the API is pushing back: the gate moves to the cheap
+  // model, caps what it is allowed to claim, and the enhancement layers are
+  // skipped. See model-budget.ts.
+  const spendMode = await currentSpendMode();
+  const vision = await extractFromImage(imageBase64, mimeType, spendMode);
   // What the vision pass read off the photo. Used to ORDER candidates for
   // the identification gate and to build fallback queries — never to
   // filter a candidate out. See rankForVerification.
@@ -1767,6 +2060,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
   // seller's own page, in which case the whole verification chain stays
   // consistent with the image that actually established the identity.
   let reference = { data: imageBase64, mimeType };
+  const gate: GateOptions = { hints, budget, mode: spendMode };
 
   // ── Try Lens first: match on pixels, not words ──
   const lensImageUrl = await uploadForLensSearch(imageBase64, mimeType);
@@ -1782,8 +2076,26 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
     await discardLensUpload(lensImageUrl);
   }
 
+  // ── Has someone already identified this product? ──
+  //    Checked before the gate runs, because a hit replaces the entire gate
+  //    with one cheap confirmation. Only the image pipeline does this: a URL
+  //    scan of the same page already collapses onto one entry in the
+  //    route's own cache, so there is nothing here for it to win.
+  let fingerprint: Fingerprint | null = null;
+  let servedFromIdentityCache = false;
   if (shopping) {
-    const verified = await verifyCandidates(shopping, reference.data, reference.mimeType, hints, budget);
+    fingerprint = lensFingerprint(shopping.candidates.map(c => c.productUrl));
+    const reused = await reuseIdentification(shopping, fingerprint, reference, gate);
+    if (reused) {
+      shopping = reused;
+      confidence = "exact";
+      engineUsed = `${engineUsed}+reused`;
+      servedFromIdentityCache = true;
+    }
+  }
+
+  if (shopping && !servedFromIdentityCache) {
+    const verified = await verifyCandidates(shopping, reference, gate);
     // Honest pass-through: a genuinely unverified visual match stays
     // unverified. It used to be silently upgraded to "likely" here, which
     // rendered as "VISUAL MATCH CONFIRMED" on a product that was never
@@ -1819,7 +2131,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
             // own product page, so that photo becomes the reference every
             // later check in this scan compares against.
             reference = { data: pageImage.data, mimeType: pageImage.mimeType };
-            const verified = await verifyCandidates(shopping, reference.data, reference.mimeType, hints, budget);
+            const verified = await verifyCandidates(shopping, reference, gate);
             // Same honesty fix as above - no artificial upgrade of a
             // genuinely unverified match.
             confidence = verified.confidence;
@@ -1835,7 +2147,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
         if (found) {
           shopping = found.match;
           engineUsed = `store_page_${found.engineUsed}`;
-          const verified = await verifyCandidates(shopping, reference.data, reference.mimeType, hints, budget);
+          const verified = await verifyCandidates(shopping, reference, gate);
           confidence = verified.confidence;
           shopping = applyVerifiedCandidate(shopping, verified);
         }
@@ -1851,7 +2163,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
     if (found) {
       shopping = found.match;
       engineUsed = `store_${found.engineUsed}`;
-      const verified = await verifyCandidates(shopping, reference.data, reference.mimeType, hints, budget);
+      const verified = await verifyCandidates(shopping, reference, gate);
       confidence = verified.confidence;
       shopping = applyVerifiedCandidate(shopping, verified);
     }
@@ -1866,7 +2178,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
       if (found) {
         shopping = found.match;
         engineUsed = `generic_${found.engineUsed}`;
-        const verified = await verifyCandidates(shopping, reference.data, reference.mimeType, hints, budget);
+        const verified = await verifyCandidates(shopping, reference, gate);
         confidence = verified.confidence;
         shopping = applyVerifiedCandidate(shopping, verified);
       }
@@ -1879,10 +2191,8 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
   //    through the same gate. This is what makes keeping unpriced visual
   //    matches safe, and it is the half of the flow Google performs
   //    separately too. ──
-  if (shopping && confidence !== "unverified" && shopping.lowestPrice <= 0) {
-    const priced = await priceVerifiedIdentity(
-      shopping, confidence, reference.data, reference.mimeType, hints, budget
-    );
+  if (shopping && !servedFromIdentityCache && confidence !== "unverified" && shopping.lowestPrice <= 0) {
+    const priced = await priceVerifiedIdentity(shopping, confidence, reference, gate);
     if (priced) {
       shopping = priced.match;
       engineUsed = `${engineUsed}+priced_${priced.engineUsed}`;
@@ -1914,7 +2224,14 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
   //
   //    Adoption goes through shouldReplace(), so a cheaper challenger can
   //    no longer evict a better-identified incumbent. ──
-  if (shopping && budget.allows(ALTERNATIVE_LAYER_COST_MS)) {
+  //    Skipped on two conditions beyond the clock. On a reused
+  //    identification, because the cached record is what the SAME layers
+  //    produced for this product within the last hour - the stored price is
+  //    already the cheapest verified one, so re-running them buys a
+  //    re-measurement of the same answer. And in degraded mode, because
+  //    these layers only ever improve a price that already exists, which is
+  //    the first thing worth giving up when the budget is gone. ──
+  if (shopping && !servedFromIdentityCache && spendMode === "full" && budget.allows(ALTERNATIVE_LAYER_COST_MS)) {
     const identifiedTitle = confidence !== "unverified" ? queryFromTitle(shopping.title) : "";
     const visionQuery = (vision.brand ? `${vision.brand} ${vision.productName}` : (vision.productName || "")).trim();
     const retailerQuery = identifiedTitle.length >= 3 ? identifiedTitle : visionQuery;
@@ -1932,7 +2249,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
 
     if (unbrandedFound && unbrandedFound.match.lowestPrice > 0) {
       const unbrandedVerified = await verifyCandidates(
-        unbrandedFound.match, reference.data, reference.mimeType, hints, budget
+        unbrandedFound.match, reference, { ...gate, window: VERIFY_WINDOW_PRICING }
       );
       if (shouldReplace(confidence, shopping.lowestPrice, unbrandedVerified.confidence, unbrandedVerified.best.price)) {
         shopping = applyVerifiedCandidate(unbrandedFound.match, unbrandedVerified);
@@ -1943,7 +2260,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
 
     if (retailerFound && retailerFound.match.lowestPrice > 0 && budget.allows(VERIFY_WAVE_COST_MS)) {
       const retailerVerified = await verifyCandidates(
-        retailerFound.match, reference.data, reference.mimeType, hints, budget
+        retailerFound.match, reference, { ...gate, window: VERIFY_WINDOW_PRICING }
       );
       if (shouldReplace(confidence, shopping.lowestPrice, retailerVerified.confidence, retailerVerified.best.price)) {
         shopping = applyVerifiedCandidate(retailerFound.match, retailerVerified);
@@ -1965,6 +2282,29 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
   //    candidates survive to the gate at all. ──
   const hasSourcePrice = !!shopping && shopping.lowestPrice > 0;
   if (shopping && !hasSourcePrice) return getUnresolvedResult();
+
+  // ── Publish the identification for the next person to scan this product.
+  //    Written here, at the end, so what gets stored is the answer AFTER
+  //    every pricing layer has run - which is why a later scan can reuse it
+  //    and skip those layers rather than having to redo them. Only a
+  //    confirmed, priced identification is worth storing, and never one the
+  //    cache itself supplied: refreshing an entry on every hit would let an
+  //    hour-old price live forever. ──
+  if (shopping && !servedFromIdentityCache && confidence === "exact" && hasSourcePrice) {
+    await storeIdentity(fingerprint, {
+      title: shopping.title,
+      price: shopping.lowestPrice,
+      highestPrice: shopping.highestPrice,
+      imageUrl: shopping.imageUrl,
+      productUrl: shopping.productUrl,
+      source: shopping.source,
+      productId: shopping.productId,
+      engineUsed,
+      confidence: "exact",
+      anchors: fingerprint?.listings || [],
+      at: Date.now(),
+    });
+  }
 
   // ── Determine retail price ──
   let retailPrice: number;
@@ -2084,6 +2424,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
 export async function scanProductUrl(url: string, country?: string, intent?: "verdict" | "finder"): Promise<ScanResult> {
   const requesterCountry = sanitizeCountry(country);
   const budget = createBudget();
+  const spendMode = await currentSpendMode();
 
   try {
     let parsed: URL;
@@ -2113,6 +2454,7 @@ export async function scanProductUrl(url: string, country?: string, intent?: "ve
     // the image path: it affects the order candidates are checked in,
     // never whether they are checked.
     const hints: IdentityHints = { productName: pageData.title };
+    const gate: GateOptions = { hints, budget, mode: spendMode };
 
     // ── Step 2: search, Lens-first if we have a real photo ──
     let shopping: ShoppingMatch | null = null;
@@ -2152,7 +2494,7 @@ export async function scanProductUrl(url: string, country?: string, intent?: "ve
     // ── Step 3: visual verification — only possible with a real photo.
     //    Without one, confidence honestly stays "unverified" (FINDER). ──
     if (pageImage) {
-      const verified = await verifyCandidates(shopping, pageImage.data, pageImage.mimeType, hints, budget);
+      const verified = await verifyCandidates(shopping, pageImage, gate);
       confidence = verified.confidence;
       shopping = applyVerifiedCandidate(shopping, verified);
 
@@ -2161,9 +2503,7 @@ export async function scanProductUrl(url: string, country?: string, intent?: "ve
       // easily be a record with no published price; the confirmed name is
       // then what finds one.
       if (confidence !== "unverified" && shopping.lowestPrice <= 0) {
-        const priced = await priceVerifiedIdentity(
-          shopping, confidence, pageImage.data, pageImage.mimeType, hints, budget
-        );
+        const priced = await priceVerifiedIdentity(shopping, confidence, pageImage, gate);
         if (priced) {
           shopping = priced.match;
           engineUsed = `${engineUsed}+priced_${priced.engineUsed}`;
@@ -2177,7 +2517,7 @@ export async function scanProductUrl(url: string, country?: string, intent?: "ve
     //    to only show that brand's own listing, with a cheaper Amazon,
     //    Walmart, or eBay copy invisible to it. Applies before the
     //    VERDICT/FINDER branch below, so it holds for every intent. ──
-    if (shopping && pageImage && budget.allows(ALTERNATIVE_LAYER_COST_MS)) {
+    if (shopping && pageImage && spendMode === "full" && budget.allows(ALTERNATIVE_LAYER_COST_MS)) {
       // Once the product has been identified, the confirmed title is a
       // better retailer query than the page-derived one, for the same
       // reason it is a better pricing query.
@@ -2187,7 +2527,7 @@ export async function scanProductUrl(url: string, country?: string, intent?: "ve
         const retailerFound = await searchAllDirectRetailers(retailerQuery);
         if (retailerFound && retailerFound.match.lowestPrice > 0) {
           const retailerVerified = await verifyCandidates(
-            retailerFound.match, pageImage.data, pageImage.mimeType, hints, budget
+            retailerFound.match, pageImage, { ...gate, window: VERIFY_WINDOW_PRICING }
           );
           // Same rule as the image pipeline: a cheaper challenger never
           // evicts a better-identified incumbent.

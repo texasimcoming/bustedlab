@@ -42,18 +42,24 @@ const VERDICT_URL = pathToFileURL(join(REPO, "src/lib/verdict.ts")).href;
 const BLOB_STUB = `const put = async (path) => ({ url: "https://blob.test/" + path });
 const del = async () => {};`;
 
+const localModule = (name) => pathToFileURL(join(REPO, `src/lib/${name}.ts`)).href;
+
 async function loadEngine(sourcePath, label) {
   let src = readFileSync(sourcePath, "utf8");
-  const rewrites = [
+  const required = [
     ['import { put, del } from "@vercel/blob";', BLOB_STUB],
     ['import { randomBytes } from "crypto";', 'import { randomBytes } from "node:crypto";'],
     ['import { LENS_BLOB_PREFIX } from "@/lib/constants";', 'const LENS_BLOB_PREFIX = "lens-scans/";'],
     ['import { calculateVerdict } from "@/lib/verdict";', `import { calculateVerdict } from "${VERDICT_URL}";`],
   ];
-  for (const [from, to] of rewrites) {
+  for (const [from, to] of required) {
     if (!src.includes(from)) throw new Error(`${label}: cannot rewrite missing import: ${from}`);
     src = src.replace(from, to);
   }
+  // Path aliases the pre-fix fixture predates, so these are optional.
+  src = src
+    .replace('from "@/lib/model-budget"', `from "${localModule("model-budget")}"`)
+    .replace('from "@/lib/identity-cache"', `from "${localModule("identity-cache")}"`);
   const dir = mkdtempSync(join(tmpdir(), "bustedlab-ident-"));
   const file = join(dir, `${label}.ts`);
   writeFileSync(file, src, "utf8");
@@ -340,8 +346,113 @@ const SCENARIO_SIMILAR_TIER = {
 };
 
 // ════════════════════════════════════════════════════════════════
+// SCENARIO 7 - the same product, photographed by a second person.
+//
+// The cost lever that matters during a viral spike. One product, two
+// different photos, minutes apart. The first scan pays for a full
+// identification; the second must reuse it - same answer, and not one call
+// to the strong model. The two photos are different files, so the byte-keyed
+// scan cache in redis.ts cannot help here; this is the Lens-fingerprint
+// cache doing the work.
+// ════════════════════════════════════════════════════════════════
+const SCENARIO_SPIKE = {
+  ...SCENARIO_GLASSES,
+  name: "Second person photographs the same product (identity cache)",
+  kind: "spike",
+  expect: { titleIncludes: "PH2083", price: 99.0, confidence: "exact", platform: "Amazon" },
+  expectPreFix: null,
+  guardOnly: true,
+  expectStats: (stats) => {
+    const problems = [];
+    if (stats.opusGateCalls !== 0) {
+      problems.push(`the strong model ran ${stats.opusGateCalls} time(s); a reused identification must not need it`);
+    }
+    if (stats.gateCalls !== 1) {
+      problems.push(`${stats.gateCalls} gate call(s); a reused identification takes exactly one confirmation`);
+    }
+    return problems;
+  },
+};
+
+// ════════════════════════════════════════════════════════════════
+// SCENARIO 8 - the day's model budget is gone.
+//
+// Degraded mode. The engine must still identify the product correctly and
+// still answer, on the cheap model, without claiming the strongest label it
+// no longer has the evidence for. It must never simply fail: a viral spike
+// that exhausts the budget should cost the product its strongest claim, not
+// its ability to answer.
+// ════════════════════════════════════════════════════════════════
+const SCENARIO_DEGRADED = {
+  ...SCENARIO_GLASSES,
+  name: "Budget spent: degraded mode still identifies correctly",
+  spendToday: 10_000,
+  // Correct product, priced by the identify-then-price search. "likely"
+  // rather than "exact" because the cheap gate is not allowed to claim a
+  // pixel match, and $118 rather than $99 because the direct-retailer sweep
+  // is one of the enhancements degraded mode gives up.
+  expect: { titleIncludes: "PH2083", price: 118.0, confidence: "likely", mode: "FINDER" },
+  expectPreFix: null,
+  guardOnly: true,
+  expectStats: (stats) => {
+    const problems = [];
+    if (stats.opusGateCalls !== 0) {
+      problems.push(`the strong model ran ${stats.opusGateCalls} time(s) after the budget was spent`);
+    }
+    if (stats.gateCalls === 0) problems.push("the gate never ran, so nothing was identified at all");
+    return problems;
+  },
+};
+
+// ════════════════════════════════════════════════════════════════
 // The mocked internet.
 // ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// An in-memory Upstash. The identity cache and the spend governor are the
+// point of this pass, so they run as written rather than being stubbed out:
+// the emulator speaks enough of the REST protocol for the client the
+// project actually uses, including its base64 response encoding.
+// ════════════════════════════════════════════════════════════════
+const store = new Map();
+export function resetStore() { store.clear(); }
+
+function runRedisCommand(args) {
+  const [rawCmd, key, ...rest] = args;
+  const cmd = String(rawCmd).toUpperCase();
+  switch (cmd) {
+    case "GET": return store.has(key) ? store.get(key) : null;
+    case "SET": store.set(key, String(rest[0])); return "OK";
+    case "INCRBYFLOAT": {
+      const next = (Number(store.get(key)) || 0) + Number(rest[0]);
+      store.set(key, String(next));
+      return String(next);
+    }
+    case "DEL": return store.delete(key) ? 1 : 0;
+    case "EXPIREAT":
+    case "EXPIRE": return 1;
+    default: return null;
+  }
+}
+
+// The client sends `Upstash-Encoding: base64` and base64-decodes what comes
+// back, so a plain string here would arrive as binary noise. This bit has
+// bitten this project before.
+const encode = (value) =>
+  typeof value === "string" ? Buffer.from(value, "utf8").toString("base64") : value;
+
+function redisResponse(body) {
+  const isPipeline = Array.isArray(body) && Array.isArray(body[0]);
+  const result = isPipeline
+    ? body.map(args => ({ result: encode(runRedisCommand(args)) }))
+    : { result: encode(runRedisCommand(body)) };
+  return {
+    ok: true, status: 200,
+    headers: { get: () => "application/json" },
+    json: async () => result,
+    text: async () => JSON.stringify(result),
+  };
+}
+
 function jsonResponse(obj) {
   return {
     ok: true, status: 200,
@@ -378,24 +489,56 @@ function installFetch(scenario, stats) {
     if (url.startsWith("https://api.anthropic.com/")) {
       const payload = JSON.parse(init.body);
       const blocks = payload.messages[0].content;
-      const serialized = JSON.stringify(blocks);
+      const serialized = typeof blocks === "string" ? blocks : JSON.stringify(blocks);
+      const usage = { input_tokens: 2000, output_tokens: 120 };
 
       if (serialized.includes("Product intelligence scan")) {
         stats.visionCalls++;
-        return jsonResponse({ content: [{ type: "text", text: JSON.stringify(scenario.vision) }] });
+        stats.models.push(`extract:${payload.model}`);
+        return jsonResponse({ usage, content: [{ type: "text", text: JSON.stringify(scenario.vision) }] });
       }
+
       if (serialized.includes("IMAGE B")) {
-        stats.verifyCalls++;
+        // The pre-fix engine's shape: one candidate per call.
         const images = blocks.filter(b => b.type === "image");
-        const decoded = Buffer.from(images[images.length - 1].source.data, "base64").toString("utf8");
-        const candidateUrl = decoded.replace(/^IMG::/, "");
+        const candidateUrl = Buffer.from(images[images.length - 1].source.data, "base64")
+          .toString("utf8").replace(/^IMG::/, "");
+        stats.gateCalls++;
+        stats.candidatesJudged++;
         const match = scenario.verdicts[candidateUrl];
         if (!match) throw new Error(`scenario "${scenario.name}" has no verification verdict for ${candidateUrl}`);
-        stats.verified.push(`${match.padEnd(9)} ${candidateUrl.replace("https://img.test/", "")}`);
-        return jsonResponse({ content: [{ type: "text", text: JSON.stringify({ match, reasoning: "mocked" }) }] });
+        return jsonResponse({ usage, content: [{ type: "text", text: JSON.stringify({ match, reasoning: "mocked" }) }] });
       }
+
+      if (serialized.includes("candidate product listing image")) {
+        // The gate now judges a whole wave in one call. IMAGE A is the
+        // reference; every image after it is a candidate, in order, and the
+        // bytes of each one name the listing it came from.
+        const images = blocks.filter(b => b.type === "image");
+        const candidateUrls = images.slice(1).map(b =>
+          Buffer.from(b.source.data, "base64").toString("utf8").replace(/^IMG::/, "")
+        );
+        stats.gateCalls++;
+        stats.candidatesJudged += candidateUrls.length;
+        stats.models.push(`gate:${payload.model}(${candidateUrls.length})`);
+        if (payload.model.includes("opus")) stats.opusGateCalls++;
+
+        const verdicts = candidateUrls.map((candidateUrl, i) => {
+          const match = scenario.verdicts[candidateUrl];
+          if (!match) throw new Error(`scenario "${scenario.name}" has no verification verdict for ${candidateUrl}`);
+          stats.verified.push(`${match.padEnd(9)} ${candidateUrl.replace("https://img.test/", "")}`);
+          return { candidate: i + 1, match, why: "mocked" };
+        });
+        return jsonResponse({ usage, content: [{ type: "text", text: JSON.stringify(verdicts) }] });
+      }
+
       // Query enrichment / page text extraction - unused by the image path.
-      return jsonResponse({ content: [{ type: "text", text: "{}" }] });
+      return jsonResponse({ usage, content: [{ type: "text", text: "{}" }] });
+    }
+
+    if (url.startsWith("https://redis.test")) {
+      stats.redisCalls++;
+      return redisResponse(body);
     }
 
     if (url.startsWith("https://serpapi.com/search.json")) {
@@ -443,13 +586,37 @@ process.env.ANTHROPIC_API_KEY = "test-key";
 process.env.SERPAPI_KEY = "test-key";
 process.env.SERPER_API_KEY = "test-key";
 process.env.BLOB_READ_WRITE_TOKEN = "test-token";
+process.env.UPSTASH_REDIS_REST_URL = "https://redis.test";
+process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
 
-const REFERENCE_PHOTO = Buffer.from("REFERENCE-PHOTO").toString("base64");
+// Two different photos of one product. Different bytes, so the byte-keyed
+// cache in redis.ts treats them as unrelated - which is the whole point.
+const REFERENCE_PHOTO = Buffer.from("REFERENCE-PHOTO-A").toString("base64");
+const SECOND_PHOTO = Buffer.from("REFERENCE-PHOTO-B").toString("base64");
 
-async function run(engine, scenario) {
-  const stats = { visionCalls: 0, verifyCalls: 0, lensCalls: 0, retailerCalls: 0, imageFetches: 0, verified: [] };
+const { resetSpendModeCache } = await import(localModule("model-budget"));
+
+function freshStats() {
+  return {
+    visionCalls: 0, gateCalls: 0, opusGateCalls: 0, candidatesJudged: 0,
+    lensCalls: 0, retailerCalls: 0, imageFetches: 0, redisCalls: 0,
+    verified: [], models: [],
+  };
+}
+
+async function run(engine, scenario, opts = {}) {
+  const stats = freshStats();
   installFetch(scenario, stats);
-  const result = await engine.scanProduct(REFERENCE_PHOTO, "image/jpeg", "us", scenario.intent);
+  if (!opts.keepStore) resetStore();
+  if (opts.spendToday) {
+    // Straight into the counter the governor reads, so the real threshold
+    // logic decides the mode rather than a flag the test sets.
+    const day = new Date().toISOString().slice(0, 10);
+    store.set(`spend:model:${day}`, String(opts.spendToday));
+  }
+  resetSpendModeCache();
+  const photo = opts.photo || REFERENCE_PHOTO;
+  const result = await engine.scanProduct(photo, "image/jpeg", "us", scenario.intent);
   return { result, stats };
 }
 
@@ -495,6 +662,7 @@ const line = (s = "") => console.log(s);
 const SCENARIOS = [
   SCENARIO_GLASSES, SCENARIO_BAG, SCENARIO_NO_MATCH,
   SCENARIO_UNPRICEABLE, SCENARIO_VERDICT, SCENARIO_SIMILAR_TIER,
+  SCENARIO_SPIKE, SCENARIO_DEGRADED,
 ];
 
 for (const scenario of SCENARIOS) {
@@ -505,15 +673,32 @@ for (const scenario of SCENARIOS) {
   line(`  the photo shows: ${scenario.expect.titleIncludes}`);
   line("=".repeat(74));
 
-  const now = await run(current, scenario);
+  // A spike scenario is two scans: one to pay for the identification, then
+  // a DIFFERENT photo of the same product, which is the one measured.
+  if (scenario.kind === "spike") {
+    const first = await run(current, scenario, { photo: REFERENCE_PHOTO });
+    line(`\n  FIRST SCAN (pays for the identification)`);
+    line(`    returned  : ${first.result.sourceProduct.title}`);
+    line(`    gate      : ${first.stats.gateCalls} call(s), ${first.stats.candidatesJudged} candidates, ` +
+         `${first.stats.opusGateCalls} on the strong model`);
+  }
+
+  const now = await run(current, scenario, {
+    keepStore: scenario.kind === "spike",
+    photo: scenario.kind === "spike" ? SECOND_PHOTO : undefined,
+    spendToday: scenario.spendToday,
+  });
   const got = describe(now);
   const problems = checkExpected(got, scenario.expect);
+  if (scenario.expectStats) problems.push(...scenario.expectStats(now.stats));
   line(`\n  CURRENT ENGINE  ${problems.length === 0 ? "PASS" : "FAIL"}`);
   line(`    returned  : ${got.title}`);
   line(`    price     : $${got.price.toFixed(2)} at ${got.platform}`);
   line(`    label     : ${got.confidence} / ${got.mode}   engine: ${got.engine}`);
   if (got.mode === "VERDICT") line(`    verdict   : ${got.verdict}  retail $${got.retail.toFixed(2)}  savings $${got.savings.toFixed(2)}`);
-  line(`    gate saw  : ${now.stats.verifyCalls} candidates checked`);
+  line(`    gate      : ${now.stats.gateCalls} call(s), ${now.stats.candidatesJudged} candidates judged, ` +
+       `${now.stats.opusGateCalls} on the strong model`);
+  line(`    models    : ${now.stats.models.join("  ")}`);
   for (const v of now.stats.verified) line(`                ${v}`);
   for (const p of problems) line(`    PROBLEM   : ${p}`);
   if (problems.length > 0) failures++;
@@ -528,7 +713,7 @@ for (const scenario of SCENARIOS) {
     line(`    price     : $${gotBefore.price.toFixed(2)} at ${gotBefore.platform}`);
     line(`    label     : ${gotBefore.confidence} / ${gotBefore.mode}   engine: ${gotBefore.engine}`);
     if (gotBefore.mode === "VERDICT") line(`    verdict   : ${gotBefore.verdict}  retail $${gotBefore.retail.toFixed(2)}  savings $${gotBefore.savings.toFixed(2)}`);
-    line(`    gate saw  : ${before.stats.verifyCalls} candidates checked`);
+    line(`    gate      : ${before.stats.candidatesJudged || before.stats.gateCalls} candidates checked`);
     if (!stillBroken) {
       line("    PROBLEM   : the pre-fix engine passed this scenario, so the scenario does not");
       line("                reproduce the bug it exists to document.");
