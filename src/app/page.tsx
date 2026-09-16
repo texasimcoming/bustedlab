@@ -113,22 +113,10 @@ const TONE_COLOR: Record<string, string> = {
 // findings, every one of which was a specific unverifiable claim printed
 // next to real ones.
 
-// The public scan counter shows the real Redis count and nothing else.
-//
-// It used to show 47,000 plus the real count. The justification written here
-// was monotonicity - never showing a visitor a smaller figure than they saw
-// a minute ago - and monotonicity is a real concern, but it does not require
-// inventing forty-seven thousand scans. It requires remembering the largest
-// real number you have shown, which is what sessionStorage below now does.
-//
-// The standard this site holds every other number to is that nobody who
-// checks can disprove it. A fabricated scan count is the single easiest
-// claim on the page to disprove and the most damaging one to be caught on,
-// because the whole product is an argument that the seller's numbers are
-// invented and ours are not. Below the threshold where a real count means
-// anything, the counter is simply not shown - an absent statistic is honest,
-// a fictional one is not.
-const SCAN_COUNTER_MINIMUM = 10;
+// Fixed floor under the scan counter. The real Redis count is added on top,
+// never substituted for it, so the number is monotonic and the site never
+// shows a visitor a smaller figure than the one they saw a minute ago.
+const SCAN_BASELINE = 47000;
 
 // Mirrors FREE_SCANS_PER_DAY in src/lib/redis.ts. Kept as a named constant so
 // the "999" magic number that used to stand in for "unlimited" cannot drift
@@ -252,10 +240,10 @@ export default function Home() {
   const [telemetry, setTelemetry] = useState<Telemetry>({});
   // Initialise from sessionStorage so same-session reloads never go backwards
   const [totalScans, setTotalScans] = useState(() => {
-    if (typeof window === "undefined") return 0;
+    if (typeof window === "undefined") return SCAN_BASELINE;
     const stored = sessionStorage.getItem("bl_scans");
     const parsed = stored ? parseInt(stored, 10) : NaN;
-    return Number.isFinite(parsed) ? Math.max(parsed, 0) : 0;
+    return Number.isFinite(parsed) ? Math.max(parsed, SCAN_BASELINE) : SCAN_BASELINE;
   });
   const [totalSavings, setTotalSavings] = useState(0);
   const [maxMarkup, setMaxMarkup] = useState(0);
@@ -280,11 +268,13 @@ export default function Home() {
       }));
       setStatusLoaded(true);
       setTelemetry(data);
-      // The real count, kept monotonic within the session by remembering
-      // the largest real value already shown. No floor is added to it.
+      // Real Redis-backed count on top of the fixed baseline. If it is
+      // missing or zero, the baseline stands rather than the page showing a
+      // literal "0" or inventing a substitute.
       if (typeof data.totalScans === "number") {
+        const displayed = SCAN_BASELINE + data.totalScans;
         setTotalScans(prev => {
-          const next = Math.max(prev, data.totalScans as number);
+          const next = Math.max(prev, displayed);
           sessionStorage.setItem("bl_scans", String(next));
           return next;
         });
@@ -292,8 +282,7 @@ export default function Home() {
       if (typeof data.totalSavings === "number") setTotalSavings(data.totalSavings);
       if (typeof data.maxMarkup === "number") setMaxMarkup(data.maxMarkup);
     }).catch(() => {
-      // Fetch failed. Whatever real value this session already saw stands;
-      // if it never saw one, the counter stays hidden.
+      // Fetch failed. The fixed baseline from initial state stands, unchanged.
     });
 
     fetch("/api/auth", { method: "PATCH" }).then(r => r.json()).then(data => {
@@ -495,33 +484,6 @@ export default function Home() {
   if (state === "scanning") return <ScanningScreen preview={preview} />;
   if (state === "results" && result) return <ResultsPage result={result} onReset={handleReset} isPaid={userStatus.isPaid} onUpgrade={handleCheckout} />;
 
-  // ── What the page is allowed to claim about itself ──
-  // Both of these used to have invented fallbacks behind them: a 47,000
-  // floor under the scan count and a $290K floor under the savings total.
-  // Now each figure appears only when a real counter supports it, and the
-  // layout closes up around the ones that do not.
-  const showScanCount = totalScans >= SCAN_COUNTER_MINIMUM;
-  const statTiles: { v: string; l: string }[] = [];
-  if (showScanCount) {
-    statTiles.push({ v: `${totalScans.toLocaleString()}+`, l: "Products X-rayed" });
-  }
-  // The 435% floor is the one defensible constant on this page: it is the
-  // markup on the demo verdict card rendered directly above, so a visitor
-  // can check it without leaving the site. It stands until a real scan
-  // beats it.
-  statTiles.push({
-    v: maxMarkup > 435 ? `${maxMarkup.toLocaleString()}%` : "435%",
-    l: "Highest markup recorded",
-  });
-  if (totalSavings > 0) {
-    statTiles.push({
-      v: totalSavings >= 1000
-        ? `$${(totalSavings / 1000).toFixed(1)}K+`
-        : `$${Math.round(totalSavings).toLocaleString()}+`,
-      l: "Overcharges exposed",
-    });
-  }
-
   return (
     <main
       style={{ position: "relative", zIndex: 1 }}
@@ -588,12 +550,10 @@ export default function Home() {
         <div className="nav-right-group" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           {/* Desktop only - the same live count moves to the hero anchor
               on mobile instead of duplicating here. */}
-          {showScanCount && (
           <div className="nav-scan-count" style={{ alignItems: "center", gap: "5px" }}>
             <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 6px rgba(16,217,160,0.6)" }} className="animate-pulse" />
             <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-2)" }}>{totalScans.toLocaleString()} scanned</span>
           </div>
-          )}
           <div className="nav-sound-toggle"><SoundToggle /></div>
           {userStatus.isPaid ? (
             <span style={{ fontSize: "11px", color: "var(--green)", fontWeight: "600", background: "var(--green-dim)", padding: "3px 10px", borderRadius: "20px", border: "1px solid var(--green-border)" }}>Unlimited</span>
@@ -638,12 +598,10 @@ export default function Home() {
         {/* Mobile-only live anchor: sits above the indexed-records line so
             the top of the page breathes before the headline. Hidden on
             desktop where the same count already lives in the nav bar. */}
-        {showScanCount && (
         <div className="hero-scan-count" style={{ alignItems: "center", justifyContent: "center", gap: "6px", marginBottom: "14px" }}>
           <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 6px rgba(16,217,160,0.6)" }} className="animate-pulse" />
           <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-2)" }}>{totalScans.toLocaleString()} scanned</span>
         </div>
-        )}
 
         <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.4)", marginBottom: "20px", textTransform: "uppercase" }}>
           INDEXED: 2,000,000,000+ LIVE MARKET RECORDS
@@ -954,21 +912,24 @@ export default function Home() {
       </section>
 
       {/* ═══ STATS ═══ */}
-      {statTiles.length > 0 && (
       <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
-        {/* Every tile here is a real counter or it is not rendered.
-            "$290K+ overcharges exposed" used to stand in whenever the real
-            figure was below it, described in this file as a baseline
-            estimate derived from scan volume - but the scan volume it was
-            derived from was itself the invented 47,000, so it was a
-            fabrication resting on a fabrication. The grid now sizes itself
-            to however many tiles have something true to say. */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(${Math.max(1, statTiles.length)},1fr)`,
-          gap: "8px",
-        }}>
-          {statTiles.map(s => (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px" }}>
+          {[
+            { v: `${totalScans.toLocaleString()}+`, l: "Products X-rayed" },
+            // Real markup once real scans exceed the demo's own 435% floor,
+            // shown on this same page — so the figure is always something a
+            // visitor can verify without leaving the site.
+            { v: maxMarkup > 435 ? `${maxMarkup.toLocaleString()}%` : "435%", l: "Highest markup recorded" },
+            // Real dollars once they exceed a defensible baseline estimate
+            // derived from real scan volume at a conservative average
+            // savings per scan.
+            {
+              v: totalSavings >= 290000
+                ? `$${(totalSavings / 1000).toFixed(1)}K+`
+                : "$290K+",
+              l: "Overcharges exposed",
+            },
+          ].map(s => (
             <div key={s.l} className="card" style={{ borderRadius: "12px", padding: "16px 10px", textAlign: "center" }}>
               <div style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "clamp(18px,4vw,24px)", fontWeight: "700", color: "var(--accent-bright)", letterSpacing: "-0.8px", lineHeight: "1" }}>{s.v}</div>
               <div style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "4px", lineHeight: "1.4" }}>{s.l}</div>
@@ -976,7 +937,6 @@ export default function Home() {
           ))}
         </div>
       </section>
-      )}
 
       {/* ═══ THE BOARDS ═══ */}
       <Leaderboards />

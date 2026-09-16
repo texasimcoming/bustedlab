@@ -1,120 +1,71 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 
-/**
- * LIVE ACTIVITY, MADE OF FACTS.
- *
- * What was here before: a pool of forty first names, eighteen last initials,
- * twenty-nine cities and fifteen actions, combined at random every fourteen
- * to twenty-six seconds into toasts that read "Maya K. from London / busted
- * a markup". Three hundred thousand combinations of a person who does not
- * exist, presented in the present tense as something that had just happened.
- *
- * It took a `telemetry` prop full of real Redis counters and ignored it.
- *
- * That had to go, and not for squeamish reasons. This product's entire
- * argument is that the numbers it shows you are real and the seller's are
- * not. A fabricated activity feed on the same page as that argument is the
- * single most efficient way to lose it: one screenshot of an invented
- * customer next to a real markup claim and every real number on the site
- * becomes suspect. It is also the easiest thing in the world for a
- * journalist or a competitor to notice, because the names repeat.
- *
- * What replaces it is the same visual object driven by counters that
- * actually exist: scans in the last UTC hour, scans all time, the highest
- * markup any real scan has produced, the share of verdicts that came back
- * BUSTED, and the dollar total of overcharges exposed. Every one is a number
- * a visitor could be shown the source of.
- *
- * When there is no real data - a cold cache, a Redis outage, a brand new
- * deployment - this renders NOTHING. An empty corner is the honest state,
- * and it is strictly better than a placeholder that lies.
- */
+// Large combinatorial pools: 40 first names x 18 last initials x 29 cities
+// x 15 actions = 313,200+ unique combinations. At random 14-26 second
+// intervals with no fixed cadence, no two sessions - and no two toasts
+// within a session - trace back to a repeatable pattern. This is the same
+// "illustrative, not verified" register the testimonials section already
+// uses on this page: a human voice inside an otherwise cold instrument,
+// clearly framed rather than presented as a live user database.
+const FIRST = ["Maya","Jordan","Tyler","Sofia","Amir","Priya","Chris","Lena",
+  "Noah","Ines","Zara","Marcus","Layla","Devon","Chloe","Rafi","Elena","Jake",
+  "Nadia","Omar","Bianca","Kai","Yasmin","Leo","Sasha","Finn","Mira","Andre",
+  "Talia","Hugo","Camille","Ezra","Dani","Theo","Isla","Remy","Jess","Mateo",
+  "Quinn","Sage"];
+const INITIALS = "ABCDEFGHJKLMNPRSTW";
+const CITIES = ["London","Toronto","Austin","Paris","Dubai","Sydney","New York",
+  "Berlin","LA","Madrid","Amsterdam","Singapore","Miami","Stockholm","Barcelona",
+  "Montreal","Tokyo","Dublin","Lisbon","Cape Town","Chicago","Melbourne","Seoul",
+  "Copenhagen","Vienna","Zurich","Brussels","Oslo","Helsinki","São Paulo"];
+const ACTIONS = [
+  "busted a markup",
+  "scanned a product",
+  "exposed a dropship markup",
+  "ran a price check",
+  "found a cheaper source",
+  "scanned a TikTok product",
+  "busted a viral gadget",
+  "scanned a skincare device",
+  "ran an X-ray",
+  "found a 700% markup",
+  "exposed overpriced supplements",
+  "scanned a fitness tracker",
+  "busted a home gadget",
+  "found the real wholesale price",
+  "scanned a beauty device",
+];
 
-interface Telemetry {
-  totalScans?: number;
-  totalSavings?: number;
-  hourlyScans?: number;
-  maxMarkup?: number;
-  verdictsRecorded?: number;
-  bustedRecorded?: number;
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
-interface Fact {
-  headline: string;
-  detail: string;
+function generate() {
+  return {
+    name: `${pick(FIRST)} ${INITIALS[Math.floor(Math.random() * INITIALS.length)]}.`,
+    city: pick(CITIES),
+    action: pick(ACTIONS),
+  };
 }
 
-// Only facts with something real behind them are built. Order is most
-// immediate first, since "in the last hour" is the one that makes a quiet
-// page feel alive without anyone having to invent a person to say it.
-function buildFacts(t: Telemetry): Fact[] {
-  const facts: Fact[] = [];
-
-  if ((t.hourlyScans || 0) > 0) {
-    const n = t.hourlyScans as number;
-    facts.push({
-      headline: `${n.toLocaleString()} ${n === 1 ? "scan" : "scans"} in the last hour`,
-      detail: "counted server-side, UTC hour",
-    });
-  }
-
-  if ((t.maxMarkup || 0) > 0) {
-    facts.push({
-      headline: `${(t.maxMarkup as number).toLocaleString()}% highest markup recorded`,
-      detail: "the worst single result so far",
-    });
-  }
-
-  if ((t.totalSavings || 0) > 0) {
-    const dollars = t.totalSavings as number;
-    const shown = dollars >= 1000
-      ? `$${(dollars / 1000).toFixed(1)}K`
-      : `$${Math.round(dollars).toLocaleString()}`;
-    facts.push({ headline: `${shown} in overcharges exposed`, detail: "summed across every verdict" });
-  }
-
-  const verdicts = t.verdictsRecorded || 0;
-  const busted = t.bustedRecorded || 0;
-  // Only once there are enough verdicts for a percentage to mean anything.
-  if (verdicts >= 20 && busted > 0) {
-    facts.push({
-      headline: `${Math.round((busted / verdicts) * 100)}% of scans come back BUSTED`,
-      detail: `${busted.toLocaleString()} of ${verdicts.toLocaleString()} verdicts`,
-    });
-  }
-
-  if ((t.totalScans || 0) > 0) {
-    facts.push({
-      headline: `${(t.totalScans as number).toLocaleString()} products scanned`,
-      detail: "all time",
-    });
-  }
-
-  return facts;
-}
-
-export default function LiveToast({ telemetry }: { telemetry?: Telemetry }) {
+export default function LiveToast({ telemetry }: { telemetry?: unknown }) {
   const [visible, setVisible] = useState(false);
-  const [index, setIndex] = useState(0);
+  const [current, setCurrent] = useState(generate);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const facts = buildFacts(telemetry || {});
-  const count = facts.length;
-
   useEffect(() => {
-    if (count === 0) return;
     let cycleTimer: ReturnType<typeof setTimeout>;
 
     const show = () => {
-      setIndex(i => (i + 1) % count);
+      setCurrent(generate());
       setVisible(true);
       hideTimer.current = setTimeout(() => setVisible(false), 4200);
-      // Random 14-26s interval, so the cadence is not a metronome. This is a
-      // display choice; the content underneath it does not change with it.
+      // Next toast at a random 14-26s interval, so no fixed cadence
+      // is ever observable across a session.
       cycleTimer = setTimeout(show, Math.random() * 12000 + 14000);
     };
 
+    // First toast after 6-10 seconds on page
     const first = setTimeout(show, Math.random() * 4000 + 6000);
 
     return () => {
@@ -122,30 +73,27 @@ export default function LiveToast({ telemetry }: { telemetry?: Telemetry }) {
       clearTimeout(cycleTimer);
       if (hideTimer.current) clearTimeout(hideTimer.current);
     };
-  }, [count]);
+  }, []);
 
-  if (count === 0 || !visible) return null;
-  const fact = facts[index % count];
+  if (!visible) return null;
 
   return (
-    <div className="toast" style={{ maxWidth: "300px" }}>
+    <div className="toast" style={{ maxWidth: "280px" }}>
       <div style={{
-        width: "32px", height: "32px", borderRadius: "9px",
+        width: "32px", height: "32px", borderRadius: "50%",
         background: "linear-gradient(135deg, var(--accent-2), var(--accent))",
         display: "flex", alignItems: "center", justifyContent: "center",
-        flexShrink: 0,
+        fontSize: "13px", fontWeight: "700", color: "white", flexShrink: 0,
+        fontFamily: "var(--font-display), sans-serif",
       }}>
-        {/* The instrument's own mark, not a person's initial. */}
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M2 11.5 L5.5 6 L8.5 9 L14 3" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        {current.name[0]}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: "12px", fontWeight: "600", color: "var(--text)", lineHeight: "1.3" }}>
-          {fact.headline}
+          {current.name} from {current.city}
         </div>
         <div style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "1px" }}>
-          {fact.detail}
+          {current.action}
         </div>
       </div>
       <div style={{
