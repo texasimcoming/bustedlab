@@ -51,19 +51,24 @@ function clientKey(req: NextRequest): string {
   return hashIdentifier(ip);
 }
 
-const NO_CONTENT = new NextResponse(null, { status: 204 });
+// Built per request on purpose. A Response is a single-use object: sharing
+// one module-level instance across every request to a warm serverless
+// instance means handing the same object to concurrent responses, which is
+// undefined behaviour at best and a consumed-body error at worst. It costs
+// nothing to construct.
+const noContent = () => new NextResponse(null, { status: 204 });
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    if (!isClientReportable(body?.event)) return NO_CONTENT;
+    if (!isClientReportable(body?.event)) return noContent();
 
     const limiter = getLimiter();
     if (limiter) {
       try {
         const { success } = await limiter.limit(clientKey(req));
         // A real session fires a handful of these. Sixty a minute is a script.
-        if (!success) return NO_CONTENT;
+        if (!success) return noContent();
       } catch {
         /* limiter unreachable: count it rather than lose it */
       }
@@ -73,5 +78,5 @@ export async function POST(req: NextRequest) {
   } catch {
     /* malformed body, no counter, no error */
   }
-  return NO_CONTENT;
+  return noContent();
 }

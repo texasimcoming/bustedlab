@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { markAsPaid, revokeAccess, claimOrder, storeMagicToken } from "@/lib/redis";
+import { markAsPaid, revokeAccess, claimOrder, releaseOrderClaim, storeMagicToken } from "@/lib/redis";
 import crypto from "crypto";
 
 /**
@@ -223,11 +223,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unverified" }, { status: 401 });
   }
 
-  try {
-    // Providers retry. Only the first delivery of an order does the work.
-    const isFirstDelivery = await claimOrder(parsed.orderId).catch(() => true);
-    if (!isFirstDelivery) return NextResponse.json({ received: true, duplicate: true });
+  // Providers retry. Only the first delivery of an order does the work - but
+  // the claim is given back if the work then fails, or the retry it exists to
+  // deduplicate would be answered "duplicate" against an order that was never
+  // actually fulfilled. That is the worst bug this file can have: the provider
+  // sees 200, the customer sees nothing, and nobody finds out until they
+  // complain.
+  const isFirstDelivery = await claimOrder(parsed.orderId).catch(() => true);
+  if (!isFirstDelivery) return NextResponse.json({ received: true, duplicate: true });
 
+  try {
     if (parsed.kind === "revoked") {
       await revokeAccess(parsed.email);
       return NextResponse.json({ received: true });
@@ -237,15 +242,16 @@ export async function POST(req: NextRequest) {
     try {
       await sendAccessEmail(parsed.email);
     } catch (mailError) {
-      // Access is already granted. A failed email is recoverable by the
-      // customer through the sign-in form, so it must not fail the webhook
-      // and trigger a provider retry against an order already fulfilled.
+      // Access is already granted, and the customer can reach it from the
+      // sign-in form, so a failed email must not fail the webhook and drag a
+      // fulfilled order back through a retry.
       console.error("Webhook: access granted but access email failed to send", mailError);
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
     console.error("Webhook error:", error);
+    await releaseOrderClaim(parsed.orderId);
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
 }

@@ -255,6 +255,25 @@ export async function claimOrder(orderId: string): Promise<boolean> {
   return claimed === "OK";
 }
 
+/**
+ * Gives a claim back, so a delivery that failed part-way can be retried.
+ *
+ * An idempotency claim taken BEFORE the work is the right shape - it is what
+ * stops a provider's retry from sending a second welcome email - but only if
+ * a failure releases it. Without this, a webhook that claimed the order and
+ * then died before granting access left the claim standing, the provider's
+ * retry was answered "duplicate", and a customer who paid never got in. The
+ * failure mode is silent on both sides: the provider sees 200, the customer
+ * sees nothing.
+ */
+export async function releaseOrderClaim(orderId: string): Promise<void> {
+  try {
+    await getRedis().del(keys.processedOrder(orderId));
+  } catch {
+    /* the claim expires on its own in 30 days; nothing better to do here */
+  }
+}
+
 export async function storeMagicToken(token: string, email: string): Promise<void> {
   await getRedis().set(keys.magicToken(token), email, { ex: 900 });
 }

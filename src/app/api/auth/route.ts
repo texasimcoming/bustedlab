@@ -15,13 +15,34 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY || "re_placeholder");
 }
 
-// Falls back to the request's own origin so a preview deployment does not mail
-// out links pointing at production (or, when the variable is unset, at the
-// literal string "undefined", which is what the previous version did).
-function getBaseUrl(req: NextRequest): string {
+/**
+ * Where the sign-in link points.
+ *
+ * The configured base URL wins. The fallback to the request's own origin
+ * exists so a preview deployment does not mail out links into production,
+ * but it cannot be unconditional: the origin is derived from the Host
+ * header, which the client sends. An unconditional fallback is the classic
+ * password-reset host-header injection - POST here with Host: attacker.test
+ * and the real account holder receives a genuine-looking email whose link
+ * hands their one-time token to someone else.
+ *
+ * Vercel only routes hosts attached to the project, so this is not trivially
+ * exploitable in production, but "the platform happens to stop it" is not a
+ * control this file should depend on. The fallback is therefore limited to
+ * hosts that cannot belong to anyone else - Vercel's own deployment domains
+ * and local development - and anything else returns null, which means no
+ * link is minted at all.
+ */
+function getBaseUrl(req: NextRequest): string | null {
   const configured = (process.env.NEXT_PUBLIC_BASE_URL || "").trim().replace(/\/$/, "");
   if (configured) return configured;
-  return req.nextUrl.origin;
+
+  const host = req.nextUrl.hostname.toLowerCase();
+  const selfOwned =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host.endsWith(".vercel.app");
+  return selfOwned ? req.nextUrl.origin : null;
 }
 
 // One link request per email per minute. Without this, the endpoint is a free
@@ -61,13 +82,25 @@ export async function POST(req: NextRequest) {
     if (!paid) return sent;
     if (!(await withinSendRate(normalizedEmail))) return sent;
 
+    // Resolved BEFORE a token is minted, so an unusable base URL does not
+    // leave a live token sitting in Redis with no way to have been delivered.
+    const baseUrl = getBaseUrl(req);
+    if (!baseUrl) {
+      console.error(
+        "BustedLab auth: refusing to send a sign-in link. NEXT_PUBLIC_BASE_URL is not set and " +
+        `the request host (${req.nextUrl.hostname}) is not a deployment domain this app owns, so ` +
+        "the link would point somewhere unverified. Set NEXT_PUBLIC_BASE_URL."
+      );
+      return sent;
+    }
+
     const token = crypto.randomBytes(32).toString("hex");
     await storeMagicToken(token, normalizedEmail);
 
     // Straight to the route handler that sets the session cookie. The
     // /auth/verify page still exists for links already in inboxes, but a new
     // link should not spend a page load performing a redirect.
-    const magicUrl = `${getBaseUrl(req)}/api/auth?token=${token}`;
+    const magicUrl = `${baseUrl}/api/auth?token=${token}`;
 
     await getResend().emails.send({
       from: "BustedLab <access@bustedlab.com>",
