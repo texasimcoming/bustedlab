@@ -16,6 +16,9 @@ import {
   incrementGlobalScans,
   GLOBAL_DAILY_CAP,
   FREE_SCANS_PER_DAY,
+  PAID_DAILY_SCAN_CEILING,
+  getPaidScansToday,
+  incrementPaidScanCount,
   getCachedScan,
   setCachedScan,
   fingerprintUrl,
@@ -116,6 +119,18 @@ function newBrowserId(): string {
 // throttled to two scans a day. The token has to be exchanged for the email
 // first, which is what getSessionEmail does.
 // ════════════════════════════════════════════════════════════════
+async function paidScansRemaining(email: string | null): Promise<number> {
+  if (!email) return PAID_DAILY_SCAN_CEILING;
+  try {
+    return Math.max(0, PAID_DAILY_SCAN_CEILING - (await getPaidScansToday(email)));
+  } catch {
+    // Fail open, like every other limit on this route: a Redis outage must
+    // not lock out a paying customer. The dollar budget in model-budget.ts
+    // is the backstop that does not depend on this database.
+    return PAID_DAILY_SCAN_CEILING;
+  }
+}
+
 async function resolveAccess(): Promise<{ email: string | null; isPaid: boolean }> {
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get("bl_session")?.value;
@@ -143,7 +158,7 @@ async function getFreeScansRemaining(ip: string, browserId: string | null): Prom
 export async function GET(req: NextRequest) {
   const ip = getClientIp(req);
   const browserId = await getBrowserId();
-  const { isPaid } = await resolveAccess();
+  const { email, isPaid } = await resolveAccess();
 
   const withBrowserCookie = (res: NextResponse) => {
     // Issued on the first page load rather than on the first scan, so the
@@ -180,9 +195,13 @@ export async function GET(req: NextRequest) {
     // the same page, so the stat is always something a visitor can check.
     settle(getMaxMarkup, MARKUP_FLOOR),
     settle(getBustedRate, { total: 0, busted: 0 }),
+    // For a paid account this is the fair-use headroom rather than the free
+    // allowance. The landing page only renders it for non-paid visitors, so
+    // it never reads as a limit on the unlimited tier; it is here so support
+    // can answer "what does the server think this account has done today".
     settle(
-      () => (isPaid ? Promise.resolve(FREE_SCANS_PER_DAY) : getFreeScansRemaining(ip, browserId)),
-      FREE_SCANS_PER_DAY
+      () => (isPaid ? paidScansRemaining(email) : getFreeScansRemaining(ip, browserId)),
+      isPaid ? PAID_DAILY_SCAN_CEILING : FREE_SCANS_PER_DAY
     ),
   ]);
 
@@ -201,7 +220,7 @@ export async function GET(req: NextRequest) {
 // POST — run scan
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
-  const { isPaid } = await resolveAccess();
+  const { email, isPaid } = await resolveAccess();
   const browserId = await getBrowserId();
 
   if (!(await withinBurstLimit(ip))) {
@@ -218,6 +237,15 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "scan_limit_reached" }, { status: 429 });
       }
     } catch { /* Redis unreachable: fail open rather than block a real user */ }
+  } else if (await paidScansRemaining(email) <= 0) {
+    // Fair use on the unlimited tier. A DISTINCT error code, because the
+    // client shows a paywall for every other 429 on this route, and putting
+    // a purchase prompt in front of someone who has already paid is the
+    // worst possible reading of a limit. See PAID_DAILY_SCAN_CEILING.
+    return NextResponse.json(
+      { error: "fair_use_ceiling", ceiling: PAID_DAILY_SCAN_CEILING },
+      { status: 429, headers: { "Retry-After": "3600" } }
+    );
   }
 
   try {
@@ -343,6 +371,13 @@ export async function POST(req: NextRequest) {
         await incrementScanCount(ip).catch(() => {});
         if (browserId) await incrementScanCount(`browser:${browserId}`).catch(() => {});
         if (!servedFromCache) await incrementGlobalScans().catch(() => {});
+      } else if (email) {
+        // Every scan counts against fair use, including cache hits. A
+        // ceiling that counts some scans and not others is one nobody can
+        // reason about - "I ran 600 but only 300 counted" is a support
+        // conversation with no good ending - and at 500 a day the
+        // distinction cannot matter to a real customer either way.
+        await incrementPaidScanCount(email).catch(() => {});
       }
       await incrementTotalScans().catch(() => {});
       await incrementHourlyScans().catch(() => {});

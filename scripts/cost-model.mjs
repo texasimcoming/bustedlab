@@ -215,7 +215,10 @@ for (const [label, cost] of [
 // is the per-IP burst limiter, so this is the ceiling that design accepts.
 const BURST_PER_MINUTE = 12;   // SCAN_BURST_PER_MINUTE default
 const DAILY_BUDGET = 250;      // DAILY_MODEL_BUDGET_USD default
-const MAX_SCANS_PER_DAY = BURST_PER_MINUTE * 60 * 24;
+const FAIR_USE_CEILING = 500;  // PAID_DAILY_SCAN_CEILING default
+// What the burst limiter alone allowed, before the fair-use ceiling existed.
+const BURST_ONLY_SCANS_PER_DAY = BURST_PER_MINUTE * 60 * 24;
+const MAX_SCANS_PER_DAY = Math.min(FAIR_USE_CEILING, BURST_ONLY_SCANS_PER_DAY);
 
 // Search spend per scan, which the model budget does NOT govern. A cold scan
 // makes a Lens call, up to two shopping tiers, three direct-retailer calls
@@ -228,9 +231,10 @@ const SEARCHES_DEGRADED = 2.5;
 console.log("\n\nONE ABUSED PAID SESSION, ONE DAY");
 console.log("-".repeat(78));
 console.log(`  Paid accounts bypass the free allowance and the global scan cap. The`);
-console.log(`  per-IP burst limiter (${BURST_PER_MINUTE}/min) still applies, so the ceiling is`);
-console.log(`  ${MAX_SCANS_PER_DAY.toLocaleString()} scans in 24 hours, all of them distinct products (repeats`);
-console.log(`  would hit the identity cache and cost a fraction of this).`);
+console.log(`  per-IP burst limiter (${BURST_PER_MINUTE}/min) allowed ${BURST_ONLY_SCANS_PER_DAY.toLocaleString()} scans a day on its`);
+console.log(`  own; PAID_DAILY_SCAN_CEILING now caps it at ${FAIR_USE_CEILING} per account per UTC day.`);
+console.log(`  Figures below assume every scan is a distinct product - repeats hit the`);
+console.log(`  identity cache and cost a fraction of this.`);
 console.log("");
 
 const coldScan = results.typical["opus-batched"];
@@ -242,17 +246,22 @@ const uncappedModel = MAX_SCANS_PER_DAY * coldScan;
 const cappedModel = scansBeforeBudget * coldScan + scansAfterBudget * degradedScan;
 const searchCost = scansBeforeBudget * SEARCHES_COLD * PER_SEARCH + scansAfterBudget * SEARCHES_DEGRADED * PER_SEARCH;
 
+const burstOnlyModel = BURST_ONLY_SCANS_PER_DAY * coldScan;
+const burstOnlySearch = BURST_ONLY_SCANS_PER_DAY * SEARCHES_COLD * PER_SEARCH;
+console.log(`  BEFORE the ceiling, burst limiter only $${(burstOnlyModel + burstOnlySearch).toFixed(0).padStart(5)}   ` +
+            `(${BURST_ONLY_SCANS_PER_DAY.toLocaleString()} scans: $${burstOnlyModel.toFixed(0)} model + $${burstOnlySearch.toFixed(0)} search)`);
+console.log("");
 console.log(`  Model spend, no budget configured    $${uncappedModel.toFixed(0).padStart(6)}`);
 console.log(`  Model spend, budget at $${DAILY_BUDGET}          $${cappedModel.toFixed(0).padStart(6)}   ` +
             `(${scansBeforeBudget.toLocaleString()} cold, then ${scansAfterBudget.toLocaleString()} degraded)`);
-console.log(`  Search spend (SerpApi/Serper)        $${searchCost.toFixed(0).padStart(6)}   NOT capped by anything in the app`);
+console.log(`  Search spend (SerpApi/Serper)        $${searchCost.toFixed(0).padStart(6)}   capped by the scan ceiling`);
 console.log(`  ------------------------------------------------`);
 console.log(`  Total accepted worst case             $${(cappedModel + searchCost).toFixed(0).padStart(6)} per day, per abused session`);
 console.log("");
-console.log(`  The model half is bounded by the daily budget and degrades gracefully.`);
-console.log(`  The search half is not: GLOBAL_DAILY_SCAN_CAP would have bounded it but`);
-console.log(`  does not apply to paid accounts, so for a paid session search spend is`);
-console.log(`  limited only by the burst limiter.`);
+console.log(`  Both halves are now bounded by the same thing: the scan ceiling. Before`);
+console.log(`  it, the model half was bounded by the daily budget and the search half`);
+console.log(`  was bounded by nothing at all, because GLOBAL_DAILY_SCAN_CAP does not`);
+console.log(`  apply to paid accounts.`);
 
 console.log("\n\nBURN RATE: WHAT A WORKSPACE RATE LIMIT BUYS");
 console.log("-".repeat(78));

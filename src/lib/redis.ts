@@ -46,6 +46,7 @@ export const keys = {
   magicToken: (token: string) => `magic:${token}`,
   session: (token: string) => `session:${token}`,
   scanCache: (fingerprint: string) => `scan:cache:${fingerprint}`,
+  paidScanCount: (email: string) => `scan:paid:${hashIdentifier(email)}`,
   processedOrder: (orderId: string) => `order:${orderId}`,
 
   // ── The permanent record. See the SCAN LEDGER section below. ──
@@ -80,6 +81,41 @@ export async function getHourlyScans(): Promise<number> {
 }
 
 export const FREE_SCANS_PER_DAY = 2;
+
+// ════════════════════════════════════════════════════════════════
+// FAIR USE ON THE UNLIMITED TIER.
+//
+// Paid access is unlimited, and this does not change that in any way a
+// customer can feel: five hundred scans in one day is not a person using a
+// product, it is a script. A realistic heavy session is a few dozen.
+//
+// What it stops is the one hole the unlimited tier left open. Paid accounts
+// bypass the free daily allowance AND the global uncached-scan cap, so the
+// only thing that applied to them was the per-IP burst limiter: 12 a minute,
+// which is 17,280 a day. Priced from the real call sequences (see
+// scripts/cost-model.mjs) that is around $800 of model and search spend from
+// a single leaked or shared session, of which only the model half was
+// bounded by the daily budget - nothing capped the search spend at all.
+// At 500 it is roughly $25, and no real customer is anywhere near it.
+//
+// Keyed on the ACCOUNT, hashed like every other identifier here, not on the
+// IP: the point is to stop one credential being shared or scripted, and an
+// IP-keyed limit is defeated by a phone switching networks.
+// ════════════════════════════════════════════════════════════════
+export const PAID_DAILY_SCAN_CEILING = Number(process.env.PAID_DAILY_SCAN_CEILING || 500);
+
+export async function getPaidScansToday(email: string): Promise<number> {
+  const count = await getRedis().get(keys.paidScanCount(email)) as number | null;
+  return count || 0;
+}
+
+export async function incrementPaidScanCount(email: string): Promise<void> {
+  const key = keys.paidScanCount(email);
+  await getRedis().incr(key);
+  const midnight = new Date();
+  midnight.setUTCHours(24, 0, 0, 0);
+  await getRedis().expireat(key, Math.floor(midnight.getTime() / 1000));
+}
 
 export async function getScansRemaining(identifier: string): Promise<number> {
   const count = await getRedis().get(keys.scanCount(identifier)) as number | null;

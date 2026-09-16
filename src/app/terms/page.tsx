@@ -32,7 +32,11 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "18px", fontWeight: "700", color: "var(--text)", marginBottom: "12px" }}>3. Limitation of Liability</h2>
+          <h2 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "18px", fontWeight: "700", color: "var(--text)", marginBottom: "12px" }}>2a. Unlimited access and fair use</h2>
+          <p>Paid access includes unlimited scans for personal and business use. &ldquo;Unlimited&rdquo; is not qualified by a quota you are likely to meet: there is a fair-use ceiling of 500 scans per account per 24 hours, which exists to stop automated or shared use of a single account and which no ordinary use approaches. It resets at 00:00 UTC. If you have a legitimate need above it, email <a href="mailto:support@bustedlab.com" style={{ color: "var(--accent-bright)" }}>support@bustedlab.com</a> and we will raise it for your account.</p>
+          <p style={{ marginTop: "12px" }}>We state the number rather than reserving a vague right to throttle, because a limit you cannot see is not a term you agreed to.</p>
+
+          <h2 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "18px", fontWeight: "700", color: "var(--text)", marginBottom: "12px", marginTop: "28px" }}>3. Limitation of Liability</h2>
           <p>BustedLab LLC shall not be liable for any direct, indirect, incidental, special, consequential, or punitive damages arising from your use of the Service or reliance on any scan result. In no event shall our total liability to you exceed the amount you paid for the Service in the twelve months preceding the claim.</p>
           <p style={{ marginTop: "12px" }}>You agree that BustedLab scan results do not constitute financial, legal, or purchasing advice. You are solely responsible for any decisions made based on information provided by the Service.</p>
         </section>

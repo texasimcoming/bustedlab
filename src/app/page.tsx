@@ -413,6 +413,15 @@ export default function Home() {
         const body = await res.json().catch(() => ({}));
         if (body?.error === "rate_limited") {
           setAuthMessage("Too many scans too quickly. Try again in a minute.");
+        } else if (body?.error === "fair_use_ceiling") {
+          // Fair use on the unlimited tier. This person has already paid, so
+          // the paywall branch below would be the worst possible response:
+          // a purchase prompt in front of a customer. Say what happened and
+          // when it clears, and offer nothing.
+          setAuthMessage(
+            `Daily fair-use ceiling reached (${body?.ceiling || 500} scans). ` +
+            "Resets at midnight UTC. Email support if you need it lifted."
+          );
         } else {
           setShowPaywall(true);
         }
