@@ -3,6 +3,7 @@ import {
   getTrendingProducts,
   getCategoryStats,
   getTopMarkupProducts,
+  getRecentRecords,
   getLedgerSize,
 } from "@/lib/redis";
 
@@ -11,6 +12,15 @@ import {
  *
  * Three boards, all read from the ledger, none of them seedable:
  *   most scanned this week, steepest markups ever, most expensive categories.
+ *
+ * Plus `recent`: the latest measurements, which the activity toast on the
+ * landing page uses once there is enough real data to stop falling back to
+ * placeholder toasts. Two filters on it. Cached repeat scans are excluded,
+ * because a repeat answered from the 24-hour cache is real demand but not an
+ * independent measurement of the price, and every one of these is shown as a
+ * measured finding. And nothing about the scanner is included, only the
+ * product and its numbers, which are already public at finer grain on each
+ * scan's own permanent page.
  *
  * Public and identical for every visitor, so it is cached at the edge. The
  * blanket no-store on /api/* exists to stop one person's free-scan state being
@@ -29,10 +39,12 @@ export async function GET() {
     }
   };
 
-  const [trending, categories, topMarkup, ledgerSize] = await Promise.all([
+  const [trending, categories, topMarkup, recent, ledgerSize] = await Promise.all([
     settle(() => getTrendingProducts(10), []),
     settle(() => getCategoryStats(5), []),
     settle(() => getTopMarkupProducts(10), []),
+    // Over-fetched, because the cached-repeat filter below removes some.
+    settle(() => getRecentRecords(24), []),
     settle(() => getLedgerSize(), 0),
   ]);
 
@@ -56,6 +68,15 @@ export async function GET() {
         averageMarkup: c.averageMarkup,
         count: c.count,
       })),
+      recent: recent
+        .filter(r => !r.cached && r.savings > 0 && r.markup > 0)
+        .slice(0, 12)
+        .map(r => ({
+          title: r.title,
+          markup: r.markup,
+          savings: r.savings,
+          id: r.id,
+        })),
     },
     { headers: { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=600" } }
   );

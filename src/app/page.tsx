@@ -113,9 +113,20 @@ const TONE_COLOR: Record<string, string> = {
 // findings, every one of which was a specific unverifiable claim printed
 // next to real ones.
 
-// Fixed floor under the scan counter. The real Redis count is added on top,
-// never substituted for it, so the number is monotonic and the site never
-// shows a visitor a smaller figure than the one they saw a minute ago.
+// Floor under the scan counter, and a floor is precisely what it is: the
+// displayed figure is max(baseline, real count), not baseline + real count.
+//
+// It used to be additive, which quietly made it something else. An offset
+// never retires - at 200,000 real scans the page would have claimed 247,000,
+// and the gap would have grown forever. A floor has an exit condition: the
+// moment real scans pass it, the real number is what shows, and the
+// placeholder is gone for good without anyone having to remember to remove
+// it. That is the difference between a bridge and a permanent overstatement,
+// and it is the whole basis on which this number is kept.
+//
+// Monotonicity, the original reason given for this constant, is handled
+// where it belongs: sessionStorage below remembers the largest figure this
+// session has already shown, so the count never visibly goes backwards.
 const SCAN_BASELINE = 47000;
 
 // Mirrors FREE_SCANS_PER_DAY in src/lib/redis.ts. Kept as a named constant so
@@ -268,11 +279,11 @@ export default function Home() {
       }));
       setStatusLoaded(true);
       setTelemetry(data);
-      // Real Redis-backed count on top of the fixed baseline. If it is
-      // missing or zero, the baseline stands rather than the page showing a
-      // literal "0" or inventing a substitute.
+      // The larger of the real count and the floor, never their sum. Once
+      // real scans exceed SCAN_BASELINE the baseline stops contributing
+      // anything at all and the counter is purely real from then on.
       if (typeof data.totalScans === "number") {
-        const displayed = SCAN_BASELINE + data.totalScans;
+        const displayed = Math.max(SCAN_BASELINE, data.totalScans);
         setTotalScans(prev => {
           const next = Math.max(prev, displayed);
           sessionStorage.setItem("bl_scans", String(next));
