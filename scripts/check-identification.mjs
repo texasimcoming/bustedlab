@@ -56,16 +56,18 @@ async function loadEngine(sourcePath, label) {
     if (!src.includes(from)) throw new Error(`${label}: cannot rewrite missing import: ${from}`);
     src = src.replace(from, to);
   }
-  // Path aliases the pre-fix fixture predates, so these are optional.
-  src = src
-    .replace('from "@/lib/model-budget"', `from "${localModule("model-budget")}"`)
-    .replace('from "@/lib/identity-cache"', `from "${localModule("identity-cache")}"`)
-    .replace('from "@/lib/gate-prompt"', `from "${localModule("gate-prompt")}"`);
-  // A path alias that reaches this point unrewritten would fail at import
-  // time with a confusing "cannot find package @/lib" - catch it here and
-  // say which one, since this is a normal thing to forget when adding a
-  // module to the engine.
-  const unresolved = src.match(/from "@\/lib\/[a-z-]+"/g);
+  // Every remaining "@/lib/x" import is rewritten to the real file, rather
+  // than each one being listed here by hand. The hand-written list was a
+  // maintenance trap: adding a module to the engine broke this suite with a
+  // "cannot find package @/lib" that has nothing to do with what changed.
+  // The guard below is still worth keeping for alias forms this does not
+  // cover, and it fires with the name of the offender rather than a stack
+  // trace from the module loader.
+  src = src.replace(
+    /from "@\/lib\/([a-z0-9-]+)"/g,
+    (_match, name) => `from "${localModule(name)}"`
+  );
+  const unresolved = src.match(/from "@\/[a-z0-9/-]+"/g);
   if (unresolved) {
     throw new Error(
       `${label}: these imports need a rewrite rule in loadEngine: ${[...new Set(unresolved)].join(", ")}`
