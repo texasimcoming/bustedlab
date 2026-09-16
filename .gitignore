@@ -32,6 +32,11 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...and this is that opt-in. .env.example carries no secrets, only the
+# names of every variable the code reads and what breaks without each
+# one. It is documentation, and it is useless to an operator if the
+# blanket ignore above keeps it out of the repository.
+!.env.example
 
 # vercel
 .vercel
