@@ -35,6 +35,55 @@ const nextConfig: NextConfig = {
             value: "geolocation=(), microphone=(), payment=(), interest-cohort=()",
           },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+          // ── Content-Security-Policy, REPORT ONLY for now. ──
+          //
+          // Report-only cannot break a page: browsers evaluate it and log
+          // violations to the console without blocking anything. That is the
+          // point of shipping it first. A CSP that is enforced before anyone
+          // has seen real violation data is how a site goes blank in
+          // production, and this app renders every style as an inline style
+          // attribute and relies on Next's inline hydration scripts, so the
+          // directives below are a hypothesis, not a finished policy.
+          //
+          // What to do with it: load the site, open the console, and read the
+          // violations. Expect to see the inline script and style entries
+          // exercised. Then either tighten those two into a nonce-based
+          // policy (which needs middleware to stamp a per-request nonce onto
+          // Next's script tags) or accept 'unsafe-inline' for styles only and
+          // enforce the rest by renaming this header to
+          // Content-Security-Policy.
+          //
+          // No report-uri: there is no collection endpoint, and adding one
+          // would mean accepting unauthenticated POSTs from every browser on
+          // the internet. The console is the right place to read this from
+          // while it is a diagnostic rather than a control.
+          {
+            key: "Content-Security-Policy-Report-Only",
+            value: [
+              "default-src 'self'",
+              // Next injects inline bootstrap and hydration scripts.
+              "script-src 'self' 'unsafe-inline'",
+              // Every style in this app is an inline style attribute.
+              "style-src 'self' 'unsafe-inline'",
+              // Product photos arrive through /api/proxy-image (same origin);
+              // data: covers the fallback pixel and the share-card canvas.
+              "img-src 'self' data: blob:",
+              // Fonts are self-hosted at build time, not fetched from Google.
+              "font-src 'self'",
+              "connect-src 'self'",
+              "media-src 'self' data:",
+              // The verdict tone is generated with the Web Audio API, and the
+              // share card is rendered to a canvas; neither needs a worker,
+              // an object, or an embed.
+              "worker-src 'self' blob:",
+              "object-src 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+              // Matches the X-Frame-Options above, which older browsers read.
+              "frame-ancestors 'none'",
+              "upgrade-insecure-requests",
+            ].join("; "),
+          },
         ],
       },
       {

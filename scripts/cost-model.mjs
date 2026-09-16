@@ -209,6 +209,51 @@ for (const [label, cost] of [
   console.log(`  ${pad(label, 26)} ${pad("$" + (cost * 10000).toFixed(0), 14)} ${money(cost)}`);
 }
 
+// ── What one abused paid session can spend in a day ──────────────────────
+// Paid accounts are unlimited by design: they bypass the free daily
+// allowance and GLOBAL_DAILY_SCAN_CAP. The only thing still applying to them
+// is the per-IP burst limiter, so this is the ceiling that design accepts.
+const BURST_PER_MINUTE = 12;   // SCAN_BURST_PER_MINUTE default
+const DAILY_BUDGET = 250;      // DAILY_MODEL_BUDGET_USD default
+const MAX_SCANS_PER_DAY = BURST_PER_MINUTE * 60 * 24;
+
+// Search spend per scan, which the model budget does NOT govern. A cold scan
+// makes a Lens call, up to two shopping tiers, three direct-retailer calls
+// and a link resolution; degraded mode drops the retailer and rebrand
+// layers. Priced at $0.0075 per search, mid-range for SerpApi's plans.
+const PER_SEARCH = 0.0075;
+const SEARCHES_COLD = 5;
+const SEARCHES_DEGRADED = 2.5;
+
+console.log("\n\nONE ABUSED PAID SESSION, ONE DAY");
+console.log("-".repeat(78));
+console.log(`  Paid accounts bypass the free allowance and the global scan cap. The`);
+console.log(`  per-IP burst limiter (${BURST_PER_MINUTE}/min) still applies, so the ceiling is`);
+console.log(`  ${MAX_SCANS_PER_DAY.toLocaleString()} scans in 24 hours, all of them distinct products (repeats`);
+console.log(`  would hit the identity cache and cost a fraction of this).`);
+console.log("");
+
+const coldScan = results.typical["opus-batched"];
+const degradedScan = results.degraded["opus-batched"];
+const scansBeforeBudget = Math.min(MAX_SCANS_PER_DAY, Math.floor(DAILY_BUDGET / coldScan));
+const scansAfterBudget = MAX_SCANS_PER_DAY - scansBeforeBudget;
+
+const uncappedModel = MAX_SCANS_PER_DAY * coldScan;
+const cappedModel = scansBeforeBudget * coldScan + scansAfterBudget * degradedScan;
+const searchCost = scansBeforeBudget * SEARCHES_COLD * PER_SEARCH + scansAfterBudget * SEARCHES_DEGRADED * PER_SEARCH;
+
+console.log(`  Model spend, no budget configured    $${uncappedModel.toFixed(0).padStart(6)}`);
+console.log(`  Model spend, budget at $${DAILY_BUDGET}          $${cappedModel.toFixed(0).padStart(6)}   ` +
+            `(${scansBeforeBudget.toLocaleString()} cold, then ${scansAfterBudget.toLocaleString()} degraded)`);
+console.log(`  Search spend (SerpApi/Serper)        $${searchCost.toFixed(0).padStart(6)}   NOT capped by anything in the app`);
+console.log(`  ------------------------------------------------`);
+console.log(`  Total accepted worst case             $${(cappedModel + searchCost).toFixed(0).padStart(6)} per day, per abused session`);
+console.log("");
+console.log(`  The model half is bounded by the daily budget and degrades gracefully.`);
+console.log(`  The search half is not: GLOBAL_DAILY_SCAN_CAP would have bounded it but`);
+console.log(`  does not apply to paid accounts, so for a paid session search spend is`);
+console.log(`  limited only by the burst limiter.`);
+
 console.log("\n\nBURN RATE: WHAT A WORKSPACE RATE LIMIT BUYS");
 console.log("-".repeat(78));
 console.log("  A monthly spend limit does not stop a bad day, it stops the month. The");

@@ -174,6 +174,7 @@ import { calculateVerdict } from "@/lib/verdict";
 // module so scripts/eval-gate.mjs can measure the REAL prompt against real
 // photographs rather than a copy of it.
 import { buildBatchPrompt, coerceVerdict, salvageVerdictObjects } from "@/lib/gate-prompt";
+import { proxyImagePath } from "@/lib/image-proxy";
 import {
   currentSpendMode, priceUsage, recordModelSpend, reportModelFailure,
   type SpendMode,
@@ -1425,9 +1426,11 @@ function inferCategory(...parts: string[]): string {
   return best;
 }
 
+// Signed, so the proxy route will only ever fetch an image this engine
+// chose to show. See src/lib/image-proxy.ts for why a signature rather
+// than a rate limit.
 function proxyImage(url: string): string {
-  if (!url) return "";
-  return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+  return proxyImagePath(url);
 }
 
 // Titles arrive from merchant listings and product pages, so they carry

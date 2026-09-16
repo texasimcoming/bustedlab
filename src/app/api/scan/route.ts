@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { scanProduct, scanProductUrl, getUnresolvedResult, buildShippingNote, type ScanResult } from "@/lib/scan";
+import { resignProxyPath } from "@/lib/image-proxy";
 import {
   getScansRemaining,
   incrementScanCount,
@@ -263,8 +264,15 @@ export async function POST(req: NextRequest) {
       servedFromCache = true;
       // The shipping disclosure depends on where THIS requester is, so it is
       // recomputed rather than served from another country's cache entry.
+      // The proxied image path is re-signed for the same reason ledger
+      // records are: an entry written before the current image-proxy secret
+      // would otherwise come back with a signature the route now refuses.
       result = {
         ...cached,
+        sourceProduct: {
+          ...cached.sourceProduct,
+          imageUrl: resignProxyPath(cached.sourceProduct?.imageUrl || ""),
+        },
         shippingNote: buildShippingNote(cached.sourceProduct?.productUrl || "", country),
       };
     } else {

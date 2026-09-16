@@ -1,5 +1,6 @@
 import type { ScanRecord } from "@/lib/redis";
 import type { VerdictData } from "@/components/VerdictCard";
+import { resignProxyPath } from "@/lib/image-proxy";
 
 /**
  * One ledger record, rendered as the same card the scanner produces.
@@ -19,7 +20,10 @@ export function recordToVerdictData(record: ScanRecord): VerdictData {
     markup: record.markup,
     savings: record.savings,
     productTitle: record.title,
-    productImageUrl: record.imageUrl || undefined,
+    // Records hold the proxy path as it was written, which may predate image
+    // signing or a secret rotation. Re-signed on the way out so a permanent
+    // page never loses its product photo to a key change.
+    productImageUrl: resignProxyPath(record.imageUrl || "") || undefined,
     productUrl: record.sourceUrl || undefined,
     platform: record.platform || undefined,
     confidence: record.confidence,

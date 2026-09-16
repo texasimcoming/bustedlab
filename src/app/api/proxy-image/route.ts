@@ -1,48 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
-
-// Hosts that should never be reachable through this proxy — this route
-// previously fetched ANY url with no validation, which makes it a classic
-// open-proxy / SSRF vector: an attacker could point it at internal services,
-// cloud metadata endpoints, or use it to anonymize requests to third-party
-// sites through BustedLab's own server.
-const BLOCKED_HOSTS = new Set(["localhost", "0.0.0.0", "metadata.google.internal"]);
+import { lookup } from "node:dns/promises";
+import { verifyImageSignature } from "@/lib/image-proxy";
+import { isPrivateAddress, isPrivateHostname } from "@/lib/net-guard";
 
 // A response body with no ceiling is a memory-exhaustion lever: one request
 // pointed at a multi-gigabyte file can take a serverless function down. No
 // product thumbnail is anywhere near this.
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
-function isPrivateOrInternal(hostname: string): boolean {
+/**
+ * The hostname check reads the NAME. This one reads what the name RESOLVES
+ * to, which is the hole a string comparison leaves open: a perfectly public
+ * hostname whose DNS record points at 169.254.169.254 or 10.0.0.1 walks
+ * straight through.
+ *
+ * This narrows that hole rather than closing it. Node re-resolves the name
+ * when fetch runs, so a record that changes between this lookup and that one
+ * still wins the race; closing it completely needs a custom dispatcher that
+ * pins the resolved address, which is a much larger change to a hot path.
+ * Narrowing a real hole is worth one DNS round trip, and the platform
+ * resolver caches the answer for its TTL anyway.
+ *
+ * It uses isPrivateAddress, NOT isPrivateHostname. The distinction is the
+ * whole reason those are two functions: the hostname version refuses IPv6 it
+ * does not recognise, which for a resolved address means refusing ordinary
+ * public IPv6 and blanking every product photo on the site. See
+ * src/lib/net-guard.ts.
+ *
+ * Fails closed: a name that cannot be resolved is refused, which costs
+ * nothing, because the fetch that followed would have failed too.
+ */
+async function resolvesToPrivate(hostname: string): Promise<boolean> {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (BLOCKED_HOSTS.has(host)) return true;
-  if (host.endsWith(".localhost") || host.endsWith(".internal") || host.endsWith(".local")) return true;
-
-  // IPv4 loopback, private, link-local (incl. the cloud metadata endpoint),
-  // carrier-grade NAT, and this-network ranges.
-  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4) {
-    const [a, b] = [parseInt(ipv4[1], 10), parseInt(ipv4[2], 10)];
-    if (a === 0 || a === 10 || a === 127) return true;
-    if (a === 169 && b === 254) return true;         // link-local, 169.254.169.254 included
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
-    return false;
+  // A literal address needs no lookup - isPrivateHostname already judged it.
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":")) return false;
+  try {
+    const records = await lookup(host, { all: true, verbatim: true });
+    if (records.length === 0) return true;
+    // ANY private record disqualifies the name: an attacker who controls DNS
+    // can publish a public A record alongside a private AAAA one.
+    return records.some(record => isPrivateAddress(record.address));
+  } catch {
+    return true;
   }
-
-  // IPv6 loopback, unique-local (fc00::/7), link-local (fe80::/10), and
-  // IPv4-mapped forms of all of the above. The previous version only
-  // string-matched "::1", so ::ffff:169.254.169.254 walked straight through.
-  if (host.includes(":")) {
-    if (host === "::" || host === "::1") return true;
-    if (/^f[cd][0-9a-f]{2}:/.test(host)) return true;
-    if (/^fe[89ab][0-9a-f]:/.test(host)) return true;
-    const mapped = host.match(/::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-    if (mapped) return isPrivateOrInternal(mapped[1]);
-    return true; // unrecognized literal IPv6, refuse rather than guess
-  }
-
-  return false;
 }
 
 const FALLBACK_PIXEL = Buffer.from(
@@ -64,6 +64,19 @@ export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url");
   if (!url) return new NextResponse("Missing url", { status: 400 });
 
+  // ── Signature first, before anything is fetched. ──
+  // An unsigned or wrongly-signed request is refused outright rather than
+  // answered with the fallback pixel: the whole point is to spend no
+  // bandwidth and make no upstream request for a URL this application did
+  // not generate. A 403 also makes abuse unambiguous in the logs, where a
+  // silent 1x1 would look like a broken thumbnail.
+  if (!verifyImageSignature(url, req.nextUrl.searchParams.get("s"))) {
+    return new NextResponse("Unsigned image request", {
+      status: 403,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
   let target: URL;
   try {
     target = new URL(url);
@@ -72,7 +85,8 @@ export async function GET(req: NextRequest) {
   }
 
   if (target.protocol !== "https:" && target.protocol !== "http:") return fallback();
-  if (isPrivateOrInternal(target.hostname)) return fallback();
+  if (isPrivateHostname(target.hostname)) return fallback();
+  if (await resolvesToPrivate(target.hostname)) return fallback();
 
   try {
     const response = await fetch(target.toString(), {
@@ -97,7 +111,8 @@ export async function GET(req: NextRequest) {
         return fallback();
       }
       if (next.protocol !== "https:" && next.protocol !== "http:") return fallback();
-      if (isPrivateOrInternal(next.hostname)) return fallback();
+      if (isPrivateHostname(next.hostname)) return fallback();
+      if (await resolvesToPrivate(next.hostname)) return fallback();
       const followed = await fetch(next.toString(), {
         headers: { "User-Agent": "Mozilla/5.0 (compatible; BustedLab/1.0)", "Accept": "image/*,*/*" },
         redirect: "error",
