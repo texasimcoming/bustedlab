@@ -56,7 +56,7 @@ function toFinding(row: { title?: unknown; markup?: unknown; savings?: unknown }
   if (!title || markup <= 0 || savings <= 0) return null;
   return {
     headline: title.length > 34 ? `${title.slice(0, 33).replace(/[\s,;:|-]+$/, "")}\u2026` : title,
-    detail: `${markup.toLocaleString()}% markup, $${savings.toFixed(2)} gap`,
+    detail: `${markup.toLocaleString("en-US")}% markup, $${savings.toFixed(2)} gap`,
   };
 }
 

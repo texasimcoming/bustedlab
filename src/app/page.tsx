@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useSyncExternalStore } from "react";
 import ResultsPage from "@/components/ResultsPage";
 import ScanningScreen from "@/components/ScanningScreen";
 import PaywallModal from "@/components/PaywallModal";
@@ -135,6 +135,29 @@ const SCAN_BASELINE = 47000;
 // into the free-tier meter, which only ever renders two segments.
 const FREE_SCAN_ALLOWANCE = 2;
 
+// The largest scan count this session has already shown, or 0.
+function storedScanCount(): number {
+  try {
+    const parsed = parseInt(sessionStorage.getItem("bl_scans") ?? "", 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0; // storage blocked
+  }
+}
+
+// The address bar does not change under a mounted page in any way this
+// message cares about, so there is nothing to subscribe to.
+const subscribeToNothing = () => () => {};
+
+function messageForArrivalUrl(): string {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("auth") === "success") return "Access unlocked. You are in.";
+  if (params.get("auth") === "expired") return "Link expired. Request a new one.";
+  if (params.get("auth") === "failed") return "That link could not be verified. Request a new one.";
+  if (params.get("payment") === "success") return "Payment confirmed. Your access link is in your inbox.";
+  return "";
+}
+
 interface Telemetry {
   totalScans?: number;
   totalSavings?: number;
@@ -234,17 +257,16 @@ export default function Home() {
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [showScrollNudge, setShowScrollNudge] = useState(false);
-  const [authMessage, setAuthMessage] = useState(() => {
-    // Derived from the URL the visitor arrived on, so it is correct on the
-    // very first paint rather than appearing a frame later.
-    if (typeof window === "undefined") return "";
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("auth") === "success") return "Access unlocked. You are in.";
-    if (params.get("auth") === "expired") return "Link expired. Request a new one.";
-    if (params.get("auth") === "failed") return "That link could not be verified. Request a new one.";
-    if (params.get("payment") === "success") return "Payment confirmed. Your access link is in your inbox.";
-    return "";
-  });
+  // The message for the link the visitor arrived on (?auth=..., ?payment=...)
+  // until anything on the page sets its own. Read through
+  // useSyncExternalStore so the server render and the hydrating render agree
+  // on "" and the message appears the moment hydration ends. Reading the URL
+  // in a useState initialiser, as this used to, made the first client render
+  // disagree with the server HTML, so React threw the whole page away and
+  // rebuilt it on every magic-link sign-in and every post-purchase arrival.
+  const arrivalMessage = useSyncExternalStore(subscribeToNothing, messageForArrivalUrl, () => "");
+  const [pageMessage, setAuthMessage] = useState<string | null>(null);
+  const authMessage = pageMessage ?? arrivalMessage;
   const [showLoginForm, setShowLoginForm] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginSent, setLoginSent] = useState(false);
@@ -256,13 +278,13 @@ export default function Home() {
   // arriving must not open two overlays or navigate out from under one.
   const checkoutInFlight = useRef(false);
   const [telemetry, setTelemetry] = useState<Telemetry>({});
-  // Initialise from sessionStorage so same-session reloads never go backwards
-  const [totalScans, setTotalScans] = useState(() => {
-    if (typeof window === "undefined") return SCAN_BASELINE;
-    const stored = sessionStorage.getItem("bl_scans");
-    const parsed = stored ? parseInt(stored, 10) : NaN;
-    return Number.isFinite(parsed) ? Math.max(parsed, SCAN_BASELINE) : SCAN_BASELINE;
-  });
+  // Same-session reloads never go backwards: the largest count this session
+  // has shown is kept in sessionStorage and acts as a floor. The floor is 0
+  // on the server and in the hydrating render, so both render the same
+  // number, and takes the stored value as soon as hydration ends.
+  const sessionFloor = useSyncExternalStore(subscribeToNothing, storedScanCount, () => 0);
+  const [countedScans, setTotalScans] = useState(SCAN_BASELINE);
+  const totalScans = Math.max(countedScans, sessionFloor);
   const [totalSavings, setTotalSavings] = useState(0);
   const [maxMarkup, setMaxMarkup] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -292,8 +314,8 @@ export default function Home() {
       if (typeof data.totalScans === "number") {
         const displayed = Math.max(SCAN_BASELINE, data.totalScans);
         setTotalScans(prev => {
-          const next = Math.max(prev, displayed);
-          sessionStorage.setItem("bl_scans", String(next));
+          const next = Math.max(prev, displayed, storedScanCount());
+          try { sessionStorage.setItem("bl_scans", String(next)); } catch { /* storage blocked */ }
           return next;
         });
       }
@@ -346,7 +368,7 @@ export default function Home() {
     let timer: ReturnType<typeof setTimeout>;
     const tick = () => {
       setTotalScans(prev => {
-        const next = prev + 1 + Math.floor(Math.random() * 3);
+        const next = Math.max(prev, storedScanCount()) + 1 + Math.floor(Math.random() * 3);
         try { sessionStorage.setItem("bl_scans", String(next)); } catch { /* private mode */ }
         return next;
       });
@@ -623,7 +645,7 @@ export default function Home() {
               on mobile instead of duplicating here. */}
           <div className="nav-scan-count" style={{ alignItems: "center", gap: "5px" }}>
             <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 6px rgba(16,217,160,0.6)" }} className="animate-pulse" />
-            <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-2)" }}>{totalScans.toLocaleString()} scanned</span>
+            <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-2)" }}>{totalScans.toLocaleString("en-US")} scanned</span>
           </div>
           <div className="nav-sound-toggle"><SoundToggle /></div>
           {userStatus.isPaid ? (
@@ -671,7 +693,7 @@ export default function Home() {
             desktop where the same count already lives in the nav bar. */}
         <div className="hero-scan-count" style={{ alignItems: "center", justifyContent: "center", gap: "6px", marginBottom: "14px" }}>
           <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 6px rgba(16,217,160,0.6)" }} className="animate-pulse" />
-          <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-2)" }}>{totalScans.toLocaleString()} scanned</span>
+          <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-2)" }}>{totalScans.toLocaleString("en-US")} scanned</span>
         </div>
 
         <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.4)", marginBottom: "20px", textTransform: "uppercase" }}>
@@ -986,11 +1008,11 @@ export default function Home() {
       <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px" }}>
           {[
-            { v: `${totalScans.toLocaleString()}+`, l: "Products X-rayed" },
+            { v: `${totalScans.toLocaleString("en-US")}+`, l: "Products X-rayed" },
             // Real markup once real scans exceed the demo's own 435% floor,
             // shown on this same page — so the figure is always something a
             // visitor can verify without leaving the site.
-            { v: maxMarkup > 435 ? `${maxMarkup.toLocaleString()}%` : "435%", l: "Highest markup recorded" },
+            { v: maxMarkup > 435 ? `${maxMarkup.toLocaleString("en-US")}%` : "435%", l: "Highest markup recorded" },
             // Real dollars once they exceed a defensible baseline estimate
             // derived from real scan volume at a conservative average
             // savings per scan.

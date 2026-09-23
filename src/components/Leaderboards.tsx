@@ -143,7 +143,7 @@ export default function Leaderboards() {
           <RowShell key={r.id} href={`/scan/${r.id}`}>
             <Rank n={i + 1} />
             <Title>{r.title}</Title>
-            <Value color="#ef4444">{r.markup.toLocaleString()}%</Value>
+            <Value color="#ef4444">{r.markup.toLocaleString("en-US")}%</Value>
           </RowShell>
         ))}
 
@@ -151,7 +151,7 @@ export default function Leaderboards() {
           <RowShell key={r.id || r.title} href={r.id ? `/scan/${r.id}` : undefined}>
             <Rank n={i + 1} />
             <Title>{r.title}</Title>
-            <Value>{r.scans.toLocaleString()}<span style={{ color: "var(--text-3)", fontWeight: 400 }}> scans</span></Value>
+            <Value>{r.scans.toLocaleString("en-US")}<span style={{ color: "var(--text-3)", fontWeight: 400 }}> scans</span></Value>
           </RowShell>
         ))}
 
@@ -162,7 +162,7 @@ export default function Leaderboards() {
               <span style={{ textTransform: "capitalize" }}>{r.category}</span>
               <span style={{ color: "var(--text-3)", fontSize: "11px" }}> &middot; {r.count} measured</span>
             </Title>
-            <Value color="#f59e0b">{r.averageMarkup.toLocaleString()}% avg</Value>
+            <Value color="#f59e0b">{r.averageMarkup.toLocaleString("en-US")}% avg</Value>
           </RowShell>
         ))}
       </div>
