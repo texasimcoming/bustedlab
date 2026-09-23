@@ -29,12 +29,15 @@ interface ScanResult {
 }
 
 export default function ResultsPage({
-  result, onReset, isPaid, onUpgrade,
+  result, onReset, isPaid, onUpgrade, onUpgradeIntent,
 }: {
   result: ScanResult;
   onReset: () => void;
   isPaid: boolean;
   onUpgrade: () => void;
+  // A pointer or focus on the upgrade button, so the checkout script can be
+  // fetched before the click lands.
+  onUpgradeIntent?: () => void;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [isMobile, setIsMobile] = useState(true); // default true, corrected on mount
@@ -304,7 +307,7 @@ export default function ResultsPage({
                 <p style={{ fontSize: "13px", color: "rgba(238,238,246,0.5)", marginBottom: "16px", lineHeight: "1.55" }}>
                   One-time $4.99. Unlimited scans. HD verdict cards. Forever.
                 </p>
-                <button onClick={onUpgrade} style={{ padding: "11px 28px", borderRadius: "9px", fontSize: "14px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif", background: "linear-gradient(135deg, #9d7fd4, #7b5ea7)", color: "white", border: "none", cursor: "pointer" }}>
+                <button onClick={onUpgrade} onPointerEnter={onUpgradeIntent} onPointerDown={onUpgradeIntent} onFocus={onUpgradeIntent} style={{ padding: "11px 28px", borderRadius: "9px", fontSize: "14px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif", background: "linear-gradient(135deg, #9d7fd4, #7b5ea7)", color: "white", border: "none", cursor: "pointer" }}>
                   Get unlimited access
                 </button>
               </div>

@@ -1,5 +1,64 @@
 import type { NextConfig } from "next";
 
+// ── Checkout origins, for the headers below. ──
+// The overlay checkout is an iframe on Lemon Squeezy's domain, or on a custom
+// checkout domain if the store has one. The configured link's own origin is
+// read here at build time so a custom domain is covered too; Vercel rebuilds
+// on every environment change, so this cannot drift from CHECKOUT_URL.
+function checkoutOrigin(): string | null {
+  try {
+    const raw = (process.env.CHECKOUT_URL || "").trim();
+    return raw ? new URL(raw).origin : null;
+  } catch {
+    return null;
+  }
+}
+const LEMON_ORIGINS = ["https://*.lemonsqueezy.com"];
+const CHECKOUT_FRAME_ORIGINS = [...LEMON_ORIGINS, checkoutOrigin()].filter(
+  (origin, i, all): origin is string => !!origin && all.indexOf(origin) === i
+);
+// lemon.js itself. The spec named assets.lemonsqueezy.com; Lemon Squeezy's
+// own Next.js template loads from app.lemonsqueezy.com. Both are allowed
+// because src/lib/lemon-overlay.ts tries both.
+const LEMON_SCRIPT_ORIGINS = ["https://assets.lemonsqueezy.com", "https://app.lemonsqueezy.com"];
+
+// The report-only Content-Security-Policy, built once so the site-wide copy
+// and the /success copy cannot drift apart. They differ only in who may
+// frame the page. See the note on the header itself for why it is report-
+// only for now.
+function contentSecurityPolicy(frameAncestors: "'none'" | "'self'"): string {
+  return [
+    "default-src 'self'",
+    // Next injects inline bootstrap and hydration scripts.
+    // Plus lemon.js, which loads only when checkout intent appears.
+    `script-src 'self' 'unsafe-inline' ${LEMON_SCRIPT_ORIGINS.join(" ")}`,
+    // The overlay checkout is an iframe on the provider's origin.
+    `frame-src 'self' ${CHECKOUT_FRAME_ORIGINS.join(" ")}`,
+    // Every style in this app is an inline style attribute.
+    "style-src 'self' 'unsafe-inline'",
+    // Product photos arrive through /api/proxy-image (same origin);
+    // data: covers the fallback pixel and the share-card canvas.
+    "img-src 'self' data: blob:",
+    // Fonts are self-hosted at build time, not fetched from Google.
+    "font-src 'self'",
+    `connect-src 'self' ${LEMON_ORIGINS.join(" ")}`,
+    "media-src 'self' data:",
+    // The verdict tone is generated with the Web Audio API, and the
+    // share card is rendered to a canvas; neither needs a worker,
+    // an object, or an embed.
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    // Matches the X-Frame-Options above, which older browsers read.
+    `frame-ancestors ${frameAncestors}`,
+    // No upgrade-insecure-requests: browsers ignore it in a report-only
+    // policy and log a console error on every page load saying so. Add it
+    // back when this policy is enforced. Strict-Transport-Security already
+    // keeps the site itself on https.
+  ].join("; ");
+}
+
 const nextConfig: NextConfig = {
   // Every external image in the app is relayed through /api/proxy-image, which
   // does its own SSRF validation, size cap, content-type check and caching.
@@ -32,7 +91,23 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             // Camera stays available: "LIVE SCAN" opens the device camera
             // through a file input with capture, which needs it.
-            value: "geolocation=(), microphone=(), payment=(), interest-cohort=()",
+            //
+            // payment was "()" - disabled for this page AND every frame it
+            // embeds. That was harmless while checkout was a full-page
+            // redirect, because the header stopped applying the moment the
+            // visitor left this origin. Inside an overlay it would have
+            // switched off the Payment Request API in the checkout iframe,
+            // which is what Apple Pay and Google Pay run on: the one-tap
+            // wallets would silently vanish from the embedded checkout, on
+            // exactly the mobile traffic this site lives on, while the page
+            // says "Card, Apple Pay and Google Pay" directly above the
+            // button. Delegated to the checkout origins only.
+            value: [
+              "geolocation=()",
+              "microphone=()",
+              `payment=(self ${CHECKOUT_FRAME_ORIGINS.map(o => `"${o}"`).join(" ")})`,
+              "interest-cohort=()",
+            ].join(", "),
           },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
           // ── Content-Security-Policy, REPORT ONLY for now. ──
@@ -59,31 +134,30 @@ const nextConfig: NextConfig = {
           // while it is a diagnostic rather than a control.
           {
             key: "Content-Security-Policy-Report-Only",
-            value: [
-              "default-src 'self'",
-              // Next injects inline bootstrap and hydration scripts.
-              "script-src 'self' 'unsafe-inline'",
-              // Every style in this app is an inline style attribute.
-              "style-src 'self' 'unsafe-inline'",
-              // Product photos arrive through /api/proxy-image (same origin);
-              // data: covers the fallback pixel and the share-card canvas.
-              "img-src 'self' data: blob:",
-              // Fonts are self-hosted at build time, not fetched from Google.
-              "font-src 'self'",
-              "connect-src 'self'",
-              "media-src 'self' data:",
-              // The verdict tone is generated with the Web Audio API, and the
-              // share card is rendered to a canvas; neither needs a worker,
-              // an object, or an embed.
-              "worker-src 'self' blob:",
-              "object-src 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-              // Matches the X-Frame-Options above, which older browsers read.
-              "frame-ancestors 'none'",
-              "upgrade-insecure-requests",
-            ].join("; "),
+            value: contentSecurityPolicy("'none'"),
           },
+        ],
+      },
+      {
+        // The one page allowed to be framed, and only by this origin.
+        //
+        // Lemon Squeezy's confirmation modal - "You're in." - carries a
+        // button to /success. Whether that button navigates the whole page
+        // or only the checkout iframe is decided inside Lemon Squeezy's code
+        // and could not be confirmed from here. If it is the iframe, a
+        // blanket X-Frame-Options: DENY would render a blocked frame at the
+        // exact moment someone has just paid. SAMEORIGIN still refuses every
+        // other site - which is what stops clickjacking - and /success lifts
+        // itself out to the top level if it ever finds itself framed, so the
+        // buyer lands on a real page either way. The header overrides the
+        // global one above because Next applies matching rules in order and
+        // the later value for the same key wins.
+        source: "/success",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          // The same policy, framable by this origin, so enforcing the CSP
+          // later cannot quietly re-break the post-purchase page.
+          { key: "Content-Security-Policy-Report-Only", value: contentSecurityPolicy("'self'") },
         ],
       },
       {

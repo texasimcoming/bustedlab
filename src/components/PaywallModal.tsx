@@ -122,7 +122,9 @@ export default function PaywallModal({
           </button>
           {!checkoutAvailable && (
             // Better a closed door that says so than a button that opens a
-            // dead tab. This state appears only when CHECKOUT_URL is unset.
+            // dead tab. Shown whenever /api/checkout says it is not safe to
+            // take money: no CHECKOUT_URL, a provider that contradicts the
+            // link, or no webhook secret to verify the purchase with.
             <p style={{
               fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "1px",
               color: "rgba(245,158,11,0.6)", textAlign: "center", marginBottom: "8px",

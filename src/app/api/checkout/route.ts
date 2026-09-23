@@ -1,56 +1,49 @@
 import { NextResponse } from "next/server";
+import { checkoutReadiness } from "@/lib/payment-provider";
 
 /**
  * Checkout, provider-agnostic.
  *
- * The previous version hardcoded a single Lemon Squeezy checkout URL in two
- * places (here and again inline in the landing page, which meant this route
- * was never even called). That store application was rejected, so the URL
- * resolves to nothing: every "Unlock $4.99" button on the site led to a dead
- * page. A hardcoded processor is also the wrong shape for a product whose
- * merchant of record is still moving — Gumroad now as the bridge, Paddle
- * when it clears, something else later — so the destination is configuration,
- * not code.
+ * CHECKOUT_URL is the single source of truth for where checkout goes, and -
+ * unless PAYMENT_PROVIDER overrides it - for which provider runs it. See
+ * src/lib/payment-provider.ts for why that inference exists: a provider
+ * setting that disagreed with the link used to mean every purchase was
+ * charged and then rejected at the webhook.
  *
- * To take money: set CHECKOUT_URL to the live payment link and deploy.
- * Nothing else in the codebase needs to change, and nothing here needs a
- * rebuild to switch processors.
+ *   CHECKOUT_URL=https://<store>.lemonsqueezy.com/checkout/buy/<variant>
+ *   LEMONSQUEEZY_WEBHOOK_SECRET=<the signing secret on the store's webhook>
  *
- *   CHECKOUT_URL=https://<seller>.gumroad.com/l/<product>
- *   PAYMENT_PROVIDER=gumroad
+ * Checkout is offered only when it is safe to take money: a valid link, a
+ * provider the link does not contradict, and a webhook secret for that
+ * provider so the purchase can actually be verified and fulfilled. Otherwise
+ * this returns 503 and the UI renders its closed state. A dead link that
+ * looks alive is worse than an honest closed door, and a working link whose
+ * purchases can never be fulfilled is worse than both.
  *
- * With CHECKOUT_URL unset, this returns 503 with a machine-readable reason
- * so the UI can say something true ("checkout is offline") instead of
- * opening a broken tab. A dead link that looks alive is worse than an
- * honest closed door.
+ * The reason is logged on the server and deliberately not returned: it
+ * names which secret is missing, which is nobody's business but the
+ * operator's.
+ *
+ * `embed` tells the client whether to open the Lemon Squeezy overlay rather
+ * than navigate. The URL returned is always the plain configured link; the
+ * overlay's `embed=1` parameter is added client-side at the moment the
+ * overlay opens, so the full-page fallback never receives a URL meant for an
+ * iframe.
  */
 
 export type CheckoutResponse =
   | { url: string; provider: string; embed: boolean }
   | { error: string };
 
-// Only https payment links are accepted. A misconfigured env var should fail
-// loudly at the route rather than send a customer somewhere unexpected.
-function resolveCheckoutUrl(): string | null {
-  const raw = (process.env.CHECKOUT_URL || "").trim();
-  if (!raw) return null;
-  try {
-    const parsed = new URL(raw);
-    if (parsed.protocol !== "https:") return null;
-    return parsed.toString();
-  } catch {
-    return null;
-  }
+function logUnavailable(detail: string): void {
+  console.error(`BustedLab checkout offline: ${detail}`);
 }
 
 export async function POST() {
-  const url = resolveCheckoutUrl();
+  const ready = checkoutReadiness();
 
-  if (!url) {
-    console.error(
-      "BustedLab checkout: CHECKOUT_URL is not set. Payment links are configuration, not code. " +
-      "Set CHECKOUT_URL to the live payment link (and PAYMENT_PROVIDER to match) to enable purchases."
-    );
+  if (!ready.ok) {
+    logUnavailable(ready.detail);
     return NextResponse.json(
       { error: "checkout_unavailable" },
       { status: 503, headers: { "Cache-Control": "no-store" } }
@@ -58,23 +51,21 @@ export async function POST() {
   }
 
   return NextResponse.json(
-    {
-      url,
-      provider: (process.env.PAYMENT_PROVIDER || "gumroad").toLowerCase(),
-      // Gumroad overlays require their script; the current flow opens the
-      // link directly, which works for every provider without loading a
-      // third-party script into the page.
-      embed: false,
-    },
+    { url: ready.url, provider: ready.provider, embed: ready.embed },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
 
-// Lets the client know whether checkout is live without attempting a purchase,
-// so the UI can render the correct state on first paint.
+// Lets the client know whether checkout is live - and whether it will be an
+// overlay - without attempting a purchase, so the UI renders the right state
+// on first paint and can warm the overlay script before the click.
 export async function GET() {
+  const ready = checkoutReadiness();
+  if (!ready.ok) logUnavailable(ready.detail);
   return NextResponse.json(
-    { available: !!resolveCheckoutUrl(), provider: (process.env.PAYMENT_PROVIDER || "gumroad").toLowerCase() },
+    ready.ok
+      ? { available: true, provider: ready.provider, embed: ready.embed }
+      : { available: false },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

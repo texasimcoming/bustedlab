@@ -5,6 +5,7 @@ import ResultsPage from "@/components/ResultsPage";
 import ScanningScreen from "@/components/ScanningScreen";
 import PaywallModal from "@/components/PaywallModal";
 import LiveToast from "@/components/LiveToast";
+import { loadLemonJs, openLemonOverlay } from "@/lib/lemon-overlay";
 import StickyBar from "@/components/StickyBar";
 import StaticVerdictDemo from "@/components/StaticVerdictDemo";
 import SoundToggle from "@/components/SoundToggle";
@@ -248,6 +249,12 @@ export default function Home() {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginSent, setLoginSent] = useState(false);
   const [checkoutAvailable, setCheckoutAvailable] = useState(true);
+  // Whether checkout opens as the Lemon Squeezy overlay rather than a page
+  // navigation. Decided by the server from the configured link.
+  const [checkoutEmbed, setCheckoutEmbed] = useState(false);
+  // One checkout attempt at a time: a second tap while the overlay script is
+  // arriving must not open two overlays or navigate out from under one.
+  const checkoutInFlight = useRef(false);
   const [telemetry, setTelemetry] = useState<Telemetry>({});
   // Initialise from sessionStorage so same-session reloads never go backwards
   const [totalScans, setTotalScans] = useState(() => {
@@ -305,6 +312,7 @@ export default function Home() {
     // tab if checkout is not configured.
     fetch("/api/checkout").then(r => r.json()).then(d => {
       setCheckoutAvailable(!!d.available);
+      setCheckoutEmbed(!!d.available && !!d.embed);
     }).catch(() => setCheckoutAvailable(false));
   }, []);
 
@@ -314,6 +322,18 @@ export default function Home() {
   useEffect(() => {
     if (showPaywall) track("paywall_shown");
   }, [showPaywall]);
+
+  // The upgrade screen opening is the clearest purchase intent this page
+  // ever sees, so the overlay script is fetched then - seconds before the
+  // click, which is what makes the overlay open instantly. See
+  // src/lib/lemon-overlay.ts for why it is not loaded on every page view.
+  useEffect(() => {
+    if (showPaywall && checkoutAvailable && checkoutEmbed) void loadLemonJs();
+  }, [showPaywall, checkoutAvailable, checkoutEmbed]);
+
+  const warmCheckout = () => {
+    if (checkoutAvailable && checkoutEmbed) void loadLemonJs();
+  };
 
   // ── The counter ticks. ──
   // A number that only ever moves when you reload reads as a static image.
@@ -463,8 +483,10 @@ export default function Home() {
   // page shipped a dead payment link straight to the customer. One source of
   // truth, and it is configuration.
   const handleCheckout = async () => {
-    // Sent before the request, because the next thing this function does on
-    // the happy path is navigate away from the page.
+    if (checkoutInFlight.current) return;
+    checkoutInFlight.current = true;
+    // Sent before the request, because on the fallback path the next thing
+    // this function does is navigate away from the page.
     track("checkout_clicked");
     try {
       const res = await fetch("/api/checkout", { method: "POST" });
@@ -479,12 +501,41 @@ export default function Home() {
         setCheckoutAvailable(false);
         return;
       }
-      // Opened in the same tab. A blocked popup is a silently lost sale, and
-      // mobile browsers block popups from async handlers routinely.
+
+      // ── The overlay, when the provider supports it. ──
+      // The upgrade screen stays up until the overlay is actually on screen,
+      // so a click never leads to an empty page while the script arrives.
+      // Then it closes: the overlay replaces it, and two stacked modals would
+      // leave the visitor closing ours after theirs.
+      if (data.embed) {
+        const opened = await openLemonOverlay(data.url, {
+          // Tidies the page underneath the overlay. Access itself is granted
+          // by the verified webhook and never by this browser event, which
+          // anyone could fire from the console. The confirmation the buyer
+          // sees is Lemon Squeezy's own modal; this is the same message the
+          // page shows after the /success redirect, so the page reads right
+          // whichever way they leave the overlay.
+          onSuccess: () => {
+            setShowPaywall(false);
+            setAuthMessage("Payment confirmed. Your access link is in your inbox.");
+          },
+        });
+        if (opened) {
+          setShowPaywall(false);
+          return;
+        }
+        // The script was blocked, timed out, or would not open. The sale
+        // does not depend on it: fall through to the full-page checkout.
+      }
+
+      // Same tab. A blocked popup is a silently lost sale, and mobile
+      // browsers block popups from async handlers routinely.
       window.location.href = data.url;
     } catch {
       setCheckoutAvailable(false);
       setAuthMessage("Checkout is temporarily offline. Free scans reset at midnight UTC.");
+    } finally {
+      checkoutInFlight.current = false;
     }
   };
 
@@ -502,7 +553,7 @@ export default function Home() {
   const handleReset = () => { setState("landing"); setPreview(null); setResult(null); setUploadedFile(null); setUrlInput(""); };
 
   if (state === "scanning") return <ScanningScreen preview={preview} />;
-  if (state === "results" && result) return <ResultsPage result={result} onReset={handleReset} isPaid={userStatus.isPaid} onUpgrade={handleCheckout} />;
+  if (state === "results" && result) return <ResultsPage result={result} onReset={handleReset} isPaid={userStatus.isPaid} onUpgrade={handleCheckout} onUpgradeIntent={warmCheckout} />;
 
   return (
     <main
@@ -1108,7 +1159,7 @@ export default function Home() {
             Scan anything. Share the verdict. No limits, no renewal.
           </p>
 
-          <button onClick={handleCheckout} disabled={!checkoutAvailable} className="btn-primary" style={{ padding: "14px 36px", borderRadius: "10px", fontSize: "15px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif" }}>
+          <button onClick={handleCheckout} onPointerEnter={warmCheckout} onPointerDown={warmCheckout} onFocus={warmCheckout} disabled={!checkoutAvailable} className="btn-primary" style={{ padding: "14px 36px", borderRadius: "10px", fontSize: "15px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif" }}>
             {checkoutAvailable ? "Get unlimited access" : "Checkout offline"}
           </button>
 

@@ -1,23 +1,21 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * FROZEN FIXTURE - src/app/api/webhook/route.ts as it was before the overlay
+ * change, when the verification path was chosen by PAYMENT_PROVIDER.
+ * scripts/check-webhook.mjs replays a Lemon Squeezy purchase against it under
+ * PAYMENT_PROVIDER=gumroad to show the rejection the change fixes. Do not
+ * edit it. Named .ts.txt so no compiler or linter in the repo reads it.
+ * ───────────────────────────────────────────────────────────────────────── */
 import { NextRequest, NextResponse } from "next/server";
 import { markAsPaid, revokeAccess, claimOrder, releaseOrderClaim, storeMagicToken } from "@/lib/redis";
-import { detectDeliveryProvider } from "@/lib/payment-provider";
 import crypto from "crypto";
 
 /**
  * Purchase webhook, provider-agnostic.
  *
- * Handles Lemon Squeezy, Gumroad and Paddle rather than being rewritten each
- * time the merchant of record moves. Every path fails closed.
- *
- * WHICH PATH RUNS is decided by the delivery itself - each provider signs
- * with its own header - and not by PAYMENT_PROVIDER. It used to be the
- * setting, which defaulted to "gumroad": a Lemon Squeezy store with that
- * default in place had every real purchase checked as a Gumroad ping,
- * rejected, and answered 401. Charged, never fulfilled, and silent on both
- * sides. Reading the delivery removes the configuration from the path
- * entirely, and it keeps refunds from a PREVIOUS provider able to revoke
- * access after a store moves. Choosing a path is not a privilege: every one
- * still requires its own secret. See detectDeliveryProvider.
+ * The merchant of record is still moving (Lemon Squeezy rejected the store,
+ * Paddle is pending, Gumroad is the bridge), so this handles all three
+ * rather than being rewritten each time. PAYMENT_PROVIDER selects which
+ * verification path runs; every path fails closed.
  *
  * Two things the previous single-provider version did not do, both of which
  * are money problems rather than code-tidiness problems:
@@ -29,6 +27,13 @@ import crypto from "crypto";
  *     could send the same welcome email several times and burn Resend quota
  *     on duplicates.
  */
+
+type Provider = "gumroad" | "lemonsqueezy" | "paddle";
+
+function provider(): Provider {
+  const p = (process.env.PAYMENT_PROVIDER || "gumroad").toLowerCase();
+  return p === "lemonsqueezy" || p === "paddle" ? p : "gumroad";
+}
 
 // Constant-time comparison that tolerates unequal lengths without throwing,
 // which the raw timingSafeEqual does not.
@@ -48,36 +53,9 @@ function hmacHex(secret: string, payload: string): string {
 }
 
 interface PurchaseEvent {
-  /**
-   * "ignored" is a verified, genuine delivery that must not change access -
-   * answered 200 so the provider does not retry it, but never acted on.
-   */
-  kind: "granted" | "revoked" | "ignored";
+  kind: "granted" | "revoked";
   email: string;
   orderId: string;
-  note?: string;
-}
-
-/**
- * TEST-MODE ORDERS IN PRODUCTION.
- *
- * Lemon Squeezy marks test-mode deliveries with meta.test_mode, and they are
- * paid for with the processor's published test cards - the numbers are in
- * every payments tutorial on the internet. The realistic way one reaches
- * production is CHECKOUT_URL left pointing at a test-mode product after
- * testing the overlay. From then on anyone who types 4242 4242 4242 4242 is
- * granted permanent paid access, for nothing, and it looks exactly like a
- * sale.
- *
- * So on the production deployment a test-mode order is verified, logged
- * loudly, and not granted. LEMONSQUEEZY_ACCEPT_TEST_ORDERS=true lifts that,
- * deliberately and visibly, for the length of an end-to-end test - and it
- * should be unset again afterwards. Preview and local deployments accept test
- * orders without the flag, since that is what they are for.
- */
-function testOrdersAllowed(): boolean {
-  if (process.env.LEMONSQUEEZY_ACCEPT_TEST_ORDERS === "true") return true;
-  return process.env.VERCEL_ENV !== "production";
 }
 
 // ── Gumroad: form-encoded ping, no signature header. The documented way to
@@ -154,17 +132,6 @@ function parseLemonSqueezy(req: NextRequest, rawBody: string): PurchaseEvent | n
     // A created-but-unpaid order must not unlock anything.
     const status = String(attributes?.status || "paid");
     if (status !== "paid" && status !== "active" && status !== "completed") return null;
-    if (meta?.test_mode === true && !testOrdersAllowed()) {
-      return {
-        kind: "ignored",
-        email,
-        orderId,
-        note:
-          "Lemon Squeezy TEST-MODE order received on production and NOT granted. If this was " +
-          "your own test, set LEMONSQUEEZY_ACCEPT_TEST_ORDERS=true for the duration of the test. " +
-          "If it was not, CHECKOUT_URL is pointing at a test-mode product and needs the live link.",
-      };
-    }
     return { kind: "granted", email, orderId };
   }
   return null;
@@ -216,25 +183,12 @@ function parsePaddle(req: NextRequest, rawBody: string): PurchaseEvent | null {
 }
 
 async function sendAccessEmail(email: string): Promise<void> {
-  if (!process.env.RESEND_API_KEY || !process.env.NEXT_PUBLIC_BASE_URL) {
-    // Access is still granted; the customer reaches it through the sign-in
-    // form. But a silent skip here is how "I paid and heard nothing" starts,
-    // so it is said out loud.
-    console.error(
-      "Webhook: access granted but NO access email sent - RESEND_API_KEY or NEXT_PUBLIC_BASE_URL is unset."
-    );
-    return;
-  }
+  if (!process.env.RESEND_API_KEY || !process.env.NEXT_PUBLIC_BASE_URL) return;
 
   const token = crypto.randomBytes(32).toString("hex");
   await storeMagicToken(token, email);
 
-  // fetch only rejects on a network failure. A Resend refusal - unverified
-  // sending domain, bad key, rate limit - comes back as a normal response
-  // with a 4xx status, and the previous version never looked at it. Every
-  // customer's access email could have been failing with nothing in the
-  // logs to say so.
-  const res = await fetch("https://api.resend.com/emails", {
+  await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
@@ -258,16 +212,11 @@ async function sendAccessEmail(email: string): Promise<void> {
       `,
     }),
   });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Resend refused the access email (HTTP ${res.status}): ${body.slice(0, 300)}`);
-  }
 }
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
-  const active = detectDeliveryProvider(req.headers);
+  const active = provider();
 
   const parsed =
     active === "lemonsqueezy" ? parseLemonSqueezy(req, rawBody)
@@ -279,15 +228,6 @@ export async function POST(req: NextRequest) {
   // themselves as a paying customer, permanently, for free.
   if (!parsed) {
     return NextResponse.json({ error: "unverified" }, { status: 401 });
-  }
-
-  // A verified delivery that must not change access. Answered before the
-  // idempotency claim, deliberately: a claim taken here would make the same
-  // order read as "duplicate" if it is resent from the provider's dashboard
-  // after the reason for ignoring it has been dealt with.
-  if (parsed.kind === "ignored") {
-    console.error(`Webhook: ${parsed.note} (order ${parsed.orderId}, ${parsed.email})`);
-    return NextResponse.json({ received: true, ignored: true });
   }
 
   // Providers retry. Only the first delivery of an order does the work - but
