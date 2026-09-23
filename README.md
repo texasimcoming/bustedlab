@@ -58,16 +58,22 @@ Nothing below is required to run the app; each one enables a capability.
 | `RESEND_API_KEY` | Sign-in and purchase emails |
 | `NEXT_PUBLIC_BASE_URL` | Absolute URLs in emails and metadata |
 | `CRON_SECRET` | Authorizes the blob cleanup cron. Without it the cron rejects everything. |
-| `CHECKOUT_URL` | The live payment link. Without it, checkout renders an honest closed state. |
-| `PAYMENT_PROVIDER` | `gumroad` (default), `lemonsqueezy` or `paddle` |
-| `GUMROAD_WEBHOOK_SECRET` | Shared secret on the Gumroad ping URL |
-| `GUMROAD_SELLER_ID` | Optional. Rejects pings from any other seller. |
-| `GUMROAD_PRODUCT_PERMALINK` | Optional. Restricts access grants to one product. |
-| `LEMONSQUEEZY_WEBHOOK_SECRET` / `PADDLE_WEBHOOK_SECRET` | Signature verification for those providers |
+| `CHECKOUT_URL` | The live payment link. A Lemon Squeezy link opens as an in-page overlay. Without it, or without its provider's webhook secret, checkout renders an honest closed state. |
+| `LEMONSQUEEZY_WEBHOOK_SECRET` | Signature verification for Lemon Squeezy, the live provider |
+| `LEMONSQUEEZY_ACCEPT_TEST_ORDERS` | `true` only during an end-to-end test on production. Test-mode orders are otherwise not granted there. |
+| `PAYMENT_PROVIDER` | Leave unset. The provider is read from `CHECKOUT_URL`; a contradicting value keeps checkout offline. |
+| `GUMROAD_WEBHOOK_SECRET` / `PADDLE_WEBHOOK_SECRET` | Signature verification for those providers |
+| `GUMROAD_SELLER_ID` / `GUMROAD_PRODUCT_PERMALINK` | Gumroad only. Narrow which pings grant access. No effect on Lemon Squeezy. |
 | `GLOBAL_DAILY_SCAN_CAP` | Daily ceiling on uncached scans. Defaults to 25000. |
 | `SCAN_BURST_PER_MINUTE` | Per-IP scan burst limit. Defaults to 12. |
 | `ANALYTICS_TOKEN` | Bearer token for `GET /api/stats`. Unset means the endpoint is closed entirely. |
 | `EVENT_BURST_PER_MINUTE` | Per-IP limit on the analytics beacon. Defaults to 60. |
+| `PAID_DAILY_SCAN_CEILING` | Fair-use scans per paid account per day. Defaults to 500. |
+| `DAILY_MODEL_BUDGET_USD` / `MODEL_BREAKER_COOLDOWN` | Daily model spend ceiling and circuit-breaker cooldown. |
+| `IMAGE_PROXY_SECRET` | Signs image-proxy URLs. Falls back to `IDENTITY_SALT`. |
+| `IDENTITY_CACHE_TTL` | Seconds a product identification is reused. |
+
+`.env.example` documents every variable in full.
 
 ## The ledger
 

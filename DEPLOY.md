@@ -28,27 +28,47 @@ function limit. Hobby caps lower, and a scan that exceeds it returns
 
 ## 3. Turn on payments
 
-Checkout is configuration. Nothing in the codebase names a processor.
+Checkout is configuration. The link lives in `CHECKOUT_URL` and nowhere else.
+With a Lemon Squeezy link, checkout opens as Lemon Squeezy's in-page overlay;
+any other provider's link opens as a normal page.
 
-1. Create the product with whichever provider is live and copy its payment link.
-2. Set `CHECKOUT_URL` to that link and `PAYMENT_PROVIDER` to `gumroad`,
-   `lemonsqueezy` or `paddle`.
-3. Point the provider's webhook at `https://<domain>/api/webhook` and set the
-   matching secret:
-   - Gumroad: append `?secret=<value>` to the ping URL and set
-     `GUMROAD_WEBHOOK_SECRET` to the same value. Optionally set
-     `GUMROAD_SELLER_ID` and `GUMROAD_PRODUCT_PERMALINK` to narrow what
-     grants access.
-   - Lemon Squeezy: `LEMONSQUEEZY_WEBHOOK_SECRET`.
-   - Paddle: `PADDLE_WEBHOOK_SECRET`.
-4. Redeploy and make one live purchase. The access email should arrive and its
-   link should sign you in.
+Lemon Squeezy, the live provider:
 
-Until `CHECKOUT_URL` is set, the purchase buttons render a disabled
-"Checkout offline" state. That is deliberate: an honest closed door beats a
-button that opens a dead tab.
+1. In the Lemon Squeezy dashboard, in LIVE mode, copy the product's checkout
+   link and set `CHECKOUT_URL` to it.
+2. Leave `PAYMENT_PROVIDER` unset. The provider is read from the link, and a
+   value that contradicts the link keeps checkout offline rather than taking
+   money the webhook would then refuse.
+3. Settings > Webhooks: add `https://<domain>/api/webhook` with the events
+   `order_created` and `order_refunded`, and a signing secret. Set
+   `LEMONSQUEEZY_WEBHOOK_SECRET` to the same secret. If the store keeps
+   separate test-mode and live-mode webhooks, give both the same secret.
+4. Set the product's confirmation modal (title, message, button to
+   `https://<domain>/success`) in the product's settings in Lemon Squeezy.
+   The overlay shows it after payment.
+5. Redeploy.
 
-Switching providers is two environment variables and a redeploy. No code change.
+Checkout stays in the disabled "Checkout offline" state until both
+`CHECKOUT_URL` and its provider's webhook secret are set. That is deliberate:
+without the secret, the webhook would reject every purchase and nobody who
+paid would get access. The server log says which one is missing.
+
+End-to-end test on production, with a test card:
+
+1. Set `LEMONSQUEEZY_ACCEPT_TEST_ORDERS=true` and redeploy. Without it,
+   production acknowledges test-mode orders but does not grant them, so a
+   test-mode link left in `CHECKOUT_URL` cannot hand out free access.
+2. Point `CHECKOUT_URL` at the test-mode link, buy with Lemon Squeezy's test
+   card, and confirm: the overlay opens on the page, the confirmation modal
+   appears, the access email arrives, and its link signs you in.
+3. Put the live link back in `CHECKOUT_URL`, unset
+   `LEMONSQUEEZY_ACCEPT_TEST_ORDERS`, and redeploy.
+
+Gumroad and Paddle still work: set `CHECKOUT_URL` to their link and
+`GUMROAD_WEBHOOK_SECRET` (appended as `?secret=<value>` to the ping URL,
+optionally with `GUMROAD_SELLER_ID` and `GUMROAD_PRODUCT_PERMALINK`) or
+`PADDLE_WEBHOOK_SECRET`. Keeping an old provider's secret set after moving
+keeps its refunds able to revoke access.
 
 ## 4. Domain
 
