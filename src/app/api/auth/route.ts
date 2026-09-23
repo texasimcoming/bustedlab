@@ -102,7 +102,11 @@ export async function POST(req: NextRequest) {
     // link should not spend a page load performing a redirect.
     const magicUrl = `${baseUrl}/api/auth?token=${token}`;
 
-    await getResend().emails.send({
+    // The Resend SDK does not throw when the send is refused - it returns
+    // { data, error }. The previous version awaited it and moved on, so an
+    // unverified sending domain or a bad key meant every sign-in link
+    // silently never left, while the customer was told one was on its way.
+    const { error: sendError } = await getResend().emails.send({
       from: "BustedLab <access@bustedlab.com>",
       to: normalizedEmail,
       subject: "Your BustedLab sign-in link",
@@ -127,6 +131,12 @@ export async function POST(req: NextRequest) {
 </html>
       `,
     });
+
+    if (sendError) {
+      // Still the same response to the browser: a different answer here
+      // would say whether the address belongs to a paying customer.
+      console.error("Auth: sign-in link NOT sent - Resend refused it:", sendError);
+    }
 
     return sent;
   } catch (err) {
