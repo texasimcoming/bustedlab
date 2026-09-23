@@ -188,6 +188,22 @@ check("with no Lemon Squeezy secret configured, nothing is trusted", r.status ==
 env(); reset();
 r = await deliver(current, lsDelivery({ status: "pending" }));
 check("an unpaid order unlocks nothing", !(await isPaid("buyer@example.com")), `HTTP ${r.status}`);
+check("but is answered 200, not 401, so it is not retried as a failed delivery", r.status === 200, `HTTP ${r.status}`);
+check("and the log says why, not that the signature failed",
+      errors.some(e => e.includes('"pending"') && e.includes("no access was granted")));
+
+// ════════════════════════════════════════════════════════════════
+section("A SIGNED EVENT THIS APP DOES NOT HANDLE");
+
+env(); reset();
+r = await deliver(current, lsDelivery({ event: "license_key_created" }));
+check("is answered 200, not 401 \"unverified\"", r.status === 200 && r.body?.ignored === true, `HTTP ${r.status}`);
+check("grants nothing", !(await isPaid("buyer@example.com")));
+check("and logs nothing", errors.length === 0, errors.join(" | "));
+
+env(); reset();
+r = await deliver(current, lsDelivery({ event: "license_key_created", secret: "not-the-secret" }));
+check("the same event wrongly signed is still 401", r.status === 401, `HTTP ${r.status}`);
 
 // ════════════════════════════════════════════════════════════════
 section("THE MISCONFIGURATION THIS CHANGE EXISTS FOR");

@@ -143,17 +143,27 @@ function parseLemonSqueezy(req: NextRequest, rawBody: string): PurchaseEvent | n
     (attributes?.customer as Record<string, unknown> | undefined)?.email ||
     ""
   ).trim();
-  if (!email) return null;
-
   const orderId = String(data?.id || attributes?.identifier || `ls:${email}`);
 
+  // Verified from here on. A genuine delivery this app does not act on is
+  // answered 200 and dropped. It used to be answered 401 "unverified", which
+  // is wrong on both ends: Lemon Squeezy treats any non-200 as a failed
+  // delivery and retries it, and the log said "signature failed" about a
+  // delivery whose signature was fine, which is the one thing that must
+  // never be ambiguous when someone says they paid and did not get in.
+  const notActedOn = (note?: string): PurchaseEvent => ({ kind: "ignored", email, orderId, note });
+
   if (eventName === "order_refunded" || eventName === "subscription_cancelled") {
+    if (!email) return notActedOn(`${eventName} carried no customer email, so no access was revoked`);
     return { kind: "revoked", email, orderId: `${orderId}:refund` };
   }
   if (eventName === "order_created" || eventName === "order_paid") {
+    if (!email) return notActedOn("order carried no customer email, so no access was granted");
     // A created-but-unpaid order must not unlock anything.
     const status = String(attributes?.status || "paid");
-    if (status !== "paid" && status !== "active" && status !== "completed") return null;
+    if (status !== "paid" && status !== "active" && status !== "completed") {
+      return notActedOn(`order status is "${status}", not paid, so no access was granted`);
+    }
     if (meta?.test_mode === true && !testOrdersAllowed()) {
       return {
         kind: "ignored",
@@ -167,7 +177,8 @@ function parseLemonSqueezy(req: NextRequest, rawBody: string): PurchaseEvent | n
     }
     return { kind: "granted", email, orderId };
   }
-  return null;
+  // Any other event the store is subscribed to. Nothing to do, nothing to log.
+  return notActedOn();
 }
 
 // ── Paddle Billing: Paddle-Signature header of the form "ts=...;h1=...",
@@ -286,7 +297,7 @@ export async function POST(req: NextRequest) {
   // order read as "duplicate" if it is resent from the provider's dashboard
   // after the reason for ignoring it has been dealt with.
   if (parsed.kind === "ignored") {
-    console.error(`Webhook: ${parsed.note} (order ${parsed.orderId}, ${parsed.email})`);
+    if (parsed.note) console.error(`Webhook: ${parsed.note} (order ${parsed.orderId}, ${parsed.email})`);
     return NextResponse.json({ received: true, ignored: true });
   }
 
