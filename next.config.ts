@@ -170,6 +170,15 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        // Same for the unsubscribe page: its address carries the email and
+        // the token that removes it from the list.
+        source: "/unsubscribe",
+        headers: [
+          { key: "Cache-Control", value: "no-store" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+        ],
+      },
+      {
         // Auth and purchase endpoints must never be cached by a CDN or a
         // browser. A cached /api/scan response would hand one visitor's
         // free-scan state to the next.

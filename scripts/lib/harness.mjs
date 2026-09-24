@@ -138,6 +138,8 @@ function runRedisCommand(args) {
 }
 
 export const redis = {
+  /** While true, every Upstash request fails as an outage would. */
+  down: false,
   /** The raw value under a key, or undefined. Expiry is honoured. */
   peek: (key) => live(key)?.value,
   ttl: (key) => runRedisCommand(["TTL", key]),
@@ -156,6 +158,9 @@ const encode = (v) =>
 globalThis.fetch = async (input, init = {}) => {
   const url = typeof input === "string" ? input : String(input?.url || input);
   if (url.startsWith("https://redis.test")) {
+    if (redis.down) {
+      return new Response(JSON.stringify({ error: "emulated outage" }), { status: 500, headers: { "content-type": "application/json" } });
+    }
     const body = init.body ? JSON.parse(init.body) : [];
     const pipeline = Array.isArray(body[0]);
     const result = pipeline
@@ -206,6 +211,7 @@ export function env(overrides = {}) {
 /** Empties Redis, the outbox and the captured log, and resets the clock. */
 export function reset() {
   store.clear();
+  redis.down = false;
   clockOffsetMs = 0;
   mail.sent.length = 0;
   mail.status = 200;

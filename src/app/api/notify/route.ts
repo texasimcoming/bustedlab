@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addNotifyEntry, removeNotifyEntry, claimOrder } from "@/lib/redis";
+import { addNotifyEntry, claimOrder, countInWindow } from "@/lib/redis";
 import { recordEvent } from "@/lib/analytics";
 
 /**
@@ -14,11 +14,43 @@ import { recordEvent } from "@/lib/analytics";
  * Storing an address for future marketing is not the same legal basis as
  * storing one to deliver a purchase, so this route only accepts a submission
  * that carried explicit consent, records when consent was given, and the
- * privacy policy describes the list. DELETE exists so the unsubscribe path is
- * real rather than aspirational.
+ * privacy policy describes the list. Leaving it is POST
+ * /api/notify/unsubscribe with a signed link; see src/lib/unsubscribe.ts.
+ *
+ * Every address on this list will one day be mailed from the same domain
+ * that sends access emails to paying customers. Addresses nobody consented
+ * to - a script filling the form - turn into bounces and spam complaints on
+ * that first send, and the domain's reputation is what gets the next access
+ * email into an inbox. So each visitor can add only a few addresses an
+ * hour, on top of the per-address limit.
  */
 
 const VALID_SOURCES = new Set(["paywall", "limit", "results", "footer"]);
+
+// Sign-ups accepted per visitor (hashed IP) per hour. A household or an
+// office behind one address can still sign up several people. A value that
+// is not a positive number falls back to the default rather than turning
+// every sign-up away.
+function perVisitorPerHour(): number {
+  const configured = Number(process.env.NOTIFY_PER_IP_PER_HOUR);
+  return Number.isFinite(configured) && configured > 0 ? configured : 5;
+}
+
+function clientIp(req: NextRequest): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  );
+}
+
+async function visitorWithinRate(req: NextRequest): Promise<boolean> {
+  try {
+    return (await countInWindow("notify", clientIp(req), 3600)) <= perVisitorPerHour();
+  } catch {
+    return true; // Redis unreachable: the write below will fail on its own
+  }
+}
 
 // Deliberately conservative. This is a signup field on a public page, so the
 // realistic failure mode is a script filling it, not a person typing quickly.
@@ -55,10 +87,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "consent_required" }, { status: 400 });
     }
 
-    if (!(await withinRate(email))) {
+    if (!(await visitorWithinRate(req)) || !(await withinRate(email))) {
       // Same response as success. A rate-limited reply that differs from a
       // successful one turns this endpoint into a way to test whether an
-      // address is already on the list.
+      // address is already on the list, or to learn where the limit sits.
       return NextResponse.json({ saved: true });
     }
 
@@ -70,15 +102,4 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "failed" }, { status: 500 });
   }
-}
-
-// Unsubscribe. Present because a list you cannot leave is a liability, and
-// because the privacy policy promises deletion on request.
-export async function DELETE(req: NextRequest) {
-  const email = req.nextUrl.searchParams.get("email");
-  if (!email || !looksLikeEmail(email)) {
-    return NextResponse.json({ error: "invalid_email" }, { status: 400 });
-  }
-  await removeNotifyEntry(email);
-  return NextResponse.json({ removed: true });
 }

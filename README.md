@@ -68,6 +68,8 @@ Nothing below is required to run the app; each one enables a capability.
 | `SCAN_BURST_PER_MINUTE` | Per-IP scan burst limit. Defaults to 12. |
 | `ANALYTICS_TOKEN` | Bearer token for `GET /api/stats`. Unset means the endpoint is closed entirely. |
 | `EVENT_BURST_PER_MINUTE` | Per-IP limit on the analytics beacon. Defaults to 60. |
+| `NOTIFY_PER_IP_PER_HOUR` | Product update sign-ups accepted per IP per hour. Defaults to 5. |
+| `UNSUBSCRIBE_SECRET` | Signs unsubscribe links. Set before the first list email and never change it. Falls back to `IDENTITY_SALT`. |
 | `PAID_DAILY_SCAN_CEILING` | Fair-use scans per paid account per day. Defaults to 500. |
 | `DAILY_MODEL_BUDGET_USD` / `MODEL_BREAKER_COOLDOWN` | Daily model spend ceiling and circuit-breaker cooldown. |
 | `IMAGE_PROXY_SECRET` | Signs image-proxy URLs. Falls back to `IDENTITY_SALT`. |

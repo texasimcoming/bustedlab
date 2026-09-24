@@ -708,15 +708,13 @@ export async function addNotifyEntry(email: string, source: string): Promise<boo
   }
 }
 
+// Throws on failure: telling someone they are off the list when they are not
+// is worse than telling them to try again.
 export async function removeNotifyEntry(email: string): Promise<void> {
   const normalized = email.toLowerCase().trim();
-  try {
-    const redis = getRedis();
-    await redis.del(keys.notifyEntry(normalized));
-    await redis.zrem(keys.notifyIndex(), normalized);
-  } catch {
-    /* nothing to do */
-  }
+  const redis = getRedis();
+  await redis.del(keys.notifyEntry(normalized));
+  await redis.zrem(keys.notifyIndex(), normalized);
 }
 
 
