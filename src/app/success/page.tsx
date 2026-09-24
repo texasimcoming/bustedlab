@@ -47,7 +47,7 @@ function SuccessInner() {
           You&apos;re in.
         </h1>
         <p style={{ color: "rgba(238,238,248,0.55)", fontSize: "15px", lineHeight: "1.65" }}>
-          Your access link just landed. Tap it to unlock unlimited scans on this device and every device you use after it.
+          Unlimited scans are unlocking on this device. Your access link is in your inbox too, for any other device.
         </p>
         <p style={{
           color: "rgba(238,238,248,0.3)", fontSize: "13px", marginTop: "24px"

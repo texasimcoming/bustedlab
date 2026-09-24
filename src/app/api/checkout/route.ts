@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { checkoutReadiness } from "@/lib/payment-provider";
+import { claimCookie, openClaimFor } from "@/lib/checkout-claim";
 
 /**
  * Checkout, provider-agnostic.
@@ -25,10 +26,14 @@ import { checkoutReadiness } from "@/lib/payment-provider";
  * operator's.
  *
  * `embed` tells the client whether to open the Lemon Squeezy overlay rather
- * than navigate. The URL returned is always the plain configured link; the
- * overlay's `embed=1` parameter is added client-side at the moment the
+ * than navigate. The URL returned is the configured link, plus the claim
+ * described below and nothing else; the overlay's `embed=1` parameter is added client-side at the moment the
  * overlay opens, so the full-page fallback never receives a URL meant for an
  * iframe.
+ *
+ * For a Lemon Squeezy checkout the POST also opens a claim, so the browser
+ * that pays is signed in without waiting for the email. The link carries it
+ * as checkout[custom][claim]; see src/lib/checkout-claim.ts.
  */
 
 export type CheckoutResponse =
@@ -39,7 +44,7 @@ function logUnavailable(detail: string): void {
   console.error(`BustedLab checkout offline: ${detail}`);
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   const ready = checkoutReadiness();
 
   if (!ready.ok) {
@@ -50,10 +55,20 @@ export async function POST() {
     );
   }
 
-  return NextResponse.json(
-    { url: ready.url, provider: ready.provider, embed: ready.embed },
+  const claim = ready.provider === "lemonsqueezy" ? await openClaimFor(req) : null;
+  let url = ready.url;
+  if (claim) {
+    const withClaim = new URL(ready.url);
+    withClaim.searchParams.set("checkout[custom][claim]", claim);
+    url = withClaim.toString();
+  }
+
+  const res = NextResponse.json(
+    { url, provider: ready.provider, embed: ready.embed },
     { headers: { "Cache-Control": "no-store" } }
   );
+  if (claim) res.cookies.set(claimCookie(claim));
+  return res;
 }
 
 // Lets the client know whether checkout is live - and whether it will be an

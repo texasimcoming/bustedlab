@@ -18,23 +18,11 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import crypto from "node:crypto";
 import {
-  REPO, BASE_ENV, importSrc, importSource, env, reset, call, mail, logs, check, section, finish,
+  REPO, BASE_ENV, importSrc, importSource, env, reset, call, mail, logs, check, section, finish, lemonSqueezyDelivery,
 } from "./lib/harness.mjs";
 
-// ── A genuine-looking Lemon Squeezy delivery, signed the way Lemon Squeezy
-//    signs: HMAC-SHA256 of the raw body, hex, in X-Signature. ──
-function lsDelivery({ event = "order_created", email = "buyer@example.com", orderId = "4815162342",
-                     status = "paid", testMode = false, secret = BASE_ENV.LEMONSQUEEZY_WEBHOOK_SECRET,
-                     customData, attributes = {} } = {}) {
-  const body = JSON.stringify({
-    meta: { event_name: event, test_mode: testMode, ...(customData ? { custom_data: customData } : {}) },
-    data: { type: "orders", id: orderId, attributes: { user_email: email, status, total: 499, currency: "USD", ...attributes } },
-  });
-  const signature = crypto.createHmac("sha256", secret).update(body).digest("hex");
-  return { body, headers: { "content-type": "application/json", "x-signature": signature, "x-event-name": event } };
-}
+const lsDelivery = lemonSqueezyDelivery;
 
 const deliver = (route, delivery) =>
   call(route.POST, "/api/webhook", { method: "POST", headers: delivery.headers, body: delivery.body })

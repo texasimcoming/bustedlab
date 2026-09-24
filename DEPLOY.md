@@ -60,7 +60,12 @@ End-to-end test on production, with a test card:
    test-mode link left in `CHECKOUT_URL` cannot hand out free access.
 2. Point `CHECKOUT_URL` at the test-mode link, buy with Lemon Squeezy's test
    card, and confirm: the overlay opens on the page, the confirmation modal
-   appears, the access email arrives, and its link signs you in.
+   appears, the page behind it unlocks on its own within a few seconds
+   ("You're in. Unlimited scans are unlocked on this device."), the access
+   email arrives, and its link signs in a second browser. If the page does
+   not unlock but the email works, the claim is not making it through the
+   checkout: check that the webhook delivery's `meta.custom_data` has a
+   `claim` field.
 3. Put the live link back in `CHECKOUT_URL`, unset
    `LEMONSQUEEZY_ACCEPT_TEST_ORDERS`, and redeploy.
 

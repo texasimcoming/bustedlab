@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { markAsPaid, revokeAccess, claimOrder, releaseOrderClaim, storeMagicToken } from "@/lib/redis";
+import { markAsPaid, revokeAccess, claimOrder, releaseOrderClaim, storeMagicToken, fulfilCheckoutClaim } from "@/lib/redis";
 import { detectDeliveryProvider } from "@/lib/payment-provider";
+import { isClaim } from "@/lib/checkout-claim";
 import crypto from "crypto";
 
 /**
@@ -56,6 +57,12 @@ interface PurchaseEvent {
   email: string;
   orderId: string;
   note?: string;
+  /**
+   * The checkout claim the buyer's browser opened, passed through the
+   * checkout as custom data. Lets that browser sign itself in once access is
+   * granted. See src/lib/checkout-claim.ts.
+   */
+  claim?: string;
 }
 
 /**
@@ -175,7 +182,8 @@ function parseLemonSqueezy(req: NextRequest, rawBody: string): PurchaseEvent | n
           "If it was not, CHECKOUT_URL is pointing at a test-mode product and needs the live link.",
       };
     }
-    return { kind: "granted", email, orderId };
+    const claim = (meta?.custom_data as Record<string, unknown> | undefined)?.claim;
+    return { kind: "granted", email, orderId, claim: isClaim(claim) ? claim : undefined };
   }
   // Any other event the store is subscribed to. Nothing to do, nothing to log.
   return notActedOn();
@@ -317,6 +325,18 @@ export async function POST(req: NextRequest) {
     }
 
     await markAsPaid(parsed.email);
+
+    // Before the email, so the browser that paid - which is asking every few
+    // seconds - unlocks without waiting on the mail provider. A failure here
+    // costs only the shortcut; the email below is still the way in.
+    if (parsed.claim) {
+      try {
+        await fulfilCheckoutClaim(parsed.claim, parsed.email);
+      } catch (claimError) {
+        console.error("Webhook: access granted but the paying browser could not be unlocked; it will need the email", claimError);
+      }
+    }
+
     try {
       await sendAccessEmail(parsed.email);
     } catch (mailError) {

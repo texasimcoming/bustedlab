@@ -48,6 +48,8 @@ export const keys = {
   scanCache: (fingerprint: string) => `scan:cache:${fingerprint}`,
   paidScanCount: (email: string) => `scan:paid:${hashIdentifier(email)}`,
   processedOrder: (orderId: string) => `order:${orderId}`,
+  checkoutClaim: (claim: string) => `claim:${claim}`,
+  window: (name: string, identifier: string, index: number) => `window:${name}:${hashIdentifier(identifier)}:${index}`,
 
   // ── The permanent record. See the SCAN LEDGER section below. ──
   scanRecord: (id: string) => `scan:rec:${id}`,
@@ -355,6 +357,56 @@ export async function getSessionEmail(sessionToken: string): Promise<string | nu
 
 export async function deleteSession(sessionToken: string): Promise<void> {
   await getRedis().del(keys.session(sessionToken));
+}
+
+// ════════════════════════════════════════════════════════════════
+// Checkout claims: the browser that paid unlocks itself.
+//
+// Opened when a checkout starts ("pending"), fulfilled by the webhook with
+// the buyer's address, and redeemed once by the browser holding the claim's
+// cookie. See src/lib/checkout-claim.ts for the whole flow.
+// ════════════════════════════════════════════════════════════════
+export const CHECKOUT_CLAIM_SECONDS = 2 * 60 * 60;
+const CLAIM_PENDING = "pending";
+
+export async function openCheckoutClaim(claim: string): Promise<void> {
+  await getRedis().set(keys.checkoutClaim(claim), CLAIM_PENDING, { ex: CHECKOUT_CLAIM_SECONDS });
+}
+
+/**
+ * Attaches a paid address to a claim this server opened. Only a pending
+ * claim is fulfilled, so a claim cannot be pointed at a second order.
+ */
+export async function fulfilCheckoutClaim(claim: string, email: string): Promise<boolean> {
+  const redis = getRedis();
+  const key = keys.checkoutClaim(claim);
+  if ((await redis.get(key)) !== CLAIM_PENDING) return false;
+  const set = await redis.set(key, email.toLowerCase().trim(), { xx: true, ex: CHECKOUT_CLAIM_SECONDS });
+  return set === "OK";
+}
+
+/** "pending", the paid address, or null when there is no live claim. */
+export async function readCheckoutClaim(claim: string): Promise<string | null> {
+  return getRedis().get(keys.checkoutClaim(claim)) as Promise<string | null>;
+}
+
+/** Takes the paid address off a fulfilled claim. Only one caller ever gets it. */
+export async function redeemCheckoutClaim(claim: string): Promise<string | null> {
+  const value = await getRedis().getdel(keys.checkoutClaim(claim)) as string | null;
+  return value && value !== CLAIM_PENDING ? value : null;
+}
+
+/**
+ * Counts one more request in a fixed window and returns the count so far.
+ * For per-visitor limits on endpoints that write to Redis, so a script
+ * cannot fill the database. The identifier is hashed before it is stored.
+ */
+export async function countInWindow(name: string, identifier: string, windowSeconds: number): Promise<number> {
+  const redis = getRedis();
+  const key = keys.window(name, identifier, Math.floor(Date.now() / 1000 / windowSeconds));
+  const count = await redis.incr(key);
+  if (count === 1) await redis.expire(key, windowSeconds);
+  return count;
 }
 
 

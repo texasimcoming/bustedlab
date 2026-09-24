@@ -10,6 +10,7 @@
  * Nothing here reaches the network. Any fetch the checks did not anticipate
  * throws, so a new outbound call cannot slip through untested.
  */
+import crypto from "node:crypto";
 import { registerHooks } from "node:module";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -247,6 +248,24 @@ export async function call(handler, path, { method = "GET", headers = {}, body, 
     json,
     text,
   };
+}
+
+// ── Lemon Squeezy. ──
+
+/**
+ * A genuine-looking Lemon Squeezy webhook delivery, signed the way Lemon
+ * Squeezy signs: HMAC-SHA256 of the raw body, hex, in X-Signature.
+ */
+export function lemonSqueezyDelivery({
+  event = "order_created", email = "buyer@example.com", orderId = "4815162342", status = "paid",
+  testMode = false, secret = BASE_ENV.LEMONSQUEEZY_WEBHOOK_SECRET, customData, attributes = {},
+} = {}) {
+  const body = JSON.stringify({
+    meta: { event_name: event, test_mode: testMode, ...(customData ? { custom_data: customData } : {}) },
+    data: { type: "orders", id: orderId, attributes: { user_email: email, status, total: 499, currency: "USD", ...attributes } },
+  });
+  const signature = crypto.createHmac("sha256", secret).update(body).digest("hex");
+  return { body, headers: { "content-type": "application/json", "x-signature": signature, "x-event-name": event } };
 }
 
 // ── Reporting. ──

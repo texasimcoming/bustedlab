@@ -145,6 +145,22 @@ function storedScanCount(): number {
   }
 }
 
+// How often the page asks whether the purchase it just started has cleared,
+// and for how long. See the claim watch in Home and src/lib/checkout-claim.ts.
+const CLAIM_POLL_MS = 3000;
+const CLAIM_WATCH_AFTER_CHECKOUT_MS = 10 * 60 * 1000;
+const CLAIM_WATCH_AFTER_RETURN_MS = 2 * 60 * 1000;
+
+interface AuthStatus {
+  authenticated?: boolean;
+  paid?: boolean;
+  email?: string;
+  /** This call signed the browser in from a paid checkout claim. */
+  claimed?: boolean;
+  /** "pending": a checkout from this browser has not cleared yet. */
+  claim?: string;
+}
+
 // The address bar does not change under a mounted page in any way this
 // message cares about, so there is nothing to subscribe to.
 const subscribeToNothing = () => () => {};
@@ -290,6 +306,67 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  // ── The browser that pays unlocks itself. ──
+  // The session check doubles as the claim check: once the webhook has
+  // verified the purchase this browser started, the next check signs it in
+  // (src/lib/checkout-claim.ts). So while a checkout is open, or while one is
+  // known to be waiting on the payment, the page keeps asking.
+  const applyAuthStatus = useCallback((status: AuthStatus) => {
+    if (status.authenticated) {
+      setUserStatus({ isPaid: !!status.paid, remaining: FREE_SCAN_ALLOWANCE, authenticated: true, email: status.email });
+    }
+    if (status.claimed) {
+      setShowPaywall(false);
+      setAuthMessage("You're in. Unlimited scans are unlocked on this device.");
+    }
+  }, []);
+
+  const checkAuth = useCallback(async (): Promise<AuthStatus | null> => {
+    try {
+      const status: AuthStatus = await fetch("/api/auth", { method: "PATCH" }).then(r => r.json());
+      applyAuthStatus(status);
+      return status;
+    } catch {
+      return null;
+    }
+  }, [applyAuthStatus]);
+
+  const claimWatchUntil = useRef(0);
+  const claimWatching = useRef(false);
+  const claimTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const watchClaim = useCallback((forMs: number) => {
+    claimWatchUntil.current = Math.max(claimWatchUntil.current, Date.now() + forMs);
+    if (claimWatching.current) return; // already asking; the later deadline now applies
+    claimWatching.current = true;
+    const tick = async () => {
+      if (Date.now() > claimWatchUntil.current) { claimWatching.current = false; return; }
+      // A hidden tab waits its turn rather than asking in the background.
+      if (document.visibilityState === "visible") {
+        const status = await checkAuth();
+        // Signed in, or there is no claim to wait for. A failed request
+        // (null) is a network blip and keeps asking.
+        if (status && status.claim !== "pending") { claimWatching.current = false; return; }
+      }
+      claimTimer.current = setTimeout(tick, CLAIM_POLL_MS);
+    };
+    claimTimer.current = setTimeout(tick, CLAIM_POLL_MS);
+  }, [checkAuth]);
+
+  useEffect(() => () => {
+    if (claimTimer.current) clearTimeout(claimTimer.current);
+  }, []);
+
+  // The session check on arrival. It also redeems a paid checkout claim,
+  // which is how a buyer returning from the full-page checkout, or coming
+  // back later in the same browser, arrives signed in.
+  useEffect(() => {
+    fetch("/api/auth", { method: "PATCH" }).then(r => r.json()).then((status: AuthStatus) => {
+      applyAuthStatus(status);
+      if (status.claim === "pending") watchClaim(CLAIM_WATCH_AFTER_RETURN_MS);
+    }).catch(() => {});
+  }, [applyAuthStatus, watchClaim]);
+
   useScrollReveal();
   useScrollDepthTrigger(0.7, useCallback(() => {
     // Gated on the real fetch resolving. Before that, userStatus.remaining
@@ -303,7 +380,11 @@ export default function Home() {
     fetch("/api/scan").then(r => r.json()).then((data: Telemetry & { isPaid?: boolean; remaining?: number }) => {
       setUserStatus(prev => ({
         ...prev,
-        isPaid: !!data.isPaid,
+        // Never downgrades. This request and the session check below go out
+        // together, and a checkout claim redeemed by the session check
+        // signs the browser in after this one has already been answered as
+        // unpaid.
+        isPaid: prev.isPaid || !!data.isPaid,
         remaining: typeof data.remaining === "number" ? data.remaining : prev.remaining,
       }));
       setStatusLoaded(true);
@@ -324,10 +405,6 @@ export default function Home() {
     }).catch(() => {
       // Fetch failed. The fixed baseline from initial state stands, unchanged.
     });
-
-    fetch("/api/auth", { method: "PATCH" }).then(r => r.json()).then(data => {
-      if (data.authenticated) setUserStatus({ isPaid: data.paid, remaining: FREE_SCAN_ALLOWANCE, authenticated: true, email: data.email });
-    }).catch(() => {});
 
     // Is there a live payment link behind the buttons? Asked once, so the
     // paywall can render an honest closed state instead of opening a dead
@@ -540,10 +617,12 @@ export default function Home() {
           onSuccess: () => {
             setShowPaywall(false);
             setAuthMessage("Payment confirmed. Your access link is in your inbox.");
+            watchClaim(CLAIM_WATCH_AFTER_RETURN_MS);
           },
         });
         if (opened) {
           setShowPaywall(false);
+          watchClaim(CLAIM_WATCH_AFTER_CHECKOUT_MS);
           return;
         }
         // The script was blocked, timed out, or would not open. The sale

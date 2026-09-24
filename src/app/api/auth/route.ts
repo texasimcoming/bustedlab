@@ -8,6 +8,8 @@ import {
   claimOrder,
 } from "@/lib/redis";
 import crypto from "crypto";
+import { startSession } from "@/lib/session";
+import { CLAIM_COOKIE, claimStateFor } from "@/lib/checkout-claim";
 
 function getResend() {
   return new Resend(process.env.RESEND_API_KEY || "re_placeholder");
@@ -172,16 +174,32 @@ export async function DELETE(req: NextRequest) {
 }
 
 // PATCH /api/auth - check session status
+//
+// Also where the browser that just paid gets in without the email: if this
+// browser opened a checkout claim and the purchase has since been verified,
+// the claim is redeemed here and a session starts. `claim: "pending"` tells
+// the page to ask again shortly. See src/lib/checkout-claim.ts.
 export async function PATCH(req: NextRequest) {
-  const sessionToken = req.cookies.get("bl_session")?.value;
-  if (!sessionToken) return NextResponse.json({ authenticated: false });
-
   try {
-    const email = await getSessionEmail(sessionToken);
-    if (!email) return NextResponse.json({ authenticated: false });
+    const sessionToken = req.cookies.get("bl_session")?.value;
+    const email = sessionToken ? await getSessionEmail(sessionToken) : null;
+    const paid = email ? await isPaidUser(email) : false;
+    if (email && paid) return NextResponse.json({ authenticated: true, email, paid });
 
-    const paid = await isPaidUser(email);
-    return NextResponse.json({ authenticated: true, email, paid });
+    const claim = await claimStateFor(req);
+    if (claim.kind === "redeemed") {
+      const res = NextResponse.json({ authenticated: true, email: claim.email, paid: true, claimed: true });
+      await startSession(res, claim.email);
+      res.cookies.delete(CLAIM_COOKIE);
+      return res;
+    }
+
+    const res = NextResponse.json({
+      ...(email ? { authenticated: true, email, paid } : { authenticated: false }),
+      ...(claim.kind === "pending" ? { claim: "pending" } : {}),
+    });
+    if (claim.kind === "none" && req.cookies.has(CLAIM_COOKIE)) res.cookies.delete(CLAIM_COOKIE);
+    return res;
   } catch {
     return NextResponse.json({ authenticated: false });
   }

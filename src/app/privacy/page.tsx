@@ -82,9 +82,10 @@ export default function PrivacyPage() {
 
         <section>
           <h2 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "18px", fontWeight: "700", color: "var(--text)", marginBottom: "12px" }}>Cookies</h2>
-          <p>BustedLab sets two cookies, both strictly necessary and neither used for advertising or analytics:</p>
+          <p>BustedLab sets three cookies, all strictly necessary and none used for advertising or analytics:</p>
           <ul style={{ paddingLeft: "20px", marginTop: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
             <li><strong style={{ color: "var(--text)" }}>bl_session</strong> - keeps you signed in after you use a sign-in link. Set only once you sign in.</li>
+            <li><strong style={{ color: "var(--text)" }}>bl_claim</strong> - set when you start a purchase, so the browser you pay in can sign itself in once the payment is confirmed. It holds a random value, and is removed when used or after two hours.</li>
             <li><strong style={{ color: "var(--text)" }}>bl_bid</strong> - a random identifier, expiring after 30 days, that counts free scans from this browser. It exists because mobile networks change your IP address mid-session, which would otherwise reset the free tier. It contains no information about you, is never linked to your email address, and is not used to track you across other websites.</li>
           </ul>
           <p style={{ marginTop: "12px" }}>No third-party advertising or analytics cookies are used. One third-party script runs on this site, and only when you start to buy: our payment provider&apos;s checkout script, which loads when the upgrade screen opens or you point at or tap a buy button, so the payment form can open on this page instead of sending you to another site. If you never start a purchase, it never loads. While the payment form is open, the provider may set the cookies it needs to process your payment, under its own privacy policy. Your card details are entered into the provider&apos;s own secure frame, which this site cannot read. Our usage measurement is first-party, sets no cookie, and stores only aggregate daily counts.</p>
