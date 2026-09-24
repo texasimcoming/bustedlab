@@ -60,7 +60,7 @@ export default function TermsPage() {
 
         <section>
           <h2 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "18px", fontWeight: "700", color: "var(--text)", marginBottom: "12px" }}>7. Payments and Refunds</h2>
-          <p>BustedLab offers a one-time lifetime access purchase. Payment is processed by a third-party provider acting as Merchant of Record, named on the checkout page before you enter any details. Given the immediate and complete delivery of digital service access upon payment, refunds are offered only where required by applicable consumer protection law in your jurisdiction, including the statutory withdrawal rights of consumers in the EU and UK. Where a refund or chargeback is processed, access to the Service is withdrawn.</p>
+          <p>BustedLab offers a one-time lifetime access purchase. Payment is processed by a third-party provider acting as Merchant of Record, named on the checkout page before you enter any details. Given the immediate and complete delivery of digital service access upon payment, refunds are offered only where required by applicable consumer protection law in your jurisdiction, including the statutory withdrawal rights of consumers in the EU and UK. Where a full refund or a chargeback is processed, access to the Service is withdrawn. A partial refund does not affect access.</p>
         </section>
 
         <section>

@@ -162,6 +162,18 @@ function parseLemonSqueezy(req: NextRequest, rawBody: string): PurchaseEvent | n
 
   if (eventName === "order_refunded" || eventName === "subscription_cancelled") {
     if (!email) return notActedOn(`${eventName} carried no customer email, so no access was revoked`);
+    // Lemon Squeezy sends order_refunded for partial refunds too - a goodwill
+    // dollar back, say - and taking lifetime access away for that was never
+    // the intent. Only a refund of the whole order revokes. total and
+    // refunded_amount are both in cents, in the order's currency. If either
+    // is missing, the refund is treated as full, as before.
+    if (eventName === "order_refunded") {
+      const total = Number(attributes?.total);
+      const refunded = Number(attributes?.refunded_amount);
+      if (Number.isFinite(total) && Number.isFinite(refunded) && refunded < total) {
+        return notActedOn(`order partially refunded (${refunded} of ${total} cents), so access was kept`);
+      }
+    }
     return { kind: "revoked", email, orderId: `${orderId}:refund` };
   }
   if (eventName === "order_created" || eventName === "order_paid") {

@@ -117,6 +117,28 @@ const hadAccess = await isPaid("buyer@example.com");
 r = await deliver(current, lsDelivery({ event: "order_refunded", orderId: "77", status: "refunded" }));
 check("a refund revokes access", hadAccess && !(await isPaid("buyer@example.com")), `HTTP ${r.status}`);
 
+env(); reset();
+await deliver(current, lsDelivery({ orderId: "78" }));
+r = await deliver(current, lsDelivery({
+  event: "order_refunded", orderId: "78", attributes: { total: 499, refunded_amount: 100, refunded: true },
+}));
+check("a partial refund keeps access", r.status === 200 && (await isPaid("buyer@example.com")), `HTTP ${r.status}`);
+check("and the log says so", errors.some(e => e.includes("partially refunded (100 of 499 cents)")));
+r = await deliver(current, lsDelivery({
+  event: "order_refunded", orderId: "78", status: "refunded", attributes: { total: 499, refunded_amount: 499, refunded: true },
+}));
+check("refunding the rest of the same order then revokes it", !(await isPaid("buyer@example.com")), `HTTP ${r.status}`);
+
+env(); reset();
+await deliver(current, lsDelivery({ orderId: "79" }));
+await deliver(current, lsDelivery({ event: "order_refunded", orderId: "79", attributes: { total: 499, refunded_amount: 499 } }));
+check("a full refund in one go revokes access", !(await isPaid("buyer@example.com")));
+
+env(); reset();
+await deliver(current, lsDelivery({ orderId: "80", attributes: { total: 0 } }));
+await deliver(current, lsDelivery({ event: "order_refunded", orderId: "80", attributes: { total: 0, refunded_amount: 0 } }));
+check("a refunded free order (100% discount code) revokes access", !(await isPaid("buyer@example.com")));
+
 // ════════════════════════════════════════════════════════════════
 section("TEST-MODE ORDERS");
 
