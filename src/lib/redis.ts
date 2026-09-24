@@ -314,9 +314,34 @@ export async function storeMagicToken(token: string, email: string): Promise<voi
   await getRedis().set(keys.magicToken(token), email, { ex: 900 });
 }
 
+// How long a sign-in link keeps working after its first use. See below.
+export const MAGIC_LINK_REUSE_SECONDS = 120;
+
+/**
+ * Exchanges a sign-in link's token for the address it was minted for.
+ *
+ * Deliberately not strictly single-use. Corporate mail filters - Outlook Safe
+ * Links, Mimecast, Proofpoint - open links before the person does, and the
+ * ones that check at the moment of the click open it seconds ahead of them.
+ * A token deleted on first use was spent by the filter, the customer saw
+ * "Link expired", and every replacement link was spent the same way: a paying
+ * customer on a work address could not sign in at all.
+ *
+ * Two things stop that now. Opening the link no longer signs anyone in - the
+ * link opens a page that signs in with a POST, which link scanners do not
+ * send (see src/app/auth/verify). And the first use shortens the token's life
+ * to MAGIC_LINK_REUSE_SECONDS instead of deleting it, which covers the
+ * filters that do run the page, since they open it only moments before the
+ * person does. The window hands nothing to anyone new: whoever can read the
+ * inbox can already request a fresh link.
+ */
 export async function consumeMagicToken(token: string): Promise<string | null> {
-  const email = await getRedis().get(keys.magicToken(token)) as string | null;
-  if (email) await getRedis().del(keys.magicToken(token));
+  const redis = getRedis();
+  const key = keys.magicToken(token);
+  const email = await redis.get(key) as string | null;
+  if (!email) return null;
+  const ttl = await redis.ttl(key);
+  if (ttl < 0 || ttl > MAGIC_LINK_REUSE_SECONDS) await redis.expire(key, MAGIC_LINK_REUSE_SECONDS);
   return email;
 }
 

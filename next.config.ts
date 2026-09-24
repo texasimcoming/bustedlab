@@ -161,6 +161,15 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        // The page a sign-in link opens. Its address carries the token, so it
+        // is never cached and never sends the address onward as a referrer.
+        source: "/auth/verify",
+        headers: [
+          { key: "Cache-Control", value: "no-store" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+        ],
+      },
+      {
         // Auth and purchase endpoints must never be cached by a CDN or a
         // browser. A cached /api/scan response would hand one visitor's
         // free-scan state to the next.

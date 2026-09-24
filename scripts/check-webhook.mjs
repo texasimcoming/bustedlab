@@ -16,142 +16,36 @@
  * frozen fixture, and replays the misconfiguration that motivated the change, so the claim
  * "this used to reject paying customers" is shown rather than asserted.
  */
-import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve, dirname } from "node:path";
-import { pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import crypto from "node:crypto";
-
-const REPO = resolve(dirname(new URL(import.meta.url).pathname), "..");
-const NEXT_SERVER = pathToFileURL(join(REPO, "node_modules/next/server.js")).href;
-const lib = (name) => pathToFileURL(join(REPO, `src/lib/${name}.ts`)).href;
-
-// ── Load a route handler outside Next: rewrite the specifiers Node cannot
-//    resolve from a temp directory, and nothing else. ──
-async function loadRoute(source, label) {
-  let src = source
-    .replace(/from "next\/server"/g, `from "${NEXT_SERVER}"`)
-    .replace(/from "@\/lib\/([a-z0-9-]+)"/g, (_m, name) => `from "${lib(name)}"`);
-  const unresolved = src.match(/from "@\/[^"]+"/g);
-  if (unresolved) throw new Error(`${label}: unresolved imports ${unresolved.join(", ")}`);
-  const dir = mkdtempSync(join(tmpdir(), "bustedlab-webhook-"));
-  const file = join(dir, `${label}.ts`);
-  writeFileSync(file, src, "utf8");
-  return import(pathToFileURL(file).href);
-}
-
-// ── The mocked outside world: Upstash and Resend. ──
-const store = new Map();
-const emails = [];
-let resendStatus = 200;
-
-function runRedisCommand(args) {
-  const [rawCmd, key, ...rest] = args;
-  const cmd = String(rawCmd).toUpperCase();
-  const flags = rest.map(r => String(r).toUpperCase());
-  switch (cmd) {
-    case "GET": return store.has(key) ? store.get(key) : null;
-    case "SET":
-      if (flags.includes("NX") && store.has(key)) return null;
-      store.set(key, String(rest[0]));
-      return "OK";
-    case "DEL": return store.delete(key) ? 1 : 0;
-    case "INCR": {
-      const next = (Number(store.get(key)) || 0) + 1;
-      store.set(key, String(next));
-      return next;
-    }
-    case "EXPIRE":
-    case "EXPIREAT": return 1;
-    default: return null;
-  }
-}
-const encode = (v) => (typeof v === "string" ? Buffer.from(v, "utf8").toString("base64") : v);
-
-globalThis.fetch = async (input, init = {}) => {
-  const url = typeof input === "string" ? input : String(input?.url || input);
-  if (url.startsWith("https://redis.test")) {
-    const body = init.body ? JSON.parse(init.body) : [];
-    const pipeline = Array.isArray(body[0]);
-    const result = pipeline
-      ? body.map(a => ({ result: encode(runRedisCommand(a)) }))
-      : { result: encode(runRedisCommand(body)) };
-    return new Response(JSON.stringify(result), { status: 200, headers: { "content-type": "application/json" } });
-  }
-  if (url === "https://api.resend.com/emails") {
-    emails.push(JSON.parse(init.body));
-    return new Response(JSON.stringify(resendStatus === 200 ? { id: "email_1" } : { message: "domain not verified" }), {
-      status: resendStatus,
-      headers: { "content-type": "application/json" },
-    });
-  }
-  throw new Error(`unmocked fetch: ${url}`);
-};
-
-// console.error is where every silent-failure fix in this path reports, so it
-// is captured and asserted on.
-const errors = [];
-const realError = console.error;
-console.error = (...args) => { errors.push(args.map(String).join(" ")); };
-
-const BASE_ENV = {
-  UPSTASH_REDIS_REST_URL: "https://redis.test",
-  UPSTASH_REDIS_REST_TOKEN: "test",
-  IDENTITY_SALT: "webhook-test-salt",
-  RESEND_API_KEY: "re_test",
-  NEXT_PUBLIC_BASE_URL: "https://bustedlab.test",
-  LEMONSQUEEZY_WEBHOOK_SECRET: "ls_signing_secret",
-};
-const MANAGED = [
-  ...Object.keys(BASE_ENV), "PAYMENT_PROVIDER", "CHECKOUT_URL", "GUMROAD_WEBHOOK_SECRET",
-  "PADDLE_WEBHOOK_SECRET", "VERCEL_ENV", "LEMONSQUEEZY_ACCEPT_TEST_ORDERS",
-];
-function env(overrides = {}) {
-  for (const k of MANAGED) delete process.env[k];
-  Object.assign(process.env, BASE_ENV, overrides);
-  for (const [k, v] of Object.entries(overrides)) if (v === undefined) delete process.env[k];
-}
-function reset() {
-  store.clear();
-  emails.length = 0;
-  errors.length = 0;
-  resendStatus = 200;
-}
+import {
+  REPO, BASE_ENV, importSrc, importSource, env, reset, call, mail, logs, check, section, finish,
+} from "./lib/harness.mjs";
 
 // ── A genuine-looking Lemon Squeezy delivery, signed the way Lemon Squeezy
 //    signs: HMAC-SHA256 of the raw body, hex, in X-Signature. ──
 function lsDelivery({ event = "order_created", email = "buyer@example.com", orderId = "4815162342",
-                     status = "paid", testMode = false, secret = BASE_ENV.LEMONSQUEEZY_WEBHOOK_SECRET } = {}) {
+                     status = "paid", testMode = false, secret = BASE_ENV.LEMONSQUEEZY_WEBHOOK_SECRET,
+                     customData, attributes = {} } = {}) {
   const body = JSON.stringify({
-    meta: { event_name: event, test_mode: testMode },
-    data: { type: "orders", id: orderId, attributes: { user_email: email, status, total: 499, currency: "USD" } },
+    meta: { event_name: event, test_mode: testMode, ...(customData ? { custom_data: customData } : {}) },
+    data: { type: "orders", id: orderId, attributes: { user_email: email, status, total: 499, currency: "USD", ...attributes } },
   });
   const signature = crypto.createHmac("sha256", secret).update(body).digest("hex");
   return { body, headers: { "content-type": "application/json", "x-signature": signature, "x-event-name": event } };
 }
 
-const { NextRequest } = await import(NEXT_SERVER);
-async function deliver(route, delivery) {
-  const req = new NextRequest("https://bustedlab.test/api/webhook", {
-    method: "POST", headers: delivery.headers, body: delivery.body,
-  });
-  const res = await route.POST(req);
-  let body = null;
-  try { body = await res.json(); } catch { /* empty */ }
-  return { status: res.status, body };
-}
+const deliver = (route, delivery) =>
+  call(route.POST, "/api/webhook", { method: "POST", headers: delivery.headers, body: delivery.body })
+    .then(r => ({ status: r.status, body: r.json }));
 
-const redis = await import(lib("redis"));
-const isPaid = (email) => redis.isPaidUser(email);
+const redisLib = await importSrc("lib/redis.ts");
+const isPaid = (email) => redisLib.isPaidUser(email);
+const emails = mail.sent;
+const errors = logs.errors;
 
-let failures = 0;
-const check = (label, condition, detail = "") => {
-  if (!condition) failures++;
-  realError.call(console, `${condition ? "PASS" : "FAIL"}  ${label}${detail ? `   ${detail}` : ""}`);
-};
-const section = (title) => realError.call(console, `\n${title}\n${"-".repeat(78)}`);
-
-const current = await loadRoute(readFileSync(join(REPO, "src/app/api/webhook/route.ts"), "utf8"), "webhook-current");
+const current = await importSrc("app/api/webhook/route.ts");
 
 // ════════════════════════════════════════════════════════════════
 section("A PURCHASE BECOMES ACCESS");
@@ -163,7 +57,7 @@ check("the buyer is granted access", await isPaid("buyer@example.com"));
 check("the access email is sent", emails.length === 1 && emails[0].to === "buyer@example.com",
       `${emails.length} email(s)`);
 check("the email carries a working sign-in link",
-      emails.length === 1 && /https:\/\/bustedlab\.test\/api\/auth\?token=[0-9a-f]{64}/.test(emails[0].html));
+      emails.length === 1 && /https:\/\/bustedlab\.test\/auth\/verify\?token=[0-9a-f]{64}/.test(emails[0].html));
 
 r = await deliver(current, lsDelivery());
 check("the provider's retry is recognised as a duplicate", r.body?.duplicate === true);
@@ -213,7 +107,7 @@ section("THE MISCONFIGURATION THIS CHANGE EXISTS FOR");
 // A frozen copy rather than `git show`: CI checks out shallow, and history
 // gets squashed on merge, so a commit hash is not something to depend on.
 const beforeSource = readFileSync(join(REPO, "scripts/fixtures/webhook.pre-overlay.ts.txt"), "utf8");
-const before = await loadRoute(beforeSource, "webhook-before");
+const before = await importSource(beforeSource, "webhook-before");
 
 env({ PAYMENT_PROVIDER: "gumroad", GUMROAD_WEBHOOK_SECRET: "gumroad_secret" }); reset();
 r = await deliver(before, lsDelivery());
@@ -259,7 +153,7 @@ check("preview deployments accept test orders without the flag", await isPaid("b
 section("A REFUSED EMAIL IS NO LONGER SILENT");
 
 env(); reset();
-resendStatus = 403;
+mail.status = 403;
 r = await deliver(current, lsDelivery({ orderId: "e1" }));
 check("access is still granted when the email provider refuses",
       r.status === 200 && (await isPaid("buyer@example.com")), `HTTP ${r.status}`);
@@ -269,7 +163,7 @@ check("and the refusal is logged with its status",
 // ════════════════════════════════════════════════════════════════
 section("CHECKOUT ONLY OPENS WHEN THE PURCHASE CAN BE FULFILLED");
 
-const { checkoutReadiness } = await import(lib("payment-provider"));
+const { checkoutReadiness } = await importSrc("lib/payment-provider.ts");
 const LS_URL = "https://bustedlab.lemonsqueezy.com/checkout/buy/9f1c-variant";
 const cases = [
   ["no checkout link", {}, false, "no_checkout_url"],
@@ -295,10 +189,4 @@ for (const [label, overrides, expectOk, expectDetail] of cases) {
   check(`${label}: ${expectOk ? "open" : "offline"}`, ready.ok === expectOk && got === expectDetail, got);
 }
 
-console.error = realError;
-console.log("");
-if (failures > 0) {
-  console.error(`${failures} purchase-path case(s) failed.`);
-  process.exit(1);
-}
-console.log("All purchase-path cases pass.");
+finish("purchase-path");

@@ -3,8 +3,6 @@ import { Resend } from "resend";
 import {
   isPaidUser,
   storeMagicToken,
-  consumeMagicToken,
-  storeSession,
   deleteSession,
   getSessionEmail,
   claimOrder,
@@ -97,10 +95,10 @@ export async function POST(req: NextRequest) {
     const token = crypto.randomBytes(32).toString("hex");
     await storeMagicToken(token, normalizedEmail);
 
-    // Straight to the route handler that sets the session cookie. The
-    // /auth/verify page still exists for links already in inboxes, but a new
-    // link should not spend a page load performing a redirect.
-    const magicUrl = `${baseUrl}/api/auth?token=${token}`;
+    // A page, not the route that signs in: opening a link must not spend it,
+    // because mail filters open links before people do. The page signs in
+    // with a POST. See src/app/auth/verify.
+    const magicUrl = `${baseUrl}/auth/verify?token=${token}`;
 
     // The Resend SDK does not throw when the send is refused - it returns
     // { data, error }. The previous version awaited it and moved on, so an
@@ -145,37 +143,20 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET /api/auth?token=xxx - verify magic link
+// GET /api/auth?token=xxx - links minted before sign-in moved to a POST.
+//
+// This used to spend the token and sign in on the spot, which is exactly what
+// a mail filter opening the link would trigger. Links of that shape are still
+// sitting in inboxes, so they are sent to the page that signs in properly
+// instead of being broken.
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");
   if (!token) {
     return NextResponse.redirect(new URL("/?auth=failed", req.url));
   }
-
-  try {
-    const email = await consumeMagicToken(token);
-    if (!email) {
-      return NextResponse.redirect(new URL("/?auth=expired", req.url));
-    }
-
-    // Create 365-day session
-    const sessionToken = crypto.randomBytes(32).toString("hex");
-    await storeSession(sessionToken, email);
-
-    const response = NextResponse.redirect(new URL("/?auth=success", req.url));
-    response.cookies.set("bl_session", sessionToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 365, // 365 days
-      path: "/",
-    });
-
-    return response;
-  } catch (err) {
-    console.error("Verify error:", err);
-    return NextResponse.redirect(new URL("/?auth=failed", req.url));
-  }
+  const page = new URL("/auth/verify", req.url);
+  page.searchParams.set("token", token);
+  return NextResponse.redirect(page);
 }
 
 // DELETE /api/auth - logout

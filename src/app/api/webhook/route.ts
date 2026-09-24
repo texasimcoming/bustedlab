@@ -260,7 +260,7 @@ async function sendAccessEmail(email: string): Promise<void> {
           <p style="color:#9d7fd4;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin:0 0 18px;">BUSTEDLAB &middot; ACCESS GRANTED</p>
           <h1 style="font-size: 24px; font-weight: 800; margin-bottom: 8px; color: #eeeef6;">You're in.</h1>
           <p style="color: rgba(238,238,246,0.6); margin-bottom: 32px; line-height: 1.6;">Unlimited scans, active on every device. Tap below to sign in.</p>
-          <a href="${process.env.NEXT_PUBLIC_BASE_URL}/api/auth?token=${token}"
+          <a href="${process.env.NEXT_PUBLIC_BASE_URL}/auth/verify?token=${token}"
             style="display: inline-block; background: linear-gradient(135deg, #9d7fd4, #7b5ea7); color: white; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 15px;">
             Access BustedLab
           </a>

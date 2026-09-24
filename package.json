@@ -12,9 +12,10 @@
     "check:net-guard": "node --experimental-strip-types --no-warnings scripts/check-net-guard.mjs",
     "check:fair-use": "node --experimental-strip-types --no-warnings scripts/check-fair-use.mjs",
     "check:webhook": "node --experimental-strip-types --no-warnings scripts/check-webhook.mjs",
+    "check:access": "node --experimental-strip-types --no-warnings scripts/check-access.mjs",
     "cost-model": "node --experimental-strip-types --no-warnings scripts/cost-model.mjs",
     "eval:gate": "node --experimental-strip-types --no-warnings scripts/eval-gate.mjs",
-    "check": "tsc --noEmit && eslint . && npm run check:verdicts && npm run check:identification && npm run check:net-guard && npm run check:fair-use && npm run check:webhook"
+    "check": "tsc --noEmit && eslint . && npm run check:verdicts && npm run check:identification && npm run check:net-guard && npm run check:fair-use && npm run check:webhook && npm run check:access"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",
