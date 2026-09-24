@@ -1,0 +1,257 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #07070e;
+  --bg-surface: #0c0c18;
+  --bg-card: #10101e;
+  --bg-card-hover: #141428;
+  --bg-glass: rgba(255,255,255,0.028);
+  --bg-glass-hover: rgba(255,255,255,0.05);
+  --border: rgba(255,255,255,0.055);
+  --border-mid: rgba(255,255,255,0.09);
+  --border-strong: rgba(255,255,255,0.15);
+  --accent: #7b5ea7;
+  --accent-2: #9d7fd4;
+  --accent-bright: #b8a0e8;
+  --accent-dim: rgba(123,94,167,0.1);
+  --accent-glow: rgba(123,94,167,0.28);
+  --text: #eeeef6;
+  --text-2: rgba(238,238,246,0.52);
+  --text-3: rgba(238,238,246,0.26);
+  --red: #ef4444;
+  --red-dim: rgba(239,68,68,0.08);
+  --red-border: rgba(239,68,68,0.18);
+  --green: #10d9a0;
+  --green-dim: rgba(16,217,160,0.08);
+  --green-border: rgba(16,217,160,0.18);
+  --yellow: #f59e0b;
+  /* Height of the fixed bottom bar, plus the iOS home-indicator inset. Used
+     as the page's bottom padding so the last section is never trapped under
+     the bar on a phone. */
+  --bar-space: calc(80px + env(safe-area-inset-bottom, 0px));
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg);color:var(--text);font-family:var(--font-sans),system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body{background:var(--bg);min-height:100vh;overflow-x:hidden;padding-bottom:var(--bar-space)}
+
+/* Grain texture — keeps the page from feeling digital-flat */
+body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");pointer-events:none;z-index:9999}
+
+/* Subliminal radial pulse from centre. Light only — the ellipse never moves,
+   it breathes. */
+body::before{content:'';position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:900px;height:600px;background:radial-gradient(ellipse at center,rgba(123,94,167,0.06) 0%,transparent 65%);pointer-events:none;z-index:0;animation:bgPulse 8s ease-in-out infinite}
+
+.card{background:var(--bg-card);border:1px solid var(--border)}
+
+/* Buttons respond with LIGHT, never with motion. A control that lifts under
+   the cursor is borrowing a physical metaphor — a real button on a real
+   surface — and every borrowed metaphor makes this read as an app. Nothing
+   here has mass. */
+.btn-primary{background:linear-gradient(135deg,var(--accent-2),var(--accent));color:white;font-weight:600;border:none;cursor:pointer;transition:box-shadow 0.18s ease,background 0.18s ease,filter 0.18s ease;font-family:var(--font-sans),sans-serif}
+.btn-primary:hover:not(:disabled){background:linear-gradient(135deg,var(--accent-bright),var(--accent-2));box-shadow:0 0 34px var(--accent-glow),0 0 1px var(--accent-bright)}
+.btn-primary:active:not(:disabled){filter:brightness(1.18)}
+.btn-primary:disabled{opacity:0.25;cursor:not-allowed}
+
+.btn-ghost{background:transparent;color:var(--text-2);border:1px solid var(--border-mid);cursor:pointer;transition:color 0.18s ease,border-color 0.18s ease,background 0.18s ease;font-family:var(--font-sans),sans-serif}
+.btn-ghost:hover{color:var(--text);border-color:var(--border-strong);background:var(--bg-glass-hover)}
+
+.upload-zone{border:1.5px dashed var(--border-mid);transition:border-color 0.2s ease,background 0.2s ease;cursor:pointer}
+.upload-zone:hover,.upload-zone.active{border-color:var(--accent-2);background:var(--accent-dim)}
+
+/* Panels acquire light instead of sliding into place. Same rule as the
+   buttons: no mass, no travel, no easing that mimics deceleration. */
+.panel{background:var(--bg-card);border:1px solid var(--border-mid);transition:border-color 0.18s ease,box-shadow 0.18s ease,background 0.18s ease}
+.panel:hover{border-color:var(--accent-2);background:var(--accent-dim);box-shadow:0 0 22px var(--accent-glow)}
+
+/* Sticky bottom bar */
+.sticky-bar{position:fixed;bottom:0;left:0;right:0;z-index:100;background:rgba(7,7,14,0.92);border-top:1px solid var(--border-mid);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);padding:12px 20px calc(12px + env(safe-area-inset-bottom, 0px));display:flex;align-items:center;justify-content:space-between;gap:12px}
+
+/* Signal strip */
+.toast{position:fixed;bottom:calc(var(--bar-space) + 10px);left:16px;z-index:200;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-width:290px;animation:signalIn 0.12s linear}
+
+/* ═══ KEYFRAMES ═══ */
+@keyframes bgPulse{0%,100%{opacity:0.6;transform:translate(-50%,-50%) scale(1)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}}
+@keyframes signalIn{from{opacity:0;filter:brightness(2.2)}to{opacity:1;filter:brightness(1)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.45}}
+
+/* Demo card: light, not movement. No translate, no scale — a 6-second
+   box-shadow breath and nothing else. */
+@keyframes alienGlow{
+  0%,100%{box-shadow:0 0 20px rgba(123,94,167,0.08),0 0 0px rgba(123,94,167,0)}
+  50%{box-shadow:0 0 40px rgba(123,94,167,0.18),0 0 80px rgba(123,94,167,0.06)}
+}
+@keyframes stageFadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ═══ THE SLAM ═══
+   The card does not arrive. It is already there, one frame late.
+   90ms, linear, no overshoot, no fade-in, no settle. It starts fractionally
+   oversized and overexposed and it lands — the same read as a shutter
+   firing, not an object falling.
+   The previous version declared only a 100% frame, so the browser
+   interpolated from the element's resting state to its resting state: the
+   headline animation of the entire product was a no-op. */
+@keyframes verdictSlam{
+  0%{transform:scale(1.045);filter:brightness(2.4) contrast(1.1)}
+  55%{transform:scale(0.998);filter:brightness(1.05)}
+  100%{transform:scale(1);filter:brightness(1)}
+}
+
+/* One frame of verdict colour across the whole viewport, gone before the
+   conscious mind resolves it. In at 16ms, out by 90ms. */
+@keyframes verdictFlash{
+  0%{opacity:0}
+  18%{opacity:1}
+  100%{opacity:0}
+}
+
+.animate-fade-up{animation:fadeUp 0.45s ease forwards}
+.animate-fade{animation:fadeIn 0.35s ease forwards}
+.animate-spin{animation:spin 0.85s linear infinite}
+.animate-pulse{animation:pulse 2.2s ease-in-out infinite}
+.verdict-slam{animation:verdictSlam 90ms linear forwards}
+.verdict-flash{animation:verdictFlash 90ms linear forwards}
+
+/* Sections resolve out of the dark rather than sliding up from below.
+   Opacity and light only, no travel.
+
+   The hidden state is applied by .reveal-armed, which JavaScript adds on
+   mount. A bare .reveal is fully visible. Previously .reveal itself carried
+   opacity:0, which meant that if the observer never ran — scripts blocked, an
+   older browser, a crawler that does not execute JS — everything below the
+   fold was invisible with no way to recover it. */
+.reveal{opacity:1}
+.reveal-armed{opacity:0;filter:brightness(0.4);transition:opacity 0.5s linear,filter 0.5s linear}
+.reveal-armed.visible{opacity:1;filter:brightness(1)}
+
+/* Anyone who has asked their system to stop moving things gets the same
+   information with none of the motion. The slam, the flash and the ambient
+   pulse are all light effects, so they degrade to nothing rather than to a
+   different animation. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:0.001ms !important;animation-iteration-count:1 !important;transition-duration:0.001ms !important}
+  .reveal,.reveal-armed{opacity:1;filter:none}
+  .verdict-flash{display:none}
+}
+
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.07);border-radius:4px}
+
+/* Warning badge: the manual line break only applies on narrow phones —
+   desktop and tablet let the sentence run as one natural line. */
+.warning-break { display: none; }
+@media (max-width: 420px) {
+  .warning-break { display: inline; }
+}
+
+/* Gallery/Live Scan hover: glow intensifies, button lifts slightly */
+.gallery-btn:hover { box-shadow: 0 0 40px rgba(124,108,246,0.28), inset 0 1px 0 rgba(255,255,255,0.05) !important; border-color: rgba(124,108,246,0.55) !important; transform: translateY(-1px); }
+.live-scan-btn:hover { box-shadow: 0 0 40px rgba(231,95,209,0.3), inset 0 1px 0 rgba(255,255,255,0.05) !important; border-color: rgba(231,95,209,0.55) !important; transform: translateY(-1px); }
+
+/* Intent frame: soft ambient breathing glow, distinct material from the
+   flat .card class used everywhere else on the page. Slow enough to read
+   as alive, not distracting. */
+.intent-frame {
+  animation: intentBreathe 8s ease-in-out infinite;
+}
+@keyframes intentBreathe {
+  0%, 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0px rgba(180,160,240,0); }
+  50% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 0 22px rgba(180,160,240,0.06); }
+}
+
+/* Scan-count anchor: lives in the nav on desktop only. On mobile it does
+   not move anywhere else in the nav row - it already exists once, above
+   the headline in the hero - so the nav copy is simply hidden rather than
+   relocated, avoiding the duplicate that showed up when both were live
+   at once. */
+.hero-scan-count { display: none; }
+.nav-scan-count { display: flex; }
+@media (max-width: 640px) {
+  .hero-scan-count { display: flex; margin-top: 0; margin-bottom: 18px !important; }
+  .hero-section { padding-top: 20px !important; }
+  .nav-scan-count { display: none; }
+  /* With the scan count gone from the mobile nav, the sound toggle gets
+     the freed space and reads larger and clearer. */
+  .nav-sound-toggle { transform: scale(1.35); transform-origin: center; }
+}
+
+/* Hero hook frame: corner brackets on all devices, reusing the same
+   targeting-reticle language already established on the image upload
+   preview elsewhere on the page. Fully static - no glow pulse, no
+   animation - so the line reads as flagged evidence rather than a
+   decorated pull-quote. Indigo top-left, magenta bottom-right, tying
+   directly into the rest of the alien palette. */
+.hero-hook-frame {
+  position: relative;
+  max-width: 460px;
+  margin: 0 auto 12px;
+  padding: 14px 18px;
+}
+.hero-hook-corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+.hero-hook-corner-tl {
+  top: 0; left: 0;
+  border-top: 1.5px solid #9d8bfa;
+  border-left: 1.5px solid #9d8bfa;
+}
+.hero-hook-corner-br {
+  bottom: 0; right: 0;
+  border-bottom: 1.5px solid #e75fd1;
+  border-right: 1.5px solid #e75fd1;
+}
+
+/* On mobile the line drops a size so it no longer feels oversized
+   against the narrower column. Desktop/tablet keep the base 16px set
+   inline. */
+@media (max-width: 640px) {
+  .hero-hook {
+    font-size: 14px !important;
+  }
+  .hero-hook-frame {
+    padding: 12px 16px;
+  }
+}
+
+
+/* Nav right group: on desktop, where the scan count, sound toggle, and
+   sign-in button all sit inline, the default 10px gap reads as cramped.
+   More room only above the tablet breakpoint - on mobile, where the scan
+   count is already gone, the tighter gap still looks correct. */
+@media (min-width: 641px) {
+  .nav-right-group { gap: 22px !important; }
+}
+
+/* Upgrade CTA ambient light - the same breathing glow already used on the
+   demo card, applied here so the money moment on the page has real
+   presence instead of sitting flat against the background like every
+   other panel. */
+.upgrade-glow {
+  animation: alienGlow 6s ease-in-out infinite;
+}
+
+/* Upgrade box light anchor - a soft glow with a bright point at its base,
+   no shape, no object. Pulses gently in its own rhythm, offset from the
+   box's own ambient glow so the two breathe independently rather than
+   moving in lockstep, which would read as one effect instead of two. */
+.upgrade-light-core {
+  animation: lightCorePulse 5s ease-in-out infinite;
+}
+.upgrade-light-point {
+  animation: lightPointPulse 5s ease-in-out infinite;
+}
+@keyframes lightCorePulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+@keyframes lightPointPulse {
+  0%, 100% { box-shadow: 0 0 6px 1.5px rgba(232,220,255,0.75), 0 0 14px 4px rgba(157,127,212,0.4); }
+  50% { box-shadow: 0 0 10px 3px rgba(232,220,255,1), 0 0 24px 8px rgba(157,127,212,0.6); }
+}

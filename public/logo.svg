@@ -1,0 +1,40 @@
+<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="400" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0f0f20"/>
+      <stop offset="100%" stop-color="#08080f"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="38%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#9d7fd4" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#4a2d78" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="red">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <mask id="bm">
+      <path d="M 128 88 L 128 312 L 240 312 C 296 312 326 280 326 252 C 326 228 310 208 286 200 C 306 192 318 174 318 152 C 318 122 294 88 244 88 Z" fill="white"/>
+      <path d="M 164 108 L 240 108 C 278 108 296 126 296 152 C 296 178 278 192 240 192 L 164 192 Z" fill="black"/>
+      <path d="M 164 212 L 246 212 C 288 212 304 230 304 252 C 304 274 286 292 246 292 L 164 292 Z" fill="black"/>
+    </mask>
+  </defs>
+  <rect width="400" height="400" rx="82" fill="url(#bg)"/>
+  <ellipse cx="195" cy="200" rx="145" ry="155" fill="#6040a0" fill-opacity="0.08" filter="url(#glow)"/>
+  <rect x="80" y="68" width="280" height="264" fill="url(#halo)" mask="url(#bm)" filter="url(#glow)"/>
+  <path d="M 128 88 L 128 312 L 240 312 C 296 312 326 280 326 252 C 326 228 310 208 286 200 C 306 192 318 174 318 152 C 318 122 294 88 244 88 Z" fill="none" stroke="#f0e8ff" stroke-width="2" opacity="0.9" filter="url(#glow)"/>
+  <path d="M 128 88 L 128 312 L 240 312 C 296 312 326 280 326 252 C 326 228 310 208 286 200 C 306 192 318 174 318 152 C 318 122 294 88 244 88 Z" fill="none" stroke="#ffffff" stroke-width="0.75" opacity="0.85"/>
+  <path d="M 164 108 L 240 108 C 278 108 296 126 296 152 C 296 178 278 192 240 192 L 164 192 Z" fill="#020208"/>
+  <path d="M 164 212 L 246 212 C 288 212 304 230 304 252 C 304 274 286 292 246 292 L 164 292 Z" fill="#020208"/>
+  <path d="M 164 108 L 240 108 C 278 108 296 126 296 152 C 296 178 278 192 240 192 L 164 192 Z" fill="none" stroke="#c4aff8" stroke-width="1.5" opacity="0.6"/>
+  <path d="M 164 212 L 246 212 C 288 212 304 230 304 252 C 304 274 286 292 246 292 L 164 292 Z" fill="none" stroke="#c4aff8" stroke-width="1.5" opacity="0.6"/>
+  <rect x="60" y="197" width="290" height="5" rx="2.5" fill="#ef4444" filter="url(#red)" opacity="0.85"/>
+  <rect x="60" y="198.5" width="290" height="2" rx="1" fill="#ffffff" opacity="0.7"/>
+  <circle cx="128" cy="200" r="10" fill="#ef4444" opacity="0.9" filter="url(#red)"/>
+  <circle cx="128" cy="200" r="4" fill="#ffffff" opacity="0.9"/>
+  <circle cx="286" cy="200" r="10" fill="#ef4444" opacity="0.9" filter="url(#red)"/>
+  <circle cx="286" cy="200" r="4" fill="#ffffff" opacity="0.85"/>
+</svg>
