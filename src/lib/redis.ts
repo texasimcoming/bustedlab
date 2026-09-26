@@ -49,6 +49,7 @@ export const keys = {
   paidScanCount: (email: string) => `scan:paid:${hashIdentifier(email)}`,
   processedOrder: (orderId: string) => `order:${orderId}`,
   checkoutClaim: (claim: string) => `claim:${claim}`,
+  cspDay: (day: string) => `csp:${day}`,
   window: (name: string, identifier: string, index: number) => `window:${name}:${hashIdentifier(identifier)}:${index}`,
 
   // ── The permanent record. See the SCAN LEDGER section below. ──
@@ -394,6 +395,39 @@ export async function readCheckoutClaim(claim: string): Promise<string | null> {
 export async function redeemCheckoutClaim(claim: string): Promise<string | null> {
   const value = await getRedis().getdel(keys.checkoutClaim(claim)) as string | null;
   return value && value !== CLAIM_PENDING ? value : null;
+}
+
+// ════════════════════════════════════════════════════════════════
+// Content-Security-Policy violation reports, counted per UTC day.
+//
+// One hash per day, one field per kind of violation ("enforce script-src
+// inline /scan/[id]"), so the whole record of what the policy is blocking is
+// a few hundred small counters rather than a log. The number of distinct
+// kinds per day is capped: past it, kinds already seen keep counting and new
+// ones are dropped, so nobody can fill the database by inventing reports.
+// ════════════════════════════════════════════════════════════════
+const CSP_KINDS_PER_DAY = 300;
+const CSP_DAYS_KEPT = 35;
+
+export async function recordCspViolation(kind: string): Promise<void> {
+  const redis = getRedis();
+  const key = keys.cspDay(new Date().toISOString().slice(0, 10));
+  if (!(await redis.hexists(key, kind)) && (await redis.hlen(key)) >= CSP_KINDS_PER_DAY) return;
+  await redis.hincrby(key, kind, 1);
+  await redis.expire(key, CSP_DAYS_KEPT * 86400);
+}
+
+export async function readCspViolations(days: number): Promise<{ day: string; counts: Record<string, number> }[]> {
+  const redis = getRedis();
+  const span = Math.min(Math.max(Math.floor(days), 1), CSP_DAYS_KEPT);
+  const out: { day: string; counts: Record<string, number> }[] = [];
+  for (let i = 0; i < span; i++) {
+    const day = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    const raw = (await redis.hgetall<Record<string, string | number>>(keys.cspDay(day))) || {};
+    const counts = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, Number(v) || 0]));
+    if (Object.keys(counts).length) out.push({ day, counts });
+  }
+  return out;
 }
 
 /**

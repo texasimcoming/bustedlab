@@ -1,63 +1,15 @@
 import type { NextConfig } from "next";
 
-// ── Checkout origins, for the headers below. ──
-// The overlay checkout is an iframe on Lemon Squeezy's domain, or on a custom
-// checkout domain if the store has one. The configured link's own origin is
-// read here at build time so a custom domain is covered too; Vercel rebuilds
-// on every environment change, so this cannot drift from CHECKOUT_URL.
-function checkoutOrigin(): string | null {
-  try {
-    const raw = (process.env.CHECKOUT_URL || "").trim();
-    return raw ? new URL(raw).origin : null;
-  } catch {
-    return null;
-  }
-}
-const LEMON_ORIGINS = ["https://*.lemonsqueezy.com"];
-const CHECKOUT_FRAME_ORIGINS = [...LEMON_ORIGINS, checkoutOrigin()].filter(
-  (origin, i, all): origin is string => !!origin && all.indexOf(origin) === i
-);
-// lemon.js itself. The spec named assets.lemonsqueezy.com; Lemon Squeezy's
-// own Next.js template loads from app.lemonsqueezy.com. Both are allowed
-// because src/lib/lemon-overlay.ts tries both.
-const LEMON_SCRIPT_ORIGINS = ["https://assets.lemonsqueezy.com", "https://app.lemonsqueezy.com"];
+import { checkoutFrameOrigins } from "./src/lib/csp";
 
-// The report-only Content-Security-Policy, built once so the site-wide copy
-// and the /success copy cannot drift apart. They differ only in who may
-// frame the page. See the note on the header itself for why it is report-
-// only for now.
-function contentSecurityPolicy(frameAncestors: "'none'" | "'self'"): string {
-  return [
-    "default-src 'self'",
-    // Next injects inline bootstrap and hydration scripts.
-    // Plus lemon.js, which loads only when checkout intent appears.
-    `script-src 'self' 'unsafe-inline' ${LEMON_SCRIPT_ORIGINS.join(" ")}`,
-    // The overlay checkout is an iframe on the provider's origin.
-    `frame-src 'self' ${CHECKOUT_FRAME_ORIGINS.join(" ")}`,
-    // Every style in this app is an inline style attribute.
-    "style-src 'self' 'unsafe-inline'",
-    // Product photos arrive through /api/proxy-image (same origin);
-    // data: covers the fallback pixel and the share-card canvas.
-    "img-src 'self' data: blob:",
-    // Fonts are self-hosted at build time, not fetched from Google.
-    "font-src 'self'",
-    `connect-src 'self' ${LEMON_ORIGINS.join(" ")}`,
-    "media-src 'self' data:",
-    // The verdict tone is generated with the Web Audio API, and the
-    // share card is rendered to a canvas; neither needs a worker,
-    // an object, or an embed.
-    "worker-src 'self' blob:",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    // Matches the X-Frame-Options above, which older browsers read.
-    `frame-ancestors ${frameAncestors}`,
-    // No upgrade-insecure-requests: browsers ignore it in a report-only
-    // policy and log a console error on every page load saying so. Add it
-    // back when this policy is enforced. Strict-Transport-Security already
-    // keeps the site itself on https.
-  ].join("; ");
-}
+// Checkout origins for the payment delegation below: Lemon Squeezy, plus a
+// custom checkout domain if CHECKOUT_URL uses one. Read at build time;
+// Vercel rebuilds on every environment change, so this cannot drift from
+// CHECKOUT_URL.
+//
+// The Content-Security-Policy is not set here. It carries a per-request
+// nonce, so src/proxy.ts builds it for every page; see src/lib/csp.ts.
+const CHECKOUT_FRAME_ORIGINS = checkoutFrameOrigins();
 
 const nextConfig: NextConfig = {
   // Every external image in the app is relayed through /api/proxy-image, which
@@ -110,32 +62,6 @@ const nextConfig: NextConfig = {
             ].join(", "),
           },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-          // ── Content-Security-Policy, REPORT ONLY for now. ──
-          //
-          // Report-only cannot break a page: browsers evaluate it and log
-          // violations to the console without blocking anything. That is the
-          // point of shipping it first. A CSP that is enforced before anyone
-          // has seen real violation data is how a site goes blank in
-          // production, and this app renders every style as an inline style
-          // attribute and relies on Next's inline hydration scripts, so the
-          // directives below are a hypothesis, not a finished policy.
-          //
-          // What to do with it: load the site, open the console, and read the
-          // violations. Expect to see the inline script and style entries
-          // exercised. Then either tighten those two into a nonce-based
-          // policy (which needs middleware to stamp a per-request nonce onto
-          // Next's script tags) or accept 'unsafe-inline' for styles only and
-          // enforce the rest by renaming this header to
-          // Content-Security-Policy.
-          //
-          // No report-uri: there is no collection endpoint, and adding one
-          // would mean accepting unauthenticated POSTs from every browser on
-          // the internet. The console is the right place to read this from
-          // while it is a diagnostic rather than a control.
-          {
-            key: "Content-Security-Policy-Report-Only",
-            value: contentSecurityPolicy("'none'"),
-          },
         ],
       },
       {
@@ -155,9 +81,7 @@ const nextConfig: NextConfig = {
         source: "/success",
         headers: [
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
-          // The same policy, framable by this origin, so enforcing the CSP
-          // later cannot quietly re-break the post-purchase page.
-          { key: "Content-Security-Policy-Report-Only", value: contentSecurityPolicy("'self'") },
+          // The CSP makes the same exception for this path, in src/proxy.ts.
         ],
       },
       {

@@ -80,6 +80,39 @@ keeps its refunds able to revoke access.
 Add the domain in Vercel, create the DNS records it shows, and set
 `NEXT_PUBLIC_BASE_URL` to match. Emails and share metadata read from it.
 
+## Content-Security-Policy
+
+Enforced on every page, with a fresh nonce per request (`src/proxy.ts`,
+`src/lib/csp.ts`). Only scripts carrying that nonce run, plus what they load
+(Next's chunks, and lemon.js at checkout). Injected scripts, inline handlers
+and `eval` are refused. Every page is therefore rendered per request; the
+Redis reads behind the data pages are cached separately, so this costs about
+10 ms of render time per page view, not database load.
+
+After each deploy:
+
+    curl -sI https://<domain>/ | grep -i '^content-security-policy'
+
+shows the policy with a `'nonce-...'` that changes on every request.
+
+What it blocks in the wild is counted per day in the stats:
+
+    curl -s -H "Authorization: Bearer $ANALYTICS_TOKEN" https://<domain>/api/stats | jq .csp
+
+An empty list is the healthy state. An entry reads
+`<enforce|report> <directive> <what was blocked> <page>`; browser extensions
+and other sites are already filtered out, so an `enforce` entry is something
+a visitor's browser refused on this site. The checkout overlay falls back to
+the full-page checkout if its frame does not appear, so a blocked checkout
+script costs the overlay, never the sale.
+
+Adding any third-party script, frame or connection means adding its origin
+in `src/lib/csp.ts`.
+
+Break glass: `CSP_REPORT_ONLY=true` and a redeploy sends the same policy as
+report-only, so nothing is blocked while a fix ships; reports keep being
+counted. Unset it once the fix is live.
+
 ## Cron
 
 `vercel.json` schedules `/api/cleanup-blobs` daily at 03:00 UTC. It is a

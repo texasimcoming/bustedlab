@@ -31,8 +31,8 @@ import SoundToggle from "@/components/SoundToggle";
  * verified scan record. When the ledger is empty, the page says so.
  */
 
-export const revalidate = 60;
-
+// Rendered per request, like every page, for its CSP nonce. The ledger
+// reads behind it are cached below, so a traffic spike does not reach Redis.
 const WINDOW_DAYS = 30;
 
 const cachedIndex = unstable_cache(

@@ -22,12 +22,12 @@ import SharedVerdict from "@/components/SharedVerdict";
  * an entry point, and the ledger generates indexable pages from real
  * measurements at a rate no content team can match.
  *
- * Records are immutable, so the page is cached for an hour and served from the
- * edge. A card that goes viral costs one Redis read per hour, not one per
- * visitor.
+ * Records are immutable, so the record is cached for an hour (below). The page
+ * itself renders per request, because every page carries a fresh CSP nonce
+ * (src/proxy.ts), but a card that goes viral still costs one Redis read per
+ * hour, not one per visitor.
  */
 
-export const revalidate = 3600;
 export const dynamicParams = true;
 
 // ── Read-through caching, and it is a cost decision rather than a nicety. ──
@@ -35,9 +35,8 @@ export const dynamicParams = true;
 // A ledger record is immutable: once written it never changes. Without this,
 // every visitor to a shared card costs one Redis round trip, so a single post
 // that does what this product is designed to do turns a viral moment into a
-// per-impression bill and a per-impression latency. Setting `revalidate` on
-// the segment alone was not enough, because the Upstash client's own fetch
-// opts the route into dynamic rendering, so the data is cached explicitly.
+// per-impression bill and a per-impression latency. The page renders per
+// request (it carries a CSP nonce), so the data is cached explicitly.
 //
 // One hour on the record (immutable, so the number is arbitrary and could be
 // far longer) and five minutes on the recent-findings rail, which is shared

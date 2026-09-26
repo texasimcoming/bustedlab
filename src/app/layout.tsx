@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { connection } from "next/server";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -97,7 +98,15 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Every page is rendered per request, because every page carries a fresh
+  // CSP nonce (src/proxy.ts) and Next can only put it on the scripts of a
+  // page it renders now. A page prerendered at build time would be served
+  // with scripts that have no nonce under a header that demands one, and
+  // nothing on it would run. The expensive part of the data pages - the
+  // Redis reads - is cached separately with unstable_cache, so this costs
+  // render time, not database load.
+  await connection();
   return (
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable} ${mono.variable}`}>
       <head>

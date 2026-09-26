@@ -116,6 +116,20 @@ function runRedisCommand(args) {
       entry.expiresAt = Number(rest[0]) * 1000;
       return 1;
     }
+    case "MGET": return [key, ...rest].map(k => live(k)?.value ?? null);
+    case "HINCRBY": {
+      const entry = live(key) ?? { value: new Map(), expiresAt: null };
+      const next = (Number(entry.value.get(String(rest[0]))) || 0) + Number(rest[1]);
+      entry.value.set(String(rest[0]), String(next));
+      store.set(key, entry);
+      return next;
+    }
+    case "HEXISTS": return live(key)?.value.has(String(rest[0])) ? 1 : 0;
+    case "HLEN": return live(key)?.value.size ?? 0;
+    case "HGETALL": {
+      const entry = live(key);
+      return entry ? [...entry.value.entries()].flat() : [];
+    }
     case "ZADD": {
       // Scores and members only; the checks never pass ZADD flags.
       const entry = live(key) ?? { value: new Map(), expiresAt: null };

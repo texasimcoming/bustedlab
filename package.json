@@ -14,9 +14,10 @@
     "check:webhook": "node --experimental-strip-types --no-warnings scripts/check-webhook.mjs",
     "check:access": "node --experimental-strip-types --no-warnings scripts/check-access.mjs",
     "check:notify": "node --experimental-strip-types --no-warnings scripts/check-notify.mjs",
+    "check:csp": "node --experimental-strip-types --no-warnings scripts/check-csp.mjs",
     "cost-model": "node --experimental-strip-types --no-warnings scripts/cost-model.mjs",
     "eval:gate": "node --experimental-strip-types --no-warnings scripts/eval-gate.mjs",
-    "check": "tsc --noEmit && eslint . && npm run check:verdicts && npm run check:identification && npm run check:net-guard && npm run check:fair-use && npm run check:webhook && npm run check:access && npm run check:notify"
+    "check": "tsc --noEmit && eslint . && npm run check:verdicts && npm run check:identification && npm run check:net-guard && npm run check:fair-use && npm run check:webhook && npm run check:access && npm run check:notify && npm run check:csp"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",

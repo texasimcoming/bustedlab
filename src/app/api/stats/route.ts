@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { buildFunnel, readEvents, CLIENT_EVENTS } from "@/lib/analytics";
-import { getLedgerSize } from "@/lib/redis";
+import { getLedgerSize, readCspViolations } from "@/lib/redis";
 
 /**
  * The read side. Protected, because this is the business.
@@ -37,15 +37,22 @@ export async function GET(req: NextRequest) {
   const requested = Number(req.nextUrl.searchParams.get("days") || 30);
   const days = Math.min(Math.max(Number.isFinite(requested) ? requested : 30, 1), 120);
 
-  const [series, ledgerSize] = await Promise.all([
+  const [series, ledgerSize, csp] = await Promise.all([
     readEvents(days),
     getLedgerSize().catch(() => 0),
+    readCspViolations(days).catch(() => []),
   ]);
 
   return NextResponse.json(
     {
       windowDays: days,
       ledgerSize,
+      // What the Content-Security-Policy blocked, per day, by kind:
+      // "<enforce|report> <directive> <what was blocked> <page>". Empty is
+      // the healthy state. Anything counted here under "enforce" is
+      // something a visitor's browser refused to run or load; see
+      // src/lib/csp.ts. Kept 35 days.
+      csp,
       window: buildFunnel(series, "window"),
       lifetime: buildFunnel(series, "total"),
       series: series.map(s => ({

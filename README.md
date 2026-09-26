@@ -27,7 +27,8 @@ src/app/page.tsx              Landing, scan entry, counters
 src/app/api/scan/route.ts     Scan endpoint: access, rate limits, cache, ledger
 src/app/api/notify/route.ts   Intent capture: the product update list
 src/app/api/event/route.ts    Analytics beacon (3 browser events, allowlisted)
-src/app/api/stats/route.ts    The funnel. Token-protected.
+src/app/api/stats/route.ts    The funnel, and what the CSP blocked. Token-protected.
+src/proxy.ts                  Enforced Content-Security-Policy, fresh nonce per request
 src/lib/analytics.ts          Six events, daily counters, no third parties
 src/app/scan/[id]/            Permanent page + per-scan OG image for one verdict
 src/app/the-index/            The public index: ranked, filterable, all real records
@@ -69,6 +70,7 @@ Nothing below is required to run the app; each one enables a capability.
 | `ANALYTICS_TOKEN` | Bearer token for `GET /api/stats`. Unset means the endpoint is closed entirely. |
 | `EVENT_BURST_PER_MINUTE` | Per-IP limit on the analytics beacon. Defaults to 60. |
 | `NOTIFY_PER_IP_PER_HOUR` | Product update sign-ups accepted per IP per hour. Defaults to 5. |
+| `CSP_REPORT_ONLY` | Leave unset. `true` downgrades the enforced Content-Security-Policy to report-only while a fix ships. |
 | `UNSUBSCRIBE_SECRET` | Signs unsubscribe links. Set before the first list email and never change it. Falls back to `IDENTITY_SALT`. |
 | `PAID_DAILY_SCAN_CEILING` | Fair-use scans per paid account per day. Defaults to 500. |
 | `DAILY_MODEL_BUDGET_USD` / `MODEL_BREAKER_COOLDOWN` | Daily model spend ceiling and circuit-breaker cooldown. |

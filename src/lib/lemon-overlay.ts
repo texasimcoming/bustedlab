@@ -56,6 +56,9 @@ const SCRIPT_SOURCES = [
 // nothing.
 const OPEN_TIMEOUT_MS = 4000;
 const LOAD_TIMEOUT_MS = 8000;
+// How long after Url.Open the checkout frame has to appear before the click
+// is handed to the full-page checkout instead.
+const FRAME_TIMEOUT_MS = 4000;
 
 let loading: Promise<boolean> | null = null;
 let setupDone = false;
@@ -150,8 +153,47 @@ export function withEmbed(url: string): string {
 }
 
 /**
- * Opens checkout as an overlay. Resolves true if it opened; false means the
- * caller must fall back to navigating to the plain URL.
+ * True once a frame showing the checkout is in the page. Matched on host, not
+ * the exact URL, because the script may add parameters of its own.
+ */
+function checkoutFrameIn(doc: Document, checkoutHost: string): boolean {
+  return [...doc.querySelectorAll("iframe")].some(frame => {
+    try {
+      const host = new URL(frame.src, doc.baseURI).hostname;
+      return host === checkoutHost || host.endsWith(".lemonsqueezy.com");
+    } catch {
+      return false;
+    }
+  });
+}
+
+function waitForCheckoutFrame(checkoutHost: string): Promise<boolean> {
+  if (checkoutFrameIn(document, checkoutHost)) return Promise.resolve(true);
+  return new Promise(resolve => {
+    const observer = new MutationObserver(() => {
+      if (!checkoutFrameIn(document, checkoutHost)) return;
+      clearTimeout(timer);
+      observer.disconnect();
+      resolve(true);
+    });
+    const timer = setTimeout(() => {
+      observer.disconnect();
+      resolve(checkoutFrameIn(document, checkoutHost));
+    }, FRAME_TIMEOUT_MS);
+    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["src"] });
+  });
+}
+
+/**
+ * Opens checkout as an overlay. Resolves true only once the checkout frame
+ * is actually in the page; false means the caller must fall back to
+ * navigating to the plain URL.
+ *
+ * "Url.Open did not throw" is not the same as "the buyer can see a
+ * checkout". The script runs under this site's Content-Security-Policy, and
+ * if anything it depends on were refused - or it simply failed quietly - the
+ * click would otherwise do nothing at all. Waiting for the frame turns every
+ * such failure into the full-page checkout instead of a dead button.
  */
 export async function openLemonOverlay(
   url: string,
@@ -160,10 +202,18 @@ export async function openLemonOverlay(
   onSuccess = options.onSuccess ?? null;
   const ready = await withTimeout(loadLemonJs(), OPEN_TIMEOUT_MS, false);
   if (!ready || !overlayReady()) return false;
+  let checkoutHost: string;
   try {
+    checkoutHost = new URL(url).hostname;
     window.LemonSqueezy!.Url!.Open(withEmbed(url));
-    return true;
   } catch {
     return false;
   }
+  if (await waitForCheckoutFrame(checkoutHost)) return true;
+  try {
+    window.LemonSqueezy?.Url?.Close?.();
+  } catch {
+    /* the full-page checkout replaces the page either way */
+  }
+  return false;
 }
