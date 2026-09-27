@@ -165,7 +165,7 @@ export default async function ScanPage({ params }: Props) {
           {/* Fixed 32px mark; next/image would add an optimizer round trip for
               an asset never rendered at another size. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.jpg" alt="BustedLab" width={40} height={40} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
+          <img src="/logo-120.webp" alt="" width={40} height={40} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
           <span style={{
             fontFamily: "var(--font-display), sans-serif", fontWeight: "800",
             fontSize: "20px", letterSpacing: "-0.5px", color: "var(--text)",
@@ -182,7 +182,7 @@ export default async function ScanPage({ params }: Props) {
       <div style={{ maxWidth: "520px", margin: "0 auto", padding: "20px 24px 64px", position: "relative", zIndex: 2 }}>
         <div style={{
           fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px",
-          letterSpacing: "2px", color: "rgba(184,160,232,0.35)", textTransform: "uppercase",
+          letterSpacing: "2px", color: "rgba(184,160,232,0.7)", textTransform: "uppercase",
           marginBottom: "14px", textAlign: "center",
         }}>
           ARCHIVED SCAN RECORD
@@ -266,7 +266,7 @@ export default async function ScanPage({ params }: Props) {
           <div style={{ marginTop: "26px" }}>
             <div style={{
               fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px",
-              letterSpacing: "2px", color: "rgba(184,160,232,0.35)",
+              letterSpacing: "2px", color: "rgba(184,160,232,0.7)",
               textTransform: "uppercase", marginBottom: "10px",
             }}>
               RECENT FINDINGS
@@ -278,13 +278,13 @@ export default async function ScanPage({ params }: Props) {
         )}
 
         <p style={{
-          fontSize: "10px", color: "rgba(238,238,246,0.2)", lineHeight: "1.6",
+          fontSize: "12px", color: "var(--text-3)", lineHeight: "1.6",
           marginTop: "26px", textAlign: "center",
         }}>
           Market analysis based on publicly available listings for the identified product at the
           time of the scan. Prices change. Results are editorial market analysis, not verified
           statements about any specific product or brand.{" "}
-          <Link href="/terms" style={{ color: "rgba(184,160,232,0.45)", textDecoration: "none" }}>Terms</Link>
+          <Link href="/terms" style={{ color: "var(--accent-bright)", textDecoration: "underline" }}>Terms</Link>
         </p>
       </div>
     </main>

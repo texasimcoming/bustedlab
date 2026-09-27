@@ -16,8 +16,11 @@
   --accent-dim: rgba(123,94,167,0.1);
   --accent-glow: rgba(123,94,167,0.28);
   --text: #eeeef6;
-  --text-2: rgba(238,238,246,0.52);
-  --text-3: rgba(238,238,246,0.26);
+  /* Secondary and tertiary text meet WCAG AA (4.5:1) on every surface here:
+     text-3 was 2.05:1, below legible on a phone in daylight. The hierarchy
+     is kept: 100% / 64% / 50%. */
+  --text-2: rgba(238,238,246,0.64);
+  --text-3: rgba(238,238,246,0.5);
   --red: #ef4444;
   --red-dim: rgba(239,68,68,0.08);
   --red-border: rgba(239,68,68,0.18);
@@ -32,7 +35,7 @@
 }
 
 *{box-sizing:border-box;margin:0;padding:0}
-html{background:var(--bg);color:var(--text);font-family:var(--font-sans),system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+html{background:var(--bg);color:var(--text);font-family:var(--font-sans),system-ui,sans-serif;-webkit-font-smoothing:antialiased;scroll-padding-bottom:var(--bar-space)}
 body{background:var(--bg);min-height:100vh;overflow-x:hidden;padding-bottom:var(--bar-space)}
 
 /* Grain texture — keeps the page from feeling digital-flat */
@@ -254,4 +257,15 @@ body::before{content:'';position:fixed;top:50%;left:50%;transform:translate(-50%
 @keyframes lightPointPulse {
   0%, 100% { box-shadow: 0 0 6px 1.5px rgba(232,220,255,0.75), 0 0 14px 4px rgba(157,127,212,0.4); }
   50% { box-shadow: 0 0 10px 3px rgba(232,220,255,1), 0 0 24px 8px rgba(157,127,212,0.6); }
+}
+
+/* scroll-padding-bottom (on html, above) keeps anything scrolled into view
+   or focused by keyboard clear of the fixed sticky bar at the bottom of the
+   screen, instead of landing underneath it. */
+
+/* Inputs at 16px on phones: iOS Safari zooms the page into any focused
+   field smaller than that. This replaces maximumScale=1 in the viewport,
+   which prevented the zoom by disabling pinch-zoom for everyone. */
+@media (max-width: 640px) {
+  input, textarea, select { font-size: 16px !important; }
 }

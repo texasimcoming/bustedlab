@@ -212,7 +212,7 @@ export default function ResultsPage({
               and a srcset for an asset that is never rendered at another size.
               eslint-disable-next-line @next/next/no-img-element */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.jpg" alt="BustedLab" width={40} height={40} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
+          <img src="/logo-120.webp" alt="" width={40} height={40} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
           <span style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "800", fontSize: "20px", letterSpacing: "-0.5px", color: "#eeeef6" }}>BustedLab</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -316,14 +316,14 @@ export default function ResultsPage({
         )}
 
         <div style={{ marginTop: "24px", padding: "14px 16px", borderRadius: "10px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
-          <p style={{ fontSize: "10px", color: "rgba(238,238,246,0.2)", lineHeight: "1.6", marginBottom: "6px" }}>
-            <strong style={{ color: "rgba(238,238,246,0.25)" }}>Market Analysis Disclaimer:</strong> All pricing data shown reflects publicly available wholesale listings for similar or comparable products. Results are editorial market analysis, not verified statements about any specific product or brand.
+          <p style={{ fontSize: "12px", color: "var(--text-3)", lineHeight: "1.6", marginBottom: "6px" }}>
+            <strong style={{ color: "var(--text-2)" }}>Market Analysis Disclaimer:</strong> All pricing data shown reflects publicly available wholesale listings for similar or comparable products. Results are editorial market analysis, not verified statements about any specific product or brand.
           </p>
-          <p style={{ fontSize: "10px", color: "rgba(238,238,246,0.2)", lineHeight: "1.6" }}>
-            <strong style={{ color: "rgba(238,238,246,0.25)" }}>Affiliate Disclosure:</strong> Some outbound links may be affiliate links. Where they are, BustedLab may earn a commission at no additional cost to you.{" "}
-            <a href="/terms" style={{ color: "rgba(184,160,232,0.5)", textDecoration: "none" }}>Terms</a>
+          <p style={{ fontSize: "12px", color: "var(--text-3)", lineHeight: "1.6" }}>
+            <strong style={{ color: "var(--text-2)" }}>Affiliate Disclosure:</strong> Some outbound links may be affiliate links. Where they are, BustedLab may earn a commission at no additional cost to you.{" "}
+            <a href="/terms" style={{ color: "var(--accent-bright)", textDecoration: "underline" }}>Terms</a>
             {" "}&middot;{" "}
-            <a href="/privacy" style={{ color: "rgba(184,160,232,0.5)", textDecoration: "none" }}>Privacy</a>
+            <a href="/privacy" style={{ color: "var(--accent-bright)", textDecoration: "underline" }}>Privacy</a>
           </p>
         </div>
       </div>

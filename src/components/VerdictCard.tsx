@@ -843,7 +843,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
               </div>
             </div>
 
-            <div style={{ fontSize: compact ? "8px" : "9px", color: "rgba(238,238,246,0.18)", lineHeight: "1.5", letterSpacing: "0.2px" }}>
+            <div style={{ fontSize: compact ? "9px" : "10px", color: "rgba(238,238,246,0.45)", lineHeight: "1.5", letterSpacing: "0.2px" }}>
               {isVerdict
                 ? "Market analysis based on publicly available wholesale listings for the identified product."
                 : "Market analysis based on publicly available listings for a visually similar product. Exact item not confirmed."}

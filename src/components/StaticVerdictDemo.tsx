@@ -33,7 +33,7 @@ const DEMO_DATA: VerdictData = {
   // product photo: a permanent marketing asset on your own site should be an
   // image you hold the rights to, not something scraped from a retailer
   // listing and served from your domain.
-  productImageUrl: "/demo/purple-whitening-strips.jpg",
+  productImageUrl: "/demo/purple-whitening-strips-150.webp",
   isDemo: true,
 };
 
@@ -50,8 +50,8 @@ export default function StaticVerdictDemo() {
     <div style={{ marginBottom: "28px" }}>
       <div style={{
         fontFamily: "var(--font-mono), ui-monospace, monospace",
-        fontSize: "9px",
-        color: "rgba(184,160,232,0.3)",
+        fontSize: "10px",
+        color: "rgba(184,160,232,0.7)",
         letterSpacing: "2px",
         textTransform: "uppercase",
         marginBottom: "16px",

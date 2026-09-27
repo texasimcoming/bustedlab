@@ -18,7 +18,7 @@ export default function StickyBar({
         </div>
         <button onClick={onScan} className="btn-primary"
           style={{ borderRadius: "10px", padding: "10px 20px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif" }}>
-          {hasFile ? "Run X-ray" : "Upload first"}
+          {hasFile ? "Run X-ray" : "Scan a product"}
         </button>
       </div>
     );
@@ -43,7 +43,7 @@ export default function StickyBar({
       {remaining > 0 ? (
         <button onClick={onScan} className="btn-primary"
           style={{ borderRadius: "10px", padding: "10px 20px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif" }}>
-          {hasFile ? "Run X-ray" : "Upload first"}
+          {hasFile ? "Run X-ray" : "Scan a product"}
         </button>
       ) : (
         <button onClick={onUpgrade} className="btn-primary"

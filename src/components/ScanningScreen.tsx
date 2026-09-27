@@ -358,7 +358,7 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
                 {node.label}
               </span>
               {i < nodesActive && (
-                <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", color: i < stageIndex ? "#10d9a0" : "rgba(184,160,232,0.4)", letterSpacing: "0.5px" }}>
+                <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", color: i < stageIndex ? "#10d9a0" : "rgba(184,160,232,0.7)", letterSpacing: "0.5px" }}>
                   {i < stageIndex ? "CONFIRMED" : "ACTIVE"}
                 </span>
               )}
@@ -375,7 +375,7 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
             </div>
           </div>
           <div style={{ padding: "10px 12px", borderRadius: "8px", background: "rgba(123,94,167,0.04)", border: "1px solid rgba(123,94,167,0.1)", textAlign: "center" }}>
-            <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px", color: "rgba(184,160,232,0.4)", letterSpacing: "1px", marginBottom: "2px" }}>RECORDS SWEPT</div>
+            <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px", color: "rgba(184,160,232,0.7)", letterSpacing: "1px", marginBottom: "2px" }}>RECORDS SWEPT</div>
             <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "13px", color: "rgba(184,160,232,0.6)", fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>
               {recordsCompared.toLocaleString("en-US")}
             </div>

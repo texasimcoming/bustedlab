@@ -1,8 +1,19 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, useSyncExternalStore } from "react";
-import ResultsPage from "@/components/ResultsPage";
-import ScanningScreen from "@/components/ScanningScreen";
+import dynamic from "next/dynamic";
+
+// The scanning screen and the results page are only ever shown after someone
+// starts a scan, so they are not part of the landing page's first load: that
+// JavaScript was being parsed before the page could respond to a tap. They
+// are fetched as soon as the page is idle (see the preload effect in Home),
+// so they are already there by the time anyone presses scan; the fallback
+// is only a blank screen in the brand colour for the rare case they are not.
+const BlankScreen = () => <div style={{ minHeight: "100vh", background: "var(--bg)" }} />;
+const loadScanningScreen = () => import("@/components/ScanningScreen");
+const loadResultsPage = () => import("@/components/ResultsPage");
+const ScanningScreen = dynamic(loadScanningScreen, { ssr: false, loading: BlankScreen });
+const ResultsPage = dynamic(loadResultsPage, { ssr: false, loading: BlankScreen });
 import PaywallModal from "@/components/PaywallModal";
 import LiveToast from "@/components/LiveToast";
 import { loadLemonJs, openLemonOverlay } from "@/lib/lemon-overlay";
@@ -376,6 +387,17 @@ export default function Home() {
     }).catch(() => {});
   }, [applyAuthStatus, watchClaim]);
 
+  // Fetch the post-scan screens once the landing page has settled.
+  useEffect(() => {
+    const preload = () => { void loadScanningScreen(); void loadResultsPage(); };
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(preload, { timeout: 3000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = setTimeout(preload, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
   useScrollReveal();
   useScrollDepthTrigger(0.7, useCallback(() => {
     // Gated on the real fetch resolving. Before that, userStatus.remaining
@@ -733,7 +755,7 @@ export default function Home() {
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/logo.jpg"
+            src="/logo-120.webp"
             alt="BustedLab"
             width={40}
             height={40}
@@ -769,7 +791,7 @@ export default function Home() {
       {showLoginForm && !loginSent && (
         <div style={{ maxWidth: "520px", margin: "12px auto 0", padding: "0 24px" }}>
           <div className="card" style={{ borderRadius: "14px", padding: "20px" }}>
-            <h3 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "16px", fontWeight: "700", marginBottom: "6px" }}>Already paid?</h3>
+            <h2 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "16px", fontWeight: "700", marginBottom: "6px" }}>Already paid?</h2>
             <p style={{ color: "var(--text-2)", fontSize: "13px", marginBottom: "14px" }}>Enter your email. A sign-in link arrives instantly.</p>
             <form onSubmit={handleLoginSubmit} style={{ display: "flex", gap: "8px" }}>
               <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="your@email.com" required
@@ -798,7 +820,7 @@ export default function Home() {
           <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-2)" }}>{totalScans.toLocaleString("en-US")} scanned</span>
         </div>
 
-        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.4)", marginBottom: "20px", textTransform: "uppercase" }}>
+        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "20px", textTransform: "uppercase" }}>
           INDEXED: 2,000,000,000+ LIVE MARKET RECORDS
         </div>
 
@@ -817,14 +839,16 @@ export default function Home() {
           </p>
         </div>
 
-        <p style={{ fontSize: "12.5px", color: "var(--text-3)", lineHeight: "1.6", maxWidth: "420px", margin: "0 auto 32px" }}>
-          No price on the product? Choose &ldquo;Where is it cheapest?&rdquo; below and we&apos;ll find the lowest real price without needing one.
-        </p>
+        {/* The "no price visible?" guidance lives in the intent panel just
+            below ("Where is it cheapest?" / "Needs the price visible"). It
+            used to be said here as well, which pushed the scan buttons
+            below the fold on phones to say the same thing twice. */}
+        <div style={{ height: "20px" }} />
 
         {/* URL input */}
         <div style={{ display: "flex", gap: "8px", marginBottom: "10px" }}>
           <input type="url" value={urlInput} onChange={e => setUrlInput(e.target.value)} placeholder="DROP A URL. WE DO THE REST."
-            style={{ flex: 1, background: "var(--bg-glass)", border: "1px solid var(--border-mid)", borderRadius: "10px", padding: "12px 16px", color: "var(--text)", fontSize: "14px", outline: "none", fontFamily: "var(--font-sans), sans-serif" }}
+            style={{ flex: 1, minWidth: 0, background: "var(--bg-glass)", border: "1px solid var(--border-mid)", borderRadius: "10px", padding: "12px 16px", color: "var(--text)", fontSize: "14px", outline: "none", fontFamily: "var(--font-sans), sans-serif" }}
             onFocus={e => (e.target.style.borderColor = "var(--accent-2)")}
             onBlur={e => (e.target.style.borderColor = "var(--border-mid)")}
           />
@@ -1138,7 +1162,7 @@ export default function Home() {
 
       {/* ═══ REACTIONS ═══ */}
       <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
-        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.4)", marginBottom: "14px", textTransform: "uppercase" }}>
+        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "14px", textTransform: "uppercase" }}>
           WHAT IT SOUNDS LIKE WHEN THE MATH LANDS
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -1156,14 +1180,14 @@ export default function Home() {
             </div>
           ))}
         </div>
-        <p style={{ fontSize: "10px", color: "var(--text-3)", marginTop: "10px", opacity: 0.6, textAlign: "center" }}>
+        <p style={{ fontSize: "10px", color: "var(--text-3)", marginTop: "10px", textAlign: "center" }}>
           Illustrative reactions from early users.
         </p>
       </section>
 
       {/* ═══ WHAT WE CATCH ═══ */}
       <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
-        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.4)", marginBottom: "14px", textTransform: "uppercase" }}>
+        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "14px", textTransform: "uppercase" }}>
           WHAT WE CATCH
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
@@ -1192,7 +1216,7 @@ export default function Home() {
 
       {/* ═══ CLASSIFICATION RULES ═══ */}
       <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
-        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.4)", marginBottom: "14px", textTransform: "uppercase" }}>
+        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "14px", textTransform: "uppercase" }}>
           CLASSIFICATION THRESHOLDS
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -1265,9 +1289,9 @@ export default function Home() {
               size difference itself reads as crowding regardless of the
               pixel gap. */}
           <div style={{ marginBottom: "28px" }}>
-            <h3 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "44px", fontWeight: "800", letterSpacing: "-1.5px", lineHeight: "1", margin: "0 0 16px" }}>
+            <h2 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "44px", fontWeight: "800", letterSpacing: "-1.5px", lineHeight: "1", margin: "0 0 16px" }}>
               $4.99
-            </h3>
+            </h2>
             <p style={{
               fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
               color: "var(--text-3)", letterSpacing: "0.8px", textTransform: "uppercase",
@@ -1313,7 +1337,7 @@ export default function Home() {
             </a>
           ))}
         </div>
-        <p style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "12px", opacity: 0.6 }}>
+        <p style={{ fontSize: "12px", color: "var(--text-3)", marginTop: "12px", lineHeight: "1.6" }}>
           All markup data represents editorial analysis of publicly available wholesale listings for similar products. Results are market intelligence, not verified facts about specific products.
         </p>
       </footer>

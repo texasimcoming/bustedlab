@@ -87,15 +87,14 @@ export const metadata: Metadata = {
   // who built this or when.
 };
 
-// Prevents iOS Safari from auto-zooming the whole page when an input is
-// focused (it does this whenever the focused field's font-size is under
-// 16px). maximumScale stops the zoom without requiring any input on the
-// page to actually render at 16px, so nothing has to visually change to
-// fix it.
+// No maximumScale. It was there to stop iOS Safari zooming in when an input
+// under 16px is focused, but it also stopped everyone pinch-zooming the
+// page, which fails basic accessibility and frustrates anyone squinting at a
+// price on a phone. Inputs are 16px on phones instead (globals.css), which
+// is what actually prevents the focus zoom.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

@@ -140,7 +140,7 @@ export default async function IndexPage({ searchParams }: Props) {
       }}>
         <Link href="/" style={{ display: "flex", alignItems: "center", gap: "9px", textDecoration: "none" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.jpg" alt="BustedLab" width={40} height={40} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
+          <img src="/logo-120.webp" alt="" width={40} height={40} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
           <span style={{
             fontFamily: "var(--font-display), sans-serif", fontWeight: "800",
             fontSize: "20px", letterSpacing: "-0.5px", color: "var(--text)",
@@ -160,7 +160,7 @@ export default async function IndexPage({ searchParams }: Props) {
       <div style={{ maxWidth: "680px", margin: "0 auto", padding: "28px 24px 70px", position: "relative", zIndex: 2 }}>
         <div style={{
           fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
-          letterSpacing: "2.4px", color: "rgba(184,160,232,0.4)", textTransform: "uppercase", marginBottom: "12px",
+          letterSpacing: "2.4px", color: "rgba(184,160,232,0.7)", textTransform: "uppercase", marginBottom: "12px",
         }}>
           THE INDEX &middot; LAST {WINDOW_DAYS} DAYS
         </div>
@@ -263,11 +263,11 @@ export default async function IndexPage({ searchParams }: Props) {
           </Link>
         </div>
 
-        <p style={{ fontSize: "10px", color: "rgba(238,238,246,0.2)", lineHeight: "1.6", marginTop: "24px", textAlign: "center" }}>
+        <p style={{ fontSize: "12px", color: "var(--text-3)", lineHeight: "1.6", marginTop: "24px", textAlign: "center" }}>
           Every entry is a real scan record. Market analysis based on publicly available listings at the
           time of each scan; prices change. Results are editorial market analysis, not verified statements
           about any specific product or brand.{" "}
-          <Link href="/terms" style={{ color: "rgba(184,160,232,0.45)", textDecoration: "none" }}>Terms</Link>
+          <Link href="/terms" style={{ color: "var(--accent-bright)", textDecoration: "underline" }}>Terms</Link>
         </p>
       </div>
     </main>

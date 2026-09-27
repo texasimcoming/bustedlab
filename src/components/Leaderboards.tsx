@@ -107,7 +107,7 @@ export default function Leaderboards() {
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
         <div style={{
           fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
-          letterSpacing: "2px", color: "rgba(184,160,232,0.4)", textTransform: "uppercase",
+          letterSpacing: "2px", color: "rgba(184,160,232,0.7)", textTransform: "uppercase",
         }}>
           THE BOARDS
         </div>

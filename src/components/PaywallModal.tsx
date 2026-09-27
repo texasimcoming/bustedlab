@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // Rebuilt to match the HUD language everywhere else in the app — corner
 // brackets, monospace telemetry, dark scan-styled surface. The previous
@@ -39,8 +39,31 @@ export default function PaywallModal({
   const head = headline(remaining, freeTierPaused);
   // Amber for a wall, the brand accent for a choice.
   const signal = head.warning ? "#f59e0b" : "#9d7fd4";
+
+  // A modal nobody can see how to leave reads as a trap, and a trap is the
+  // opposite of the trust a $4.99 ask depends on. Escape and a visible
+  // close button, plus focus moved into the dialog so keyboard and screen
+  // reader users land on it.
+  //
+  // Runs once per opening. onClose arrives as a new function on every render
+  // of the page (which re-renders whenever its scan counter ticks), so it is
+  // read through a ref: re-running this on each render would pull focus out
+  // of the email field below while someone is typing in it.
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useEffect(() => {
+    dialogRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCloseRef.current(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="paywall-title"
       style={{
         position: "fixed", inset: 0, background: "rgba(5,5,10,0.88)",
         backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
@@ -49,7 +72,8 @@ export default function PaywallModal({
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{
+      <div ref={dialogRef} tabIndex={-1} style={{
+        outline: "none",
         maxWidth: "420px", width: "100%", borderRadius: "18px", overflow: "hidden",
         background: "#0d0d1c", border: "1px solid rgba(123,94,167,0.28)",
         position: "relative",
@@ -93,10 +117,24 @@ export default function PaywallModal({
           }}>
             {head.label}
           </span>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              marginLeft: "auto", width: "28px", height: "28px", borderRadius: "8px",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+              color: "rgba(238,238,246,0.7)", cursor: "pointer", padding: 0,
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M2 2 L10 10 M10 2 L2 10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
 
         <div style={{ padding: "28px 28px 8px", position: "relative", zIndex: 1, textAlign: "center" }}>
-          <h2 style={{
+          <h2 id="paywall-title" style={{
             fontFamily: "var(--font-display), sans-serif", fontSize: "24px", fontWeight: "800",
             letterSpacing: "-0.6px", color: "#eeeef6", marginBottom: "8px",
           }}>
@@ -161,7 +199,7 @@ export default function PaywallModal({
             onClick={onLogin}
             style={{
               width: "100%", background: "none", border: "none",
-              color: "rgba(238,238,246,0.35)", fontSize: "12px",
+              color: "rgba(238,238,246,0.62)", fontSize: "12px",
               cursor: "pointer", padding: "8px", fontFamily: "var(--font-sans), sans-serif",
             }}
           >
@@ -226,7 +264,7 @@ function NotifyCapture() {
     <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
       <p style={{
         fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9.5px",
-        letterSpacing: "1.3px", color: "rgba(238,238,246,0.3)", textTransform: "uppercase",
+        letterSpacing: "1.3px", color: "rgba(238,238,246,0.5)", textTransform: "uppercase",
         marginBottom: "8px", textAlign: "center",
       }}>
         Not ready? Get notified as the index grows
@@ -260,7 +298,7 @@ function NotifyCapture() {
         </button>
       </form>
       <p style={{
-        fontSize: "9.5px", color: "rgba(238,238,246,0.22)", marginTop: "7px",
+        fontSize: "10.5px", color: "rgba(238,238,246,0.5)", marginTop: "7px",
         lineHeight: "1.5", textAlign: "center",
       }}>
         Product updates only. No sharing, no selling, unsubscribe any time.
