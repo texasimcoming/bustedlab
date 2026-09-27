@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { scanProduct, scanProductUrl, getUnresolvedResult, buildShippingNote, type ScanResult } from "@/lib/scan";
 import { resignProxyPath } from "@/lib/image-proxy";
 import {
-  getScansRemaining,
+  freeScansRemaining,
   incrementScanCount,
   incrementTotalScans,
   getTotalScans,
@@ -59,34 +59,48 @@ const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 //
 // A limiter that cannot reach Redis fails open: a Redis outage must degrade
 // to "no burst protection", never to "nobody can scan".
+//
+// Two limits, for the same reason the free allowance is per browser: many
+// people can share one IP address. Each browser gets SCAN_BURST_PER_MINUTE;
+// each address gets five times that, which a crowd behind one carrier
+// address does not reach and which still stops a script inventing a new
+// cookie for every request.
 // ════════════════════════════════════════════════════════════════
 const BURST_LIMIT = Number(process.env.SCAN_BURST_PER_MINUTE || 12);
+const ADDRESS_BURST_LIMIT = BURST_LIMIT * 5;
 
-let _limiter: Ratelimit | null | undefined;
-function getLimiter(): Ratelimit | null {
-  if (_limiter !== undefined) return _limiter;
+const limiters = new Map<string, Ratelimit | null>();
+function getLimiter(prefix: string, perMinute: number): Ratelimit | null {
+  if (limiters.has(prefix)) return limiters.get(prefix)!;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  _limiter = url && token
+  const limiter = url && token
     ? new Ratelimit({
         redis: new Redis({ url, token }),
-        limiter: Ratelimit.slidingWindow(BURST_LIMIT, "60 s"),
-        prefix: "scan:burst",
+        limiter: Ratelimit.slidingWindow(perMinute, "60 s"),
+        prefix,
         analytics: false,
       })
     : null;
-  return _limiter;
+  limiters.set(prefix, limiter);
+  return limiter;
 }
 
-async function withinBurstLimit(identifier: string): Promise<boolean> {
-  const limiter = getLimiter();
+async function underLimit(limiter: Ratelimit | null, identifier: string): Promise<boolean> {
   if (!limiter) return true;
   try {
-    const { success } = await limiter.limit(identifier);
-    return success;
+    return (await limiter.limit(identifier)).success;
   } catch {
     return true;
   }
+}
+
+async function withinBurstLimit(ip: string, browserId: string | null): Promise<boolean> {
+  const [browser, address] = await Promise.all([
+    underLimit(getLimiter("scan:burst", BURST_LIMIT), browserId ? `browser:${browserId}` : ip),
+    underLimit(getLimiter("scan:burst-ip", ADDRESS_BURST_LIMIT), ip),
+  ]);
+  return browser && address;
 }
 
 function getClientIp(req: NextRequest): string {
@@ -101,7 +115,10 @@ function getClientIp(req: NextRequest): string {
 // normal on mobile networks, which is the hole a pure IP limit leaves open.
 async function getBrowserId(): Promise<string | null> {
   const cookieStore = await cookies();
-  return cookieStore.get("bl_bid")?.value || null;
+  const value = cookieStore.get("bl_bid")?.value || "";
+  // Only the shape this route issues. Anything else is treated as no cookie,
+  // which falls back to the strict per-address allowance.
+  return /^[0-9a-f]{32}$/.test(value) ? value : null;
 }
 
 function newBrowserId(): string {
@@ -144,27 +161,24 @@ async function resolveAccess(): Promise<{ email: string | null; isPaid: boolean 
   }
 }
 
-// Free allowance is the stricter of the two limits. Both were previously
-// being written, but only the IP side was ever read, so the browser counter
-// was pure write traffic that enforced nothing.
-async function getFreeScansRemaining(ip: string, browserId: string | null): Promise<number> {
-  const checks = [getScansRemaining(ip)];
-  if (browserId) checks.push(getScansRemaining(`browser:${browserId}`));
-  const results = await Promise.all(checks);
-  return Math.min(...results);
-}
 
 // GET — free-tier state plus the real public counters behind the landing page
 export async function GET(req: NextRequest) {
   const ip = getClientIp(req);
-  const browserId = await getBrowserId();
+  const existingBrowserId = await getBrowserId();
+  // A first visit has no browser id yet; this response issues it. The
+  // allowance shown must be the one that new browser will have, not the
+  // cookieless per-address rule, or the first page anyone behind a busy
+  // shared address sees says their free scans are already spent.
+  const issuedBrowserId = existingBrowserId ? null : newBrowserId();
+  const browserId = existingBrowserId ?? issuedBrowserId;
   const { email, isPaid } = await resolveAccess();
 
   const withBrowserCookie = (res: NextResponse) => {
     // Issued on the first page load rather than on the first scan, so the
     // limit is already anchored to a browser before any API spend happens.
-    if (!browserId) {
-      res.cookies.set("bl_bid", newBrowserId(), {
+    if (issuedBrowserId) {
+      res.cookies.set("bl_bid", issuedBrowserId, {
         maxAge: 60 * 60 * 24 * 30,
         httpOnly: true,
         sameSite: "lax",
@@ -200,7 +214,7 @@ export async function GET(req: NextRequest) {
     // it never reads as a limit on the unlimited tier; it is here so support
     // can answer "what does the server think this account has done today".
     settle(
-      () => (isPaid ? paidScansRemaining(email) : getFreeScansRemaining(ip, browserId)),
+      () => (isPaid ? paidScansRemaining(email) : freeScansRemaining(ip, browserId)),
       isPaid ? PAID_DAILY_SCAN_CEILING : FREE_SCANS_PER_DAY
     ),
   ]);
@@ -223,7 +237,7 @@ export async function POST(req: NextRequest) {
   const { email, isPaid } = await resolveAccess();
   const browserId = await getBrowserId();
 
-  if (!(await withinBurstLimit(ip))) {
+  if (!(await withinBurstLimit(ip, browserId))) {
     return NextResponse.json(
       { error: "rate_limited" },
       { status: 429, headers: { "Retry-After": "60" } }
@@ -232,7 +246,7 @@ export async function POST(req: NextRequest) {
 
   if (!isPaid) {
     try {
-      const remaining = await getFreeScansRemaining(ip, browserId);
+      const remaining = await freeScansRemaining(ip, browserId);
       if (remaining <= 0) {
         return NextResponse.json({ error: "scan_limit_reached" }, { status: 429 });
       }

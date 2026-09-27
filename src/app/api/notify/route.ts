@@ -27,13 +27,15 @@ import { recordEvent } from "@/lib/analytics";
 
 const VALID_SOURCES = new Set(["paywall", "limit", "results", "footer"]);
 
-// Sign-ups accepted per visitor (hashed IP) per hour. A household or an
-// office behind one address can still sign up several people. A value that
-// is not a positive number falls back to the default rather than turning
-// every sign-up away.
+// Sign-ups accepted per IP address (hashed) per hour. Not lower, because an
+// address is not a person: mobile carriers put thousands of people behind
+// one shared IPv4 address, and past the limit a real sign-up is answered
+// "saved" and dropped. Twenty an hour still caps a script at a few hundred
+// a day per address. A value that is not a positive number falls back to
+// the default rather than turning every sign-up away.
 function perVisitorPerHour(): number {
   const configured = Number(process.env.NOTIFY_PER_IP_PER_HOUR);
-  return Number.isFinite(configured) && configured > 0 ? configured : 5;
+  return Number.isFinite(configured) && configured > 0 ? configured : 20;
 }
 
 function clientIp(req: NextRequest): string {

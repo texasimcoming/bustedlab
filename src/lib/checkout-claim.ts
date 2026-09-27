@@ -47,10 +47,13 @@ import {
 export const CLAIM_COOKIE = "bl_claim";
 const CLAIM_FORMAT = /^[0-9a-f]{48}$/;
 
-// Claims opened per visitor per hour. A real buyer clicks buy a handful of
-// times; past this, checkout still opens, just without a claim, so a script
-// hammering the button cannot fill Redis with them.
-const CLAIMS_PER_HOUR = 20;
+// Claims opened per IP address per hour; past this, checkout still opens,
+// just without a claim, so a script hammering the button cannot fill Redis.
+// Generous on purpose: mobile carriers put thousands of people behind one
+// shared IPv4 address, and a campaign that lands on one carrier must not
+// quietly cost every buyer behind it the one-tap unlock. At ~100 bytes a
+// claim for two hours, even this ceiling is a few kilobytes per address.
+const CLAIMS_PER_HOUR = 300;
 
 export function isClaim(value: unknown): value is string {
   return typeof value === "string" && CLAIM_FORMAT.test(value);

@@ -97,6 +97,39 @@ export async function getHourlyScans(): Promise<number> {
 
 export const FREE_SCANS_PER_DAY = 2;
 
+// The free allowance belongs to a BROWSER (the bl_bid cookie), not to an IP
+// address. An address is not a person: a mobile carrier's shared IPv4, iCloud
+// Private Relay, an office or a campus puts many people behind one address,
+// and when the allowance was the stricter of the browser and the address, the
+// third person behind a busy address opened the site for the first time and
+// was told their free scans were spent. The address keeps a ceiling of its
+// own, far above any household, which is what still bounds a script that
+// clears or invents cookies; the daily model budget and the global scan cap
+// bound the rest.
+export const FREE_SCANS_PER_IP_PER_DAY = (() => {
+  const configured = Number(process.env.FREE_SCANS_PER_IP_PER_DAY);
+  return Number.isFinite(configured) && configured > 0 ? configured : 40;
+})();
+
+export async function getScanCount(identifier: string): Promise<number> {
+  const count = await getRedis().get(keys.scanCount(identifier)) as number | null;
+  return Number(count) || 0;
+}
+
+/**
+ * Free scans left today for this visitor. Per browser, with the address
+ * ceiling above. A client that refuses the browser cookie is counted by
+ * address alone at the normal allowance, because that is how a script looks.
+ */
+export async function freeScansRemaining(ip: string, browserId: string | null): Promise<number> {
+  if (!browserId) return getScansRemaining(ip);
+  const [browserLeft, addressUsed] = await Promise.all([
+    getScansRemaining(`browser:${browserId}`),
+    getScanCount(ip),
+  ]);
+  return addressUsed >= FREE_SCANS_PER_IP_PER_DAY ? 0 : browserLeft;
+}
+
 // ════════════════════════════════════════════════════════════════
 // FAIR USE ON THE UNLIMITED TIER.
 //

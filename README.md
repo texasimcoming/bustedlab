@@ -68,10 +68,11 @@ Nothing below is required to run the app; each one enables a capability.
 | `GUMROAD_WEBHOOK_SECRET` / `PADDLE_WEBHOOK_SECRET` | Signature verification for those providers |
 | `GUMROAD_SELLER_ID` / `GUMROAD_PRODUCT_PERMALINK` | Gumroad only. Narrow which pings grant access. No effect on Lemon Squeezy. |
 | `GLOBAL_DAILY_SCAN_CAP` | Daily ceiling on uncached scans. Defaults to 25000. |
-| `SCAN_BURST_PER_MINUTE` | Per-IP scan burst limit. Defaults to 12. |
+| `SCAN_BURST_PER_MINUTE` | Scans per browser per minute. Defaults to 12; one IP address gets five times this. |
+| `FREE_SCANS_PER_IP_PER_DAY` | Ceiling on free scans from one IP address across all its browsers. Defaults to 40. The 2-a-day allowance itself is per browser. |
 | `ANALYTICS_TOKEN` | Bearer token for `GET /api/stats`. Unset means the endpoint is closed entirely. |
 | `EVENT_BURST_PER_MINUTE` | Per-IP limit on the analytics beacon. Defaults to 60. |
-| `NOTIFY_PER_IP_PER_HOUR` | Product update sign-ups accepted per IP per hour. Defaults to 5. |
+| `NOTIFY_PER_IP_PER_HOUR` | Product update sign-ups accepted per IP per hour. Defaults to 20. |
 | `CSP_REPORT_ONLY` | Leave unset. `true` downgrades the enforced Content-Security-Policy to report-only while a fix ships. |
 | `UNSUBSCRIBE_SECRET` | Signs unsubscribe links. Set before the first list email and never change it. Falls back to `IDENTITY_SALT`. |
 | `PAID_DAILY_SCAN_CEILING` | Fair-use scans per paid account per day. Defaults to 500. |

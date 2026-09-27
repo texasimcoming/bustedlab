@@ -41,15 +41,16 @@ r = await signUp("noconsent@example.com", "203.0.113.8", false);
 check("without consent nothing is stored", r.status === 400 && !onList("noconsent@example.com"));
 
 env(); reset();
-for (let i = 1; i <= 5; i++) await signUp(`person${i}@example.com`, "198.51.100.1");
-check("one visitor can add five addresses an hour", [1, 2, 3, 4, 5].every(i => onList(`person${i}@example.com`)));
-r = await signUp("person6@example.com", "198.51.100.1");
-check("the sixth is answered as saved but not stored", r.json?.saved === true && !onList("person6@example.com"));
+for (let i = 1; i <= 20; i++) await signUp(`person${i}@example.com`, "198.51.100.1");
+check("one IP address can add twenty addresses an hour (carriers share addresses)",
+      Array.from({ length: 20 }, (_, i) => i + 1).every(i => onList(`person${i}@example.com`)));
+r = await signUp("person21@example.com", "198.51.100.1");
+check("the twenty-first is answered as saved but not stored", r.json?.saved === true && !onList("person21@example.com"));
 r = await signUp("neighbour@example.com", "198.51.100.2");
 check("another visitor is unaffected", onList("neighbour@example.com"));
 advance(3601);
-await signUp("person7@example.com", "198.51.100.1");
-check("the first visitor can add more an hour later", onList("person7@example.com"));
+await signUp("person22@example.com", "198.51.100.1");
+check("the first visitor can add more an hour later", onList("person22@example.com"));
 check("visitor addresses are stored only as hashes", !redis.keys().some(k => k.includes("198.51.100")));
 
 env({ NOTIFY_PER_IP_PER_HOUR: "1" }); reset();

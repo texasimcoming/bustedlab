@@ -201,9 +201,9 @@ check("a Gumroad link gets no claim (it has no custom data to carry it)",
       r.json.url === "https://seller.gumroad.com/l/busted" && !r.cookies.bl_claim);
 
 env({ CHECKOUT_URL: LS_LINK }); reset();
-for (let i = 0; i < 20; i++) await startCheckout("198.51.100.9");
+for (let i = 0; i < 300; i++) await startCheckout("198.51.100.9");
 r = await startCheckout("198.51.100.9");
-check("past 20 checkouts an hour from one visitor, checkout still opens, without a claim",
+check("past 300 checkouts an hour from one IP address, checkout still opens, without a claim",
       r.status === 200 && !new URL(r.json.url).searchParams.has("checkout[custom][claim]") && !r.cookies.bl_claim);
 r = await startCheckout("198.51.100.10");
 check("while another visitor still gets one", !!r.cookies.bl_claim);
