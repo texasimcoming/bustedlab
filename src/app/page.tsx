@@ -272,6 +272,15 @@ export default function Home() {
   const [userStatus, setUserStatus] = useState<UserStatus>({ isPaid: false, remaining: FREE_SCAN_ALLOWANCE, authenticated: false });
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
+  // The day's free capacity ran out for everyone (503 from /api/scan). The
+  // paywall says so rather than claiming this visitor's own scans are spent.
+  const [freeTierPaused, setFreeTierPaused] = useState(false);
+  // Every opening says why, so a reason can never outlive the opening it
+  // belonged to.
+  const openPaywall = (reason: "wall" | "choice" | "capacity") => {
+    setFreeTierPaused(reason === "capacity");
+    setShowPaywall(true);
+  };
   const [showScrollNudge, setShowScrollNudge] = useState(false);
   // The message for the link the visitor arrived on (?auth=..., ?payment=...)
   // until anything on the page sets its own. Read through
@@ -492,7 +501,7 @@ export default function Home() {
   // No synthetic auto-increment.
 
   const runScan = async (type: "image" | "url") => {
-    if (!userStatus.isPaid && userStatus.remaining <= 0) { setShowPaywall(true); return; }
+    if (!userStatus.isPaid && userStatus.remaining <= 0) { openPaywall("wall"); return; }
     if (type === "image" && !uploadedFile) return;
 
     // Unlock the audio context HERE, inside the click that starts the scan.
@@ -542,7 +551,12 @@ export default function Home() {
             "Resets at midnight UTC. Email support if you need it lifted."
           );
         } else {
-          setShowPaywall(true);
+          // The server's count is the one that decides. The browser's can
+          // still read 1 or 2 (another tab, or the per-address ceiling), and
+          // the paywall must not tell someone who was just refused a scan
+          // that they have scans left.
+          setUserStatus(prev => ({ ...prev, remaining: 0 }));
+          openPaywall("wall");
         }
         return;
       }
@@ -555,7 +569,7 @@ export default function Home() {
         // Daily uncached-scan ceiling reached
         setState("landing");
         setAuthMessage("Capacity reached for today. Unlimited access scans immediately.");
-        setShowPaywall(true);
+        openPaywall("capacity");
         return;
       }
       const data = await res.json();
@@ -679,7 +693,16 @@ export default function Home() {
           </span>
         </div>
       )}
-      {showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} onCheckout={handleCheckout} onLogin={() => { setShowPaywall(false); setShowLoginForm(true); }} checkoutAvailable={checkoutAvailable} />}
+      {showPaywall && (
+        <PaywallModal
+          remaining={userStatus.remaining}
+          freeTierPaused={freeTierPaused}
+          onClose={() => setShowPaywall(false)}
+          onCheckout={handleCheckout}
+          onLogin={() => { setShowPaywall(false); setShowLoginForm(true); }}
+          checkoutAvailable={checkoutAvailable}
+        />
+      )}
 
       {/* Scroll nudge */}
       {showScrollNudge && (
@@ -700,7 +723,7 @@ export default function Home() {
         if (preview) runScan("image");
         else if (urlInput.trim()) runScan("url");
         else fileInputRef.current?.click();
-      }} hasFile={!!preview || !!urlInput.trim()} onUpgrade={() => setShowPaywall(true)} />
+      }} hasFile={!!preview || !!urlInput.trim()} onUpgrade={() => openPaywall("wall")} />
 
       {/* Ambient */}
       <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "900px", height: "500px", background: "radial-gradient(ellipse at 50% 0%, rgba(123,94,167,0.065) 0%, transparent 60%)", pointerEvents: "none", zIndex: 0 }} />
@@ -808,7 +831,7 @@ export default function Home() {
           <button
             className="btn-primary"
             onClick={() => {
-              if (!userStatus.isPaid && userStatus.remaining <= 0) { setShowPaywall(true); return; }
+              if (!userStatus.isPaid && userStatus.remaining <= 0) { openPaywall("wall"); return; }
               runScan("url");
             }}
             disabled={!urlInput.trim() || (!userStatus.isPaid && userStatus.remaining <= 0)}
@@ -1065,7 +1088,7 @@ export default function Home() {
 
         {!userStatus.isPaid && (
           <p style={{ fontSize: "12px", color: "var(--text-3)", marginTop: "10px" }}>
-            {userStatus.remaining} free scan{userStatus.remaining !== 1 ? "s" : ""} left today. <button onClick={() => setShowPaywall(true)} style={{ background: "none", border: "none", color: "var(--accent-bright)", cursor: "pointer", fontSize: "12px", textDecoration: "underline" }}>Unlimited for $4.99</button>
+            {userStatus.remaining} free scan{userStatus.remaining !== 1 ? "s" : ""} left today. <button onClick={() => openPaywall("choice")} style={{ background: "none", border: "none", color: "var(--accent-bright)", cursor: "pointer", fontSize: "12px", textDecoration: "underline" }}>Unlimited for $4.99</button>
           </p>
         )}
       </section>

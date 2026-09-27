@@ -7,14 +7,38 @@ import { useState } from "react";
 // version was a generic centered modal with a lock emoji and a checkmark
 // list, which broke the illusion at exactly the moment (the $4.99 ask)
 // that most needs to feel like part of the same machine.
+// Why the modal is open decides what its header and title may claim.
+//  - remaining 0: the visitor hit the wall. The original copy, unchanged.
+//  - remaining > 0: they chose to upgrade with free scans still in hand, and
+//    telling them their allowance is spent would be false.
+//  - freeTierPaused: the day's free capacity ran out for everyone. They
+//    still have scans, and cannot use them until midnight UTC.
+// Everything below the title - features, price, buttons - is the same in
+// all three.
+function headline(remaining: number, freeTierPaused: boolean) {
+  if (freeTierPaused) {
+    return { label: "FREE CAPACITY FULL TODAY", title: "Free scans are paused until midnight UTC", warning: true };
+  }
+  if (remaining <= 0) {
+    return { label: "FREE ACCESS LIMIT REACHED", title: "Free scan allowance spent", warning: true };
+  }
+  return { label: "GET UNLIMITED ACCESS", title: "Skip the daily limit", warning: false };
+}
+
 export default function PaywallModal({
-  onClose, onCheckout, onLogin, checkoutAvailable = true,
+  onClose, onCheckout, onLogin, checkoutAvailable = true, remaining, freeTierPaused = false,
 }: {
   onClose: () => void;
   onCheckout: () => void;
   onLogin: () => void;
   checkoutAvailable?: boolean;
+  /** Free scans the visitor has left today, as the server last reported. */
+  remaining: number;
+  freeTierPaused?: boolean;
 }) {
+  const head = headline(remaining, freeTierPaused);
+  // Amber for a wall, the brand accent for a choice.
+  const signal = head.warning ? "#f59e0b" : "#9d7fd4";
   return (
     <div
       style={{
@@ -61,13 +85,13 @@ export default function PaywallModal({
         }}>
           <div style={{
             width: "6px", height: "6px", borderRadius: "50%",
-            background: "#f59e0b", boxShadow: "0 0 6px #f59e0b",
-          }} className="animate-pulse" />
+            background: signal, boxShadow: `0 0 6px ${signal}`,
+          }} className={head.warning ? "animate-pulse" : undefined} />
           <span style={{
             fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px",
-            color: "rgba(245,158,11,0.75)", textTransform: "uppercase",
+            color: head.warning ? "rgba(245,158,11,0.75)" : "rgba(184,160,232,0.8)", textTransform: "uppercase",
           }}>
-            FREE ACCESS LIMIT REACHED
+            {head.label}
           </span>
         </div>
 
@@ -76,7 +100,7 @@ export default function PaywallModal({
             fontFamily: "var(--font-display), sans-serif", fontSize: "24px", fontWeight: "800",
             letterSpacing: "-0.6px", color: "#eeeef6", marginBottom: "8px",
           }}>
-            Free scan allowance spent
+            {head.title}
           </h2>
           <p style={{ color: "rgba(238,238,246,0.5)", fontSize: "14px", lineHeight: "1.6" }}>
             One payment of $4.99. Unlimited X-rays. No subscription, no renewal, no expiration.
