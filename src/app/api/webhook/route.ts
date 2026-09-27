@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { markAsPaid, revokeAccess, claimOrder, releaseOrderClaim, storeMagicToken, fulfilCheckoutClaim } from "@/lib/redis";
 import { detectDeliveryProvider } from "@/lib/payment-provider";
 import { isClaim } from "@/lib/checkout-claim";
+import { emailFrom } from "@/lib/email";
 import crypto from "crypto";
 
 /**
@@ -272,7 +273,7 @@ async function sendAccessEmail(email: string): Promise<void> {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: "BustedLab <access@bustedlab.com>",
+      from: emailFrom(),
       to: email,
       subject: "Your BustedLab access is live",
       html: `

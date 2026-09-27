@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
 import { buildFunnel, readEvents, CLIENT_EVENTS } from "@/lib/analytics";
 import { getLedgerSize, readCspViolations } from "@/lib/redis";
+import { isOperator } from "@/lib/operator";
 
 /**
  * The read side. Protected, because this is the business.
@@ -17,20 +17,8 @@ import { getLedgerSize, readCspViolations } from "@/lib/redis";
  */
 export const dynamic = "force-dynamic";
 
-function authorized(req: NextRequest): boolean {
-  const secret = process.env.ANALYTICS_TOKEN;
-  if (!secret) return false;
-
-  const header = req.headers.get("authorization") || "";
-  const provided = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const a = Buffer.from(provided);
-  const b = Buffer.from(secret);
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
-}
-
 export async function GET(req: NextRequest) {
-  if (!authorized(req)) {
+  if (!isOperator(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

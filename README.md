@@ -28,6 +28,7 @@ src/app/api/scan/route.ts     Scan endpoint: access, rate limits, cache, ledger
 src/app/api/notify/route.ts   Intent capture: the product update list
 src/app/api/event/route.ts    Analytics beacon (3 browser events, allowlisted)
 src/app/api/stats/route.ts    The funnel, and what the CSP blocked. Token-protected.
+src/app/api/preflight/        Launch readiness: every blocker, by name. Token-protected.
 src/proxy.ts                  Enforced Content-Security-Policy, fresh nonce per request
 src/lib/analytics.ts          Six events, daily counters, no third parties
 src/app/scan/[id]/            Permanent page + per-scan OG image for one verdict
@@ -57,6 +58,7 @@ Nothing below is required to run the app; each one enables a capability.
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Rate limits, sessions, counters, scan cache |
 | `IDENTITY_SALT` | Salt for hashed rate-limit keys. Set this in production. |
 | `RESEND_API_KEY` | Sign-in and purchase emails |
+| `EMAIL_FROM` | From line on those emails. Its domain must be verified in Resend. Defaults to `BustedLab <access@bustedlab.com>`. |
 | `NEXT_PUBLIC_BASE_URL` | Absolute URLs in emails and metadata |
 | `CRON_SECRET` | Authorizes the blob cleanup cron. Without it the cron rejects everything. |
 | `CHECKOUT_URL` | The live payment link. A Lemon Squeezy link opens as an in-page overlay. Without it, or without its provider's webhook secret, checkout renders an honest closed state. |

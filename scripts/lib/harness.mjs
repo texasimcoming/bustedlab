@@ -161,7 +161,13 @@ export const redis = {
 };
 
 // ── Resend. ──
-export const mail = { sent: [], status: 200 };
+export const mail = {
+  sent: [],
+  status: 200,
+  /** What GET /domains answers: the account's domains, or an HTTP status for a restricted key. */
+  domains: [{ name: "bustedlab.com", status: "verified" }],
+  domainsStatus: 200,
+};
 
 // ── The network. ──
 const encode = (v) =>
@@ -181,6 +187,12 @@ globalThis.fetch = async (input, init = {}) => {
       ? body.map(a => ({ result: encode(runRedisCommand(a)) }))
       : { result: encode(runRedisCommand(body)) };
     return new Response(JSON.stringify(result), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (url === "https://api.resend.com/domains") {
+    return new Response(JSON.stringify(mail.domainsStatus === 200 ? { data: mail.domains } : { name: "restricted_api_key" }), {
+      status: mail.domainsStatus,
+      headers: { "content-type": "application/json" },
+    });
   }
   if (url === "https://api.resend.com/emails") {
     const message = JSON.parse(init.body);
@@ -229,6 +241,8 @@ export function reset() {
   clockOffsetMs = 0;
   mail.sent.length = 0;
   mail.status = 200;
+  mail.domains = [{ name: "bustedlab.com", status: "verified" }];
+  mail.domainsStatus = 200;
   logs.errors.length = 0;
 }
 
@@ -239,7 +253,7 @@ const { NextRequest } = await import(NEXT_SERVER);
  * Calls a route handler. Returns the status, the redirect target, the
  * cookies it set (name -> value, "" for a deletion) and the parsed body.
  */
-export async function call(handler, path, { method = "GET", headers = {}, body, cookies = {}, form } = {}) {
+export async function call(handler, path, { method = "GET", headers = {}, body, cookies = {}, form, origin = "https://bustedlab.test" } = {}) {
   const h = new Headers(headers);
   const jar = Object.entries(cookies).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join("; ");
   if (jar) h.set("cookie", jar);
@@ -248,7 +262,7 @@ export async function call(handler, path, { method = "GET", headers = {}, body, 
     payload = new URLSearchParams(form).toString();
     h.set("content-type", "application/x-www-form-urlencoded");
   }
-  const req = new NextRequest(`https://bustedlab.test${path}`, { method, headers: h, body: payload });
+  const req = new NextRequest(`${origin}${path}`, { method, headers: h, body: payload });
   const res = await handler(req);
   const setCookies = {};
   for (const line of res.headers.getSetCookie()) {

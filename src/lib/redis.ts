@@ -68,6 +68,18 @@ export const keys = {
   notifyIndex: () => `notify:index`,
 };
 
+/** True if Upstash accepts a write and returns it. For the launch preflight. */
+export async function redisRoundTrip(): Promise<boolean> {
+  try {
+    // Prefixed: an all-digit value would come back from the client as a number.
+    const probe = `p-${crypto.randomBytes(8).toString("hex")}`;
+    await getRedis().set("preflight:probe", probe, { ex: 60 });
+    return (await getRedis().get("preflight:probe")) === probe;
+  } catch {
+    return false;
+  }
+}
+
 // Real count of scans in the current UTC hour. Genuine data for a "scanned
 // in the last hour" indicator, not an invented placeholder number. The key
 // itself is time-bucketed by hour, so it naturally resets; a short TTL just

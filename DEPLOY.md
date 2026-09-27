@@ -3,6 +3,19 @@
 Vercel, Next.js App Router, one project. The build is standard; everything
 that varies between environments is an environment variable.
 
+## Before sending anyone to the site
+
+    curl -s -H "Authorization: Bearer $ANALYTICS_TOKEN" https://<domain>/api/preflight
+
+`"ready": true` means this deployment can take money, deliver what was bought
+and run the scanner. Anything under `blockers` loses money or customers the
+moment traffic arrives, and says what to set; `warnings` are worth fixing but
+do not block. It checks that Redis answers, that checkout is live and its
+webhook can verify purchases, that the sending domain is verified in Resend,
+that the base URL is right, and that the scanner's keys and the privacy
+salt are set. It reports whether each thing is set and working, never a
+value. Run it after every configuration change.
+
 ## 1. Deploy
 
 Import the repository into Vercel and deploy. Default settings are correct.

@@ -9,6 +9,7 @@ import {
 } from "@/lib/redis";
 import crypto from "crypto";
 import { startSession } from "@/lib/session";
+import { emailFrom } from "@/lib/email";
 import { CLAIM_COOKIE, claimStateFor } from "@/lib/checkout-claim";
 
 function getResend() {
@@ -107,7 +108,7 @@ export async function POST(req: NextRequest) {
     // unverified sending domain or a bad key meant every sign-in link
     // silently never left, while the customer was told one was on its way.
     const { error: sendError } = await getResend().emails.send({
-      from: "BustedLab <access@bustedlab.com>",
+      from: emailFrom(),
       to: normalizedEmail,
       subject: "Your BustedLab sign-in link",
       html: `
