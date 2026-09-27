@@ -7,10 +7,10 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        // Nothing under /api is a page. /auth and /success are transactional
-        // states that mean nothing to a crawler and should never be a search
-        // result someone lands on.
-        disallow: ["/api/", "/auth/", "/success", "/login"],
+        // Nothing under /api is a page. /auth, /success and /unsubscribe are
+        // transactional states that mean nothing to a crawler and should
+        // never be a search result someone lands on.
+        disallow: ["/api/", "/auth/", "/success", "/login", "/unsubscribe"],
       },
     ],
     sitemap: `${base}/sitemap.xml`,
