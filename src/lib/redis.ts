@@ -964,6 +964,29 @@ export async function getCategoryStats(minSample = 5): Promise<CategoryStat[]> {
     .sort((a, b) => b.averageMarkup - a.averageMarkup);
 }
 
+/**
+ * The biggest verified gaps, one row per product: "What we catch" on the
+ * landing page.
+ *
+ * Drawn from the most recent `pool` measurements rather than the whole ledger,
+ * because there is no index scored by savings and one mget of a few hundred
+ * records is the most a public, edge-cached board should cost. Excluded:
+ * cached repeats (not independent measurements), matches the engine itself
+ * marked unverified, and anything without a positive saving. Each product is
+ * represented by its largest measured saving.
+ */
+export async function getTopSavingsProducts(limit = 8, pool = 500): Promise<ScanRecord[]> {
+  const records = await getRecentRecords(pool);
+  const byProduct = new Map<string, ScanRecord>();
+  for (const r of records) {
+    if (r.cached || r.matchConfidence === "unverified" || !(r.savings > 0)) continue;
+    const key = r.productKey || r.id;
+    const held = byProduct.get(key);
+    if (!held || r.savings > held.savings) byProduct.set(key, r);
+  }
+  return [...byProduct.values()].sort((a, b) => b.savings - a.savings).slice(0, limit);
+}
+
 /** Highest markups ever measured, one row per product. */
 export async function getTopMarkupProducts(limit = 10): Promise<ScanRecord[]> {
   // Over-fetch, because the raw index is per scan and collapses once deduped.

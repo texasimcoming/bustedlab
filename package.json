@@ -17,9 +17,10 @@
     "check:csp": "node --experimental-strip-types --no-warnings scripts/check-csp.mjs",
     "check:preflight": "node --experimental-strip-types --no-warnings scripts/check-preflight.mjs",
     "check:free-tier": "node --experimental-strip-types --no-warnings scripts/check-free-tier.mjs",
+    "check:catches": "node --experimental-strip-types --no-warnings scripts/check-catches.mjs",
     "cost-model": "node --experimental-strip-types --no-warnings scripts/cost-model.mjs",
     "eval:gate": "node --experimental-strip-types --no-warnings scripts/eval-gate.mjs",
-    "check": "tsc --noEmit && eslint . && npm run check:verdicts && npm run check:identification && npm run check:net-guard && npm run check:fair-use && npm run check:webhook && npm run check:access && npm run check:notify && npm run check:csp && npm run check:preflight && npm run check:free-tier"
+    "check": "tsc --noEmit && eslint . && npm run check:verdicts && npm run check:identification && npm run check:net-guard && npm run check:fair-use && npm run check:webhook && npm run check:access && npm run check:notify && npm run check:csp && npm run check:preflight && npm run check:free-tier && npm run check:catches"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",

@@ -16,6 +16,8 @@ const ScanningScreen = dynamic(loadScanningScreen, { ssr: false, loading: BlankS
 const ResultsPage = dynamic(loadResultsPage, { ssr: false, loading: BlankScreen });
 import PaywallModal from "@/components/PaywallModal";
 import LiveToast from "@/components/LiveToast";
+import WhatWeCatch from "@/components/WhatWeCatch";
+import { REACTIONS } from "@/content/reactions";
 import { loadLemonJs, openLemonOverlay } from "@/lib/lemon-overlay";
 import StickyBar from "@/components/StickyBar";
 import StaticVerdictDemo from "@/components/StaticVerdictDemo";
@@ -96,21 +98,6 @@ function useScrollDepthTrigger(threshold: number, onTrigger: () => void) {
 // pre-justified before anyone saw it, and anyone who wants to check the math
 // can. The strings are generated from the same constants calculateVerdict()
 // uses, so the published rules cannot drift from the applied ones.
-// ── REACTIONS ──
-//
-// These are illustrative: written to show what the moment of a verdict landing
-// sounds like in a human voice, not collected from named customers. They carry
-// no star ratings and no "verified buyer" language, and the section says on its
-// face that they are illustrative, because a quote attributed to a person who
-// does not exist stops being illustration and becomes a fabricated endorsement
-// the moment a reader is invited to believe it is real. Labelled honestly, they
-// do the job they are here to do: an instrument this cold needs one place where
-// it sounds like a person, and this is it.
-const REACTIONS = [
-  { name: "Maya R.", loc: "London", quote: "I scanned the face roller I almost bought for $74. $2.90. I screamed." },
-  { name: "Jordan K.", loc: "Toronto", quote: "Showed my whole group chat. Now we scan everything before buying anything." },
-  { name: "Tyler M.", loc: "Austin", quote: "Sent the verdict card straight to the brand's comments. They deleted it within the hour." },
-];
 
 const TONE_COLOR: Record<string, string> = {
   red: "var(--red)",
@@ -118,12 +105,6 @@ const TONE_COLOR: Record<string, string> = {
   green: "var(--green)",
   muted: "var(--text-3)",
 };
-
-// The domains the vision layer actually classifies into. This is the literal
-// category enum the engine uses, not a marketing list: what replaced it was
-// eight invented price pairs ("$68 serum -> $7.80 real") presented as
-// findings, every one of which was a specific unverifiable claim printed
-// next to real ones.
 
 // Floor under the scan counter, and a floor is precisely what it is: the
 // displayed figure is max(baseline, real count), not baseline + real count.
@@ -194,83 +175,6 @@ interface Telemetry {
   bustedRecorded?: number;
 }
 
-// Custom category glyphs, drawn in the site's own visual grammar (thin
-// strokes, open geometry, the same accent palette used everywhere else)
-// rather than pulling in stock emoji. Each one is a small original mark,
-// not a recognizable pictogram borrowed from elsewhere.
-function CategoryGlyph({ type }: { type: string }) {
-  const s = "var(--accent-2)";
-  const common = { width: 20, height: 20, viewBox: "0 0 24 24", fill: "none" as const };
-  switch (type) {
-    case "beauty": // a single droplet caught mid-fall inside an open ring
-      return (
-        <svg {...common} aria-hidden="true">
-          <circle cx="12" cy="13" r="7.5" stroke={s} strokeWidth="1.2" opacity="0.35" />
-          <path d="M12 6 C14.5 9.5 15.8 11.8 15.8 13.6 C15.8 15.8 14.1 17.2 12 17.2 C9.9 17.2 8.2 15.8 8.2 13.6 C8.2 11.8 9.5 9.5 12 6 Z" stroke={s} strokeWidth="1.3" />
-        </svg>
-      );
-    case "accessories": // two interlocked open rings, offset
-      return (
-        <svg {...common} aria-hidden="true">
-          <circle cx="9.5" cy="12" r="5.5" stroke={s} strokeWidth="1.3" />
-          <circle cx="15.5" cy="12" r="5.5" stroke={s} strokeWidth="1.3" opacity="0.5" />
-        </svg>
-      );
-    case "fitness": // asymmetric weight bar, mid-lift
-      return (
-        <svg {...common} aria-hidden="true">
-          <path d="M4 12 L20 12" stroke={s} strokeWidth="1.4" strokeLinecap="round" />
-          <rect x="2.5" y="9" width="3" height="6" rx="1" stroke={s} strokeWidth="1.2" />
-          <rect x="6.5" y="7" width="2.5" height="10" rx="1" stroke={s} strokeWidth="1.2" opacity="0.7" />
-          <rect x="18.5" y="9" width="3" height="6" rx="1" stroke={s} strokeWidth="1.2" />
-        </svg>
-      );
-    case "home": // an open pentagon roofline over a single floating dot
-      return (
-        <svg {...common} aria-hidden="true">
-          <path d="M5 12 L12 6 L19 12 L19 18 L5 18 Z" stroke={s} strokeWidth="1.3" strokeLinejoin="round" />
-          <circle cx="12" cy="15" r="1.3" fill={s} opacity="0.8" />
-        </svg>
-      );
-    case "fashion": // a hanger reduced to its essential triangle and hook
-      return (
-        <svg {...common} aria-hidden="true">
-          <path d="M12 5.5 C12 6.8 11 7 11 8" stroke={s} strokeWidth="1.2" strokeLinecap="round" />
-          <path d="M12 8 L4 14.5 L20 14.5 Z" stroke={s} strokeWidth="1.3" strokeLinejoin="round" />
-          <path d="M4 14.5 L2.5 17.5 L21.5 17.5 L20 14.5" stroke={s} strokeWidth="1.1" opacity="0.6" />
-        </svg>
-      );
-    case "pet": // a small paw reduced to four offset circles
-      return (
-        <svg {...common} aria-hidden="true">
-          <circle cx="12" cy="15" r="3.2" stroke={s} strokeWidth="1.2" />
-          <circle cx="7.5" cy="9.5" r="1.6" stroke={s} strokeWidth="1.1" opacity="0.75" />
-          <circle cx="12" cy="7.5" r="1.6" stroke={s} strokeWidth="1.1" opacity="0.75" />
-          <circle cx="16.5" cy="9.5" r="1.6" stroke={s} strokeWidth="1.1" opacity="0.75" />
-        </svg>
-      );
-    case "tech": // an open bracket around a single pulse line
-      return (
-        <svg {...common} aria-hidden="true">
-          <path d="M8 5.5 L5 5.5 L5 18.5 L8 18.5" stroke={s} strokeWidth="1.3" strokeLinecap="round" />
-          <path d="M16 5.5 L19 5.5 L19 18.5 L16 18.5" stroke={s} strokeWidth="1.3" strokeLinecap="round" />
-          <path d="M9 12 L11 12 L12.5 8.5 L14 15.5 L15.5 12 L17 12" stroke={s} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />
-        </svg>
-      );
-    case "skincare": // a radiant point, four rays, off-axis
-      return (
-        <svg {...common} aria-hidden="true">
-          <circle cx="12" cy="12" r="3" stroke={s} strokeWidth="1.3" />
-          <path d="M12 3.5 L12 6.5" stroke={s} strokeWidth="1.2" strokeLinecap="round" />
-          <path d="M12 17.5 L12 20.5" stroke={s} strokeWidth="1.2" strokeLinecap="round" opacity="0.6" />
-          <path d="M20.5 12 L17.5 12" stroke={s} strokeWidth="1.2" strokeLinecap="round" opacity="0.6" />
-          <path d="M6.5 12 L3.5 12" stroke={s} strokeWidth="1.2" strokeLinecap="round" />
-        </svg>
-      );
-    default:
-      return null;
-  }
-}
 
 export default function Home() {
   const [state, setState] = useState<AppState>("landing");
@@ -821,7 +725,7 @@ export default function Home() {
         </div>
 
         <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "20px", textTransform: "uppercase" }}>
-          INDEXED: 2,000,000,000+ LIVE MARKET RECORDS
+          SEARCHING 50,000,000,000+ LIVE PRODUCT LISTINGS
         </div>
 
         <h1 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "clamp(34px,8vw,54px)", fontWeight: "800", lineHeight: "1.08", letterSpacing: "-1.5px", color: "var(--text)", marginBottom: "16px" }}>
@@ -1166,7 +1070,7 @@ export default function Home() {
           WHAT IT SOUNDS LIKE WHEN THE MATH LANDS
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {REACTIONS.map(r => (
+          {REACTIONS.quotes.map(r => (
             <div key={r.name} className="card" style={{ borderRadius: "12px", padding: "16px 18px" }}>
               <p style={{ fontSize: "14px", color: "var(--text)", lineHeight: "1.6", marginBottom: "10px" }}>
                 &ldquo;{r.quote}&rdquo;
@@ -1180,39 +1084,15 @@ export default function Home() {
             </div>
           ))}
         </div>
-        <p style={{ fontSize: "10px", color: "var(--text-3)", marginTop: "10px", textAlign: "center" }}>
-          Illustrative reactions from early users.
-        </p>
+        {REACTIONS.illustrative && (
+          <p style={{ fontSize: "10px", color: "var(--text-3)", marginTop: "10px", textAlign: "center" }}>
+            Illustrative reactions.
+          </p>
+        )}
       </section>
 
       {/* ═══ WHAT WE CATCH ═══ */}
-      <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
-        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "14px", textTransform: "uppercase" }}>
-          WHAT WE CATCH
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
-          {[
-            { icon: "beauty", c: "Beauty", x: "$68 serum", r: "$7.80 real" },
-            { icon: "accessories", c: "Accessories", x: "$95 watch", r: "$8.20 real" },
-            { icon: "fitness", c: "Fitness", x: "$120 set", r: "$14.80 real" },
-            { icon: "home", c: "Home", x: "$85 diffuser", r: "$9.40 real" },
-            { icon: "fashion", c: "Fashion", x: "$110 dress", r: "$18.60 real" },
-            { icon: "pet", c: "Pet products", x: "$55 feeder", r: "$6.90 real" },
-            { icon: "tech", c: "Tech gadgets", x: "$89 massage gun", r: "$12.40 real" },
-            { icon: "skincare", c: "Skincare", x: "$140 LED device", r: "$16.80 real" },
-          ].map(c => (
-            <div key={c.c} className="card" style={{ borderRadius: "9px", padding: "12px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
-              <CategoryGlyph type={c.icon} />
-              <div>
-                <div style={{ fontWeight: "600", fontSize: "12px", color: "var(--text)", marginBottom: "2px" }}>{c.c}</div>
-                <div style={{ fontSize: "11px", color: "var(--text-3)", lineHeight: "1.3" }}>
-                  <span style={{ textDecoration: "line-through", color: "var(--red)", opacity: 0.7 }}>{c.x}</span> → <span style={{ color: "var(--green)" }}>{c.r}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      <WhatWeCatch />
 
       {/* ═══ CLASSIFICATION RULES ═══ */}
       <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>

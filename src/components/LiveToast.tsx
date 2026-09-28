@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { loadLeaderboard } from "@/lib/leaderboard-client";
 
 // ════════════════════════════════════════════════════════════════
 // THE EXIT CONDITION.
@@ -118,15 +119,13 @@ export default function LiveToast({ telemetry }: { telemetry?: Telemetry }) {
   const usingRealFindings = findings.length >= REAL_MODE_MIN_FINDINGS;
 
   // Only fetched once the scan count justifies it, so below the threshold
-  // this component still makes no network request at all. The endpoint is
-  // edge-cached for two minutes and the boards on this same page already
-  // request it, so this is not a new round trip in practice.
+  // this component still makes no network request at all. Above it, it
+  // shares the one request the boards on this page already make.
   useEffect(() => {
     if (!scansEnough) return;
     let alive = true;
-    fetch("/api/leaderboard")
-      .then(r => r.json())
-      .then((data: { recent?: unknown[] }) => {
+    loadLeaderboard<{ recent?: unknown[] }>()
+      .then(data => {
         if (!alive) return;
         const rows = Array.isArray(data?.recent) ? data.recent : [];
         const mapped = rows

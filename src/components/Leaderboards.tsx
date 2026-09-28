@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { loadLeaderboard } from "@/lib/leaderboard-client";
 
 /**
  * THE BOARDS.
@@ -83,9 +84,8 @@ export default function Leaderboards() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/leaderboard")
-      .then(r => r.json())
-      .then((data: Boards) => { if (!cancelled) setBoards(data); })
+    loadLeaderboard<Boards>()
+      .then(data => { if (!cancelled) setBoards(data); })
       .catch(() => { /* no boards, no section */ });
     return () => { cancelled = true; };
   }, []);

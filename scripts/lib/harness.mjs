@@ -146,6 +146,40 @@ function runRedisCommand(args) {
       const score = live(key)?.value.get(String(rest[0]));
       return score === undefined ? null : String(score);
     }
+    case "ZINCRBY": {
+      const entry = live(key) ?? { value: new Map(), expiresAt: null };
+      const next = (entry.value.get(String(rest[1])) ?? 0) + Number(rest[0]);
+      entry.value.set(String(rest[1]), next);
+      store.set(key, entry);
+      return String(next);
+    }
+    case "ZCARD": return live(key)?.value.size ?? 0;
+    case "ZRANGE": {
+      // Rank ranges, and BYSCORE with LIMIT, as the Upstash client sends them.
+      const [start, stop, ...opts] = rest;
+      const flags = opts.map(o => String(o).toUpperCase());
+      const rev = flags.includes("REV");
+      let sorted = [...(live(key)?.value.entries() ?? [])]
+        .sort(([ma, a], [mb, b]) => a - b || (ma < mb ? -1 : ma > mb ? 1 : 0));
+      if (rev) sorted.reverse();
+      if (flags.includes("BYSCORE")) {
+        const bound = (v) => (String(v) === "+inf" ? Infinity : String(v) === "-inf" ? -Infinity : Number(v));
+        const [lo, hi] = rev ? [bound(stop), bound(start)] : [bound(start), bound(stop)];
+        sorted = sorted.filter(([, s]) => s >= lo && s <= hi);
+        const limit = flags.indexOf("LIMIT");
+        if (limit >= 0) {
+          const offset = Number(opts[limit + 1]);
+          const count = Number(opts[limit + 2]);
+          sorted = sorted.slice(offset, count < 0 ? undefined : offset + count);
+        }
+      } else {
+        const n = sorted.length;
+        const from = Math.max(0, Number(start) < 0 ? n + Number(start) : Number(start));
+        const to = Number(stop) < 0 ? n + Number(stop) : Math.min(Number(stop), n - 1);
+        sorted = from > to ? [] : sorted.slice(from, to + 1);
+      }
+      return flags.includes("WITHSCORES") ? sorted.flatMap(([m, s]) => [m, String(s)]) : sorted.map(([m]) => m);
+    }
     default:
       throw new Error(`emulated Upstash: unsupported command ${cmd}`);
   }
