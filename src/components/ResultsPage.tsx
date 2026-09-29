@@ -116,6 +116,9 @@ export default function ResultsPage({
   };
 
   const handleSave = async () => {
+    // Counted on the tap, like share_tapped: whether the image then reaches
+    // the camera roll is invisible to the page.
+    track("card_saved");
     setSaving(true);
     try {
       const file = await generateCardImage();

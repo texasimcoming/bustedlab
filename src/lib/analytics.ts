@@ -35,6 +35,8 @@ import { Redis } from "@upstash/redis";
  *                       verdict_* / result_finder / result_unresolved
  *   result_shown        the result screen rendered in the browser
  *   scan_failed         the browser gave up: timeout or dropped connection
+ *   card_saved          "Save to photos": for TikTok and Instagram, most
+ *                       likely the way a card actually gets posted
  *   share_tapped, paywall_shown, email_captured, checkout_clicked
  */
 
@@ -51,6 +53,7 @@ export const EVENTS = [
   "result_unresolved",
   "result_shown",
   "scan_failed",
+  "card_saved",
   "share_tapped",
   "paywall_shown",
   "email_captured",
@@ -67,6 +70,7 @@ export const CLIENT_EVENTS: readonly EventName[] = [
   "scan_started",
   "result_shown",
   "scan_failed",
+  "card_saved",
   "share_tapped",
   "paywall_shown",
   "checkout_clicked",
@@ -215,6 +219,9 @@ export interface Funnel {
   bustedRate: number | null;
   shares: number;
   sharesPerScan: number | null;
+  saves: number;
+  /** "Save to photos" taps per completed scan. */
+  savesPerScan: number | null;
   paywalls: number;
   paywallRate: number | null;
   emails: number;
@@ -257,6 +264,7 @@ export function buildFunnel(series: EventSeries[], scope: "window" | "total" = "
   const fair = get("verdict_fair");
   const verdictTotal = busted + overpriced + fair;
   const shares = get("share_tapped");
+  const saves = get("card_saved");
   const paywalls = get("paywall_shown");
   const emails = get("email_captured");
   const checkoutClicks = get("checkout_clicked");
@@ -281,6 +289,8 @@ export function buildFunnel(series: EventSeries[], scope: "window" | "total" = "
     // Deliberately not a percentage. A loop coefficient above 1 is the whole
     // point and a "percentage" that can exceed 100 reads as a bug.
     sharesPerScan: scans > 0 ? Math.round((shares / scans) * 1000) / 1000 : null,
+    saves,
+    savesPerScan: scans > 0 ? Math.round((saves / scans) * 1000) / 1000 : null,
     paywalls,
     paywallRate: pct(paywalls, scans),
     emails,
