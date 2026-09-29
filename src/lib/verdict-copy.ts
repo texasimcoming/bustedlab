@@ -124,7 +124,7 @@ export function buildMessage(data: CopyInput): string {
     `Same item, $${source}, publicly listed. Yours was $${retail}. The logo cost $${s}.`,
     `You nearly funded a $${s} marketing budget. One scan.`,
     `$${s}. Not a discount you missed. A markup you were handed.`,
-    `Buy at $${source}, sell at $${retail}. The $${s} in the middle is the entire company.`,
+    `Listed at $${source}, sold to you at $${retail}. The $${s} in the middle is the entire company.`,
     `${m}x the real price. That is not a margin, that is a personality, and it costs $${s}.`,
     `They called it premium. The market calls it $${source}. You were charged $${s} extra for the adjective.`,
     `$${s}. Screenshot this and send it to whoever recommended it.`,
@@ -192,17 +192,17 @@ export function buildMessage(data: CopyInput): string {
 
 // ── THE EVIDENCE STRIP ──
 //
-// The small label under the product photo, and the line under the strip. On
-// a closest match that line says "Exact item not confirmed", so nothing above
-// it may say confirmed or verified. A closest match can still be an exact
-// match (the visitor asked "where is it cheapest?" rather than for a verdict),
-// and then it says so on both lines.
+// The small label under the product photo, and the line under the strip. The
+// label names the kind of match and nothing more: it never says confirmed or
+// verified, on any card. On a closest match the line under it says "Exact item
+// not confirmed". A closest match can still be an exact match (the visitor
+// asked "where is it cheapest?" rather than for a verdict), and then it says so
+// on both lines.
 type CardMode = "VERDICT" | "FINDER" | "UNRESOLVED";
 type MatchConfidence = "exact" | "likely" | "unverified";
 
-export function plateLabel(mode: CardMode, confidence: MatchConfidence): string {
+export function plateLabel(_mode: CardMode, confidence: MatchConfidence): string {
   if (confidence === "exact") return "EXACT MATCH";
-  if (mode === "VERDICT" && confidence === "likely") return "VISUAL MATCH CONFIRMED";
   return confidence === "likely" ? "VISUAL MATCH" : "LOOKALIKE";
 }
 

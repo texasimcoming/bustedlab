@@ -207,7 +207,7 @@ const SCENARIO_BAG = {
 //
 // The honesty guard. A genuinely unidentified match must stay labeled
 // unverified; it must never be quietly upgraded so the card can say
-// "VISUAL MATCH CONFIRMED" about something nobody confirmed. What changes
+// "VISUAL MATCH" about something nobody matched. What changes
 // with the fix is only WHICH candidate gets shown alongside that honest
 // label: the engine's own best guess, rather than whatever happened to be
 // cheapest. Vision reads nothing off this photo, so no identity hints are

@@ -59,8 +59,9 @@ check("closest match that is an exact match says so on both lines",
       copy.plateLabel("FINDER", "exact") === "EXACT MATCH" && !/not confirmed/.test(copy.evidenceNote("FINDER", "exact")),
       copy.evidenceNote("FINDER", "exact"));
 check("verdict card, exact match: EXACT MATCH", copy.plateLabel("VERDICT", "exact") === "EXACT MATCH");
-check("no label anywhere says PIXEL-MATCH VERIFIED",
-      ["VERDICT", "FINDER"].every(m => ["exact", "likely", "unverified"].every(c => !/PIXEL-MATCH VERIFIED/.test(copy.plateLabel(m, c)))));
+check("verdict card, likely match: VISUAL MATCH", copy.plateLabel("VERDICT", "likely") === "VISUAL MATCH", copy.plateLabel("VERDICT", "likely"));
+const allLabels = ["VERDICT", "FINDER"].flatMap(m => ["exact", "likely", "unverified"].map(c => copy.plateLabel(m, c)));
+check("no label on any card says confirmed or verified", allLabels.every(l => !/confirm|verif/i.test(l)), allLabels.join(", "));
 
 // ════════════════════════════════════════════════════════════════
 section("VERDICT LINES DO NOT ASSERT COSTS OR SHIPPING");
@@ -73,9 +74,13 @@ for (const verdict of ["HIGH_MARKUP", "OVERPRICED", "FAIR"]) {
     verdictLines.add(copy.buildMessage({ verdict, retailPrice: 50, wholesalePrice: 5, markup: 900, savings: cents / 100, productTitle: "x" }));
   }
 }
-const asserts = [...verdictLines].filter(l => /actually costs|ships from|warehouse/i.test(l));
+const asserts = [...verdictLines].filter(l => /actually costs|ships from|warehouse|buy at|sell at/i.test(l));
 check("all 60 verdict lines reached", verdictLines.size === 60, String(verdictLines.size));
-check("none says what the item actually costs or where it ships from", asserts.length === 0, asserts.join(" | "));
+check("none says what the item actually costs, where it ships from, or what the seller buys it at",
+      asserts.length === 0, asserts.join(" | "));
+check("the listed-at line reads as written",
+      [...verdictLines].some(l => /^Listed at \$5\.00, sold to you at \$50\.00\. The \$\d+\.\d{2} in the middle is the entire company\.$/.test(l)),
+      [...verdictLines].find(l => l.startsWith("Listed at")) ?? "missing");
 
 // ════════════════════════════════════════════════════════════════
 section("THE SHARE CAPTION");
