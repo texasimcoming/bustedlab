@@ -113,7 +113,7 @@ export function buildMessage(data: CopyInput): string {
   // ── BUSTED. Outrage with receipts. ──
   const HIGH = [
     `It sells for $${source}. They charged you $${retail}. That $${s} gap has a name.`,
-    `You were about to pay ${m}x what this actually costs. $${s} of it was the story.`,
+    `You were about to pay ${m}x what it sells for elsewhere. $${s} of it was the story.`,
     `$${s}. That is what the aesthetic cost you.`,
     `Somebody's rent got paid with your $${s}.`,
     `The product is $${source}. The other $${s} is the ad you fell for.`,
@@ -130,7 +130,7 @@ export function buildMessage(data: CopyInput): string {
     `$${s}. Screenshot this and send it to whoever recommended it.`,
     `Available right now for $${source}. You were quoted $${retail}. Do what you like with that. ($${s}.)`,
     `They are not selling a product. They are selling a $${retail} price tag with a $${source} product attached. You keep the $${s}.`,
-    `${m}x. $${s}. And it ships from the same warehouse as the cheap one.`,
+    `${m}x. $${s}. And the cheap listing was one search away.`,
     `$${s} over market. That is not a business model, that is a magic trick, and you just saw the wires.`,
   ];
 
@@ -188,6 +188,28 @@ export function buildMessage(data: CopyInput): string {
     case "FAIR": return FAIR[idx % 20];
     default: return `No confirmed asking price to compare against. Closest listing found runs $${source}.`;
   }
+}
+
+// ── THE EVIDENCE STRIP ──
+//
+// The small label under the product photo, and the line under the strip. On
+// a closest match that line says "Exact item not confirmed", so nothing above
+// it may say confirmed or verified. A closest match can still be an exact
+// match (the visitor asked "where is it cheapest?" rather than for a verdict),
+// and then it says so on both lines.
+type CardMode = "VERDICT" | "FINDER" | "UNRESOLVED";
+type MatchConfidence = "exact" | "likely" | "unverified";
+
+export function plateLabel(mode: CardMode, confidence: MatchConfidence): string {
+  if (confidence === "exact") return "EXACT MATCH";
+  if (mode === "VERDICT" && confidence === "likely") return "VISUAL MATCH CONFIRMED";
+  return confidence === "likely" ? "VISUAL MATCH" : "LOOKALIKE";
+}
+
+export function evidenceNote(mode: CardMode, confidence: MatchConfidence): string {
+  if (mode === "VERDICT") return "Market analysis based on publicly available wholesale listings for the identified product.";
+  if (confidence === "exact") return "Market analysis based on publicly available listings for the identified product.";
+  return "Market analysis based on publicly available listings for a visually similar product. Exact item not confirmed.";
 }
 
 /**

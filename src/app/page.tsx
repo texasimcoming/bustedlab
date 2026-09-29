@@ -917,7 +917,7 @@ export default function Home() {
       <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px" }}>
           {[
-            { v: `${totalScans.toLocaleString("en-US")}+`, l: "Products X-rayed" },
+            { v: `${totalScans.toLocaleString("en-US")}+`, l: "Products scanned" },
             // Real markup once real scans exceed the demo's own 435% floor,
             // shown on this same page — so the figure is always something a
             // visitor can verify without leaving the site.

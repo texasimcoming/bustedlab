@@ -86,7 +86,7 @@ const ACTIONS = [
   "scanned a TikTok product",
   "busted a viral gadget",
   "scanned a skincare device",
-  "ran an X-ray",
+  "scanned a listing",
   "found a 700% markup",
   "exposed overpriced supplements",
   "scanned a fitness tracker",

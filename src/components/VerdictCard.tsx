@@ -27,7 +27,7 @@
 
 import { useEffect, useState } from "react";
 import { playVerdictTone } from "@/lib/sound";
-import { buildFinderMessage, buildMessage } from "@/lib/verdict-copy";
+import { buildFinderMessage, buildMessage, evidenceNote, plateLabel } from "@/lib/verdict-copy";
 
 export type VerdictType = "HIGH_MARKUP" | "OVERPRICED" | "FAIR" | "UNVERIFIED";
 export type CardMode = "VERDICT" | "FINDER" | "UNRESOLVED";
@@ -112,12 +112,6 @@ const UNRESOLVED_CONFIG = {
   accentBorder: "rgba(139,139,158,0.2)",
   headerBg: "linear-gradient(135deg, rgba(139,139,158,0.08) 0%, rgba(139,139,158,0.02) 100%)",
   message: "Couldn't verify this one. Try a clearer screenshot or a direct product link.",
-};
-
-const PLATE_LABEL: Record<MatchConfidence, string> = {
-  exact: "PIXEL-MATCH VERIFIED",
-  likely: "VISUAL MATCH CONFIRMED",
-  unverified: "MATCH NOT CONFIRMED",
 };
 
 interface Props {
@@ -363,7 +357,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
           // runs once on the server and once on the client and can straddle a
           // second boundary between the two.
           suppressHydrationWarning
-          >{data.isDemo ? "VERIFIED REFERENCE RECORD" : timestamp}</div>
+          >{data.isDemo ? "EXAMPLE" : timestamp}</div>
         </div>
       </div>
 
@@ -666,8 +660,8 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                     <EmptyThumb color={cfg.accentColor} />
                   )}
                 </div>
-                <MiniBrackets color={cfg.accentColor} confirmed={isVerdict} />
-                <MiniConfidenceBadge confirmed={isVerdict} color={cfg.accentColor} />
+                <MiniBrackets color={cfg.accentColor} confirmed={isVerdict || data.matchConfidence === "exact"} />
+                <MiniConfidenceBadge confirmed={isVerdict || data.matchConfidence === "exact"} color={cfg.accentColor} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{
@@ -682,14 +676,12 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                 <div style={{
                   fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: compact ? "8px" : "8.5px",
                   color: cfg.accentColor, letterSpacing: "0.7px", opacity: 0.85, lineHeight: "1.4",
-                }}>{PLATE_LABEL[data.matchConfidence]}</div>
+                }}>{plateLabel(data.mode, data.matchConfidence)}</div>
               </div>
             </div>
 
             <div style={{ fontSize: compact ? "9px" : "10px", color: "rgba(238,238,246,0.45)", lineHeight: "1.5", letterSpacing: "0.2px" }}>
-              {isVerdict
-                ? "Market analysis based on publicly available wholesale listings for the identified product."
-                : "Market analysis based on publicly available listings for a visually similar product. Exact item not confirmed."}
+              {evidenceNote(data.mode, data.matchConfidence)}
             </div>
           </>
         )}

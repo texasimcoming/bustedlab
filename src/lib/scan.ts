@@ -158,7 +158,7 @@
  * budget, and when that budget is gone the engine degrades instead of either
  * failing or spending without a ceiling: cheap gate, cache-first, the
  * enhancement layers dropped, and the gate's strongest label withheld (it
- * can no longer return "exact", so no card can say PIXEL-MATCH VERIFIED on
+ * can no longer return "exact", so no card can say EXACT MATCH on
  * a cheap judgement). A reused identification keeps full confidence even
  * then, because the strong model made it. See model-budget.ts.
  */

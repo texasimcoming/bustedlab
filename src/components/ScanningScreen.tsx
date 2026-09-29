@@ -236,20 +236,6 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
 
           </div>
 
-          {/* Progress percentage in center below image */}
-          <div style={{
-            position: "absolute",
-            bottom: "0px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            fontFamily: "var(--font-mono), ui-monospace, monospace",
-            fontSize: "11px",
-            color: "rgba(184,160,232,0.6)",
-            letterSpacing: "1px",
-            whiteSpace: "nowrap",
-          }}>
-            {Math.round(progress)}% COMPLETE
-          </div>
         </div>
 
         {/* ═══ CURRENT STAGE ═══ */}

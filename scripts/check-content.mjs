@@ -47,6 +47,37 @@ for (let cents = 100; cents < 100 + 8; cents++) {
 check("every assembled line carries the real price and platform and nothing unbacked", missing === 0, `${missing} of ${combos}`);
 
 // ════════════════════════════════════════════════════════════════
+section("THE EVIDENCE STRIP AGREES WITH THE LINE UNDER IT");
+
+for (const confidence of ["likely", "unverified"]) {
+  const plate = copy.plateLabel("FINDER", confidence);
+  const note = copy.evidenceNote("FINDER", confidence);
+  check(`closest match (${confidence}): the label says neither confirmed nor verified`, !/confirm|verif/i.test(plate), plate);
+  check(`closest match (${confidence}): the line under it still says the item is not confirmed`, /Exact item not confirmed/.test(note), note);
+}
+check("closest match that is an exact match says so on both lines",
+      copy.plateLabel("FINDER", "exact") === "EXACT MATCH" && !/not confirmed/.test(copy.evidenceNote("FINDER", "exact")),
+      copy.evidenceNote("FINDER", "exact"));
+check("verdict card, exact match: EXACT MATCH", copy.plateLabel("VERDICT", "exact") === "EXACT MATCH");
+check("no label anywhere says PIXEL-MATCH VERIFIED",
+      ["VERDICT", "FINDER"].every(m => ["exact", "likely", "unverified"].every(c => !/PIXEL-MATCH VERIFIED/.test(copy.plateLabel(m, c)))));
+
+// ════════════════════════════════════════════════════════════════
+section("VERDICT LINES DO NOT ASSERT COSTS OR SHIPPING");
+
+// Every line of every verdict pool: idx = (savings*100 + retail*7 + markup*3) % 20,
+// so stepping savings by a cent walks through all twenty.
+const verdictLines = new Set();
+for (const verdict of ["HIGH_MARKUP", "OVERPRICED", "FAIR"]) {
+  for (let cents = 1000; cents < 1020; cents++) {
+    verdictLines.add(copy.buildMessage({ verdict, retailPrice: 50, wholesalePrice: 5, markup: 900, savings: cents / 100, productTitle: "x" }));
+  }
+}
+const asserts = [...verdictLines].filter(l => /actually costs|ships from|warehouse/i.test(l));
+check("all 60 verdict lines reached", verdictLines.size === 60, String(verdictLines.size));
+check("none says what the item actually costs or where it ships from", asserts.length === 0, asserts.join(" | "));
+
+// ════════════════════════════════════════════════════════════════
 section("THE SHARE CAPTION");
 
 const busted = copy.shareCaption({ mode: "VERDICT", savings: 64.88, markup: 2079, wholesalePrice: 3.12, hasPermalink: true });

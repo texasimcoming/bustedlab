@@ -16,10 +16,11 @@ import VerdictCard, { VerdictData } from "@/components/VerdictCard";
 // brand name, matching how the real engine identifies products and for the
 // same reason: this card is not naming a specific real business.
 //
-// The card renders "VERIFIED REFERENCE RECORD" in place of a timestamp. It
-// used to carry a hardcoded date, which was three problems at once: it was a
-// claim the numbers were captured at that instant, it aged visibly, and it
-// told any visitor roughly when this site went up.
+// The card is labelled "EXAMPLE" (with "EXAMPLE SCAN" above it) in place of a
+// timestamp: it is a demonstration, not a scan anyone ran here. It used to
+// carry a hardcoded date, which was three problems at once: it was a claim
+// the numbers were captured at that instant, it aged visibly, and it told any
+// visitor roughly when this site went up.
 const DEMO_DATA: VerdictData = {
   verdict: "HIGH_MARKUP",
   mode: "VERDICT",
@@ -57,7 +58,7 @@ export default function StaticVerdictDemo() {
         marginBottom: "16px",
         textAlign: "center",
       }}>
-        VERIFIED REFERENCE SCAN
+        EXAMPLE SCAN
       </div>
       <div style={{
         borderRadius: "20px",
