@@ -51,8 +51,12 @@ body::before{content:'';position:fixed;top:50%;left:50%;transform:translate(-50%
    the cursor is borrowing a physical metaphor — a real button on a real
    surface — and every borrowed metaphor makes this read as an app. Nothing
    here has mass. */
-.btn-primary{background:linear-gradient(135deg,var(--accent-2),var(--accent));color:white;font-weight:600;border:none;cursor:pointer;transition:box-shadow 0.18s ease,background 0.18s ease,filter 0.18s ease;font-family:var(--font-sans),sans-serif}
-.btn-primary:hover:not(:disabled){background:linear-gradient(135deg,var(--accent-bright),var(--accent-2));box-shadow:0 0 34px var(--accent-glow),0 0 1px var(--accent-bright)}
+/* The gradient starts at #8563c0, not --accent-2: white on #9d7fd4 is 3.3:1,
+   under the 4.5:1 body-text minimum, and every primary label sits on it. The
+   hover answers with light (the glow) rather than a paler fill, which took
+   white text down to 2.3:1. */
+.btn-primary{background:linear-gradient(135deg,#8563c0,var(--accent));color:white;font-weight:600;border:none;cursor:pointer;transition:box-shadow 0.18s ease,background 0.18s ease,filter 0.18s ease;font-family:var(--font-sans),sans-serif}
+.btn-primary:hover:not(:disabled){box-shadow:0 0 34px var(--accent-glow),0 0 0 1px var(--accent-2),inset 0 1px 0 rgba(255,255,255,0.18)}
 .btn-primary:active:not(:disabled){filter:brightness(1.18)}
 .btn-primary:disabled{opacity:0.25;cursor:not-allowed}
 
@@ -143,6 +147,18 @@ body::before{content:'';position:fixed;top:50%;left:50%;transform:translate(-50%
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.07);border-radius:4px}
+
+/* The saved verdict card. html2canvas finds each font's baseline by setting a
+   1x1 GIF beside sample text in THIS document, and Tailwind's base styles make
+   every img a block, which breaks the measurement: every line of text in the
+   saved card came out several pixels low ("BUSTED" crowding the dollar figure
+   under it, prices on the floor of their boxes, the strike missing the asking
+   price). This matches only that sample image. */
+img[src^="data:image/gif"][width="1"][height="1"] { display: inline; }
+
+/* Balanced wrapping for short centred lines that otherwise leave one word
+   alone on the last line. */
+.balance { text-wrap: balance; }
 
 /* Warning badge: the manual line break only applies on narrow phones —
    desktop and tablet let the sentence run as one natural line. */

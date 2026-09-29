@@ -426,6 +426,10 @@ export async function POST(req: NextRequest) {
         if (result.analysis.verdict === "HIGH_MARKUP") events.push("verdict_busted");
         else if (result.analysis.verdict === "OVERPRICED") events.push("verdict_overpriced");
         else if (result.analysis.verdict === "FAIR") events.push("verdict_fair");
+      } else if (result.mode === "FINDER") {
+        events.push("result_finder");
+      } else {
+        events.push("result_unresolved");
       }
       await recordEvents(events);
     });

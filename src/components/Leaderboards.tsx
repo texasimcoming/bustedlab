@@ -114,6 +114,9 @@ export default function Leaderboards() {
         <Link href="/the-index" style={{
           fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
           letterSpacing: "1px", color: "var(--accent-bright)", textDecoration: "none", textTransform: "uppercase",
+          // A 15px-tall link was the smallest target on the page; the padding
+          // makes it tappable without moving the label.
+          padding: "14px 0 14px 12px", margin: "-14px 0",
         }}>
           Full index &rarr;
         </Link>
@@ -126,7 +129,7 @@ export default function Leaderboards() {
             onClick={() => setTab(t.key)}
             className="panel"
             style={{
-              borderRadius: "20px", padding: "6px 14px", cursor: "pointer",
+              borderRadius: "20px", padding: "10px 16px", cursor: "pointer",
               fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10.5px",
               letterSpacing: "0.6px", textTransform: "uppercase",
               color: active === t.key ? "var(--accent-bright)" : "var(--text-3)",

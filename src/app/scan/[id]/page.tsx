@@ -190,7 +190,8 @@ export default async function ScanPage({ params }: Props) {
 
         <SharedVerdict data={recordToVerdictData(record)} />
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "16px" }}>
+        {/* Its own layer, so the card's drop shadow does not paint over it. */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "16px", position: "relative", zIndex: 1 }}>
           <Stat label="Asking price" value={`$${record.retailPrice.toFixed(2)}`} color="#ef4444" />
           <Stat label="Market price" value={`$${record.wholesalePrice.toFixed(2)}`} color="#10d9a0" />
           <Stat label="Markup" value={`${record.markup.toLocaleString()}%`} color={VERDICT_COLOR[record.verdict]} />

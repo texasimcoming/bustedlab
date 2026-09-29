@@ -229,6 +229,15 @@ export default function Home() {
   const [maxMarkup, setMaxMarkup] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const urlFieldRef = useRef<HTMLInputElement>(null);
+
+  // ── The funnel. ──
+  // One landing per page load, and the first photo and the first link of a
+  // page load, so "landings that gave it something to scan" is a rate rather
+  // than a count of how often someone fiddled with the field. See
+  // src/lib/analytics.ts for the whole list and what each step means.
+  const inputTracked = useRef({ photo: false, url: false });
+  useEffect(() => { track("landing_viewed"); }, []);
 
   // ── The browser that pays unlocks itself. ──
   // The session check doubles as the claim check: once the webhook has
@@ -392,6 +401,7 @@ export default function Home() {
 
   const handleFile = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) return;
+    if (!inputTracked.current.photo) { inputTracked.current.photo = true; track("photo_selected"); }
     setUploadedFile(file);
     const reader = new FileReader();
     reader.onload = (e) => setPreview(e.target?.result as string);
@@ -437,6 +447,7 @@ export default function Home() {
     // tone that plays and a tone that silently never does.
     armAudio();
 
+    track("scan_started");
     setState("scanning");
 
     // A request with no ceiling leaves the scanning screen running forever if
@@ -505,6 +516,7 @@ export default function Home() {
       // No silent demo substitute exists, and inventing one would be the
       // single worst thing this codebase could do. Return to the landing
       // screen and say what happened.
+      track("scan_failed");
       setState("landing");
       setAuthMessage(
         (err as Error)?.name === "AbortError"
@@ -631,8 +643,10 @@ export default function Home() {
       )}
 
       {/* Scroll nudge */}
-      {showScrollNudge && (
-        <div style={{ position: "fixed", bottom: "90px", right: "16px", zIndex: 150, maxWidth: "260px" }}>
+      {showScrollNudge && !preview && !urlInput.trim() && (
+        // Above the toast lane (bottom left, just over the sticky bar): on a
+        // phone the two are wider together than the screen and overlapped.
+        <div style={{ position: "fixed", bottom: "calc(var(--bar-space) + 86px)", right: "16px", zIndex: 150, maxWidth: "260px" }}>
           <div className="card" style={{ borderRadius: "14px", padding: "16px", border: "1px solid rgba(123,94,167,0.2)", animation: "slideIn 0.3s ease" }}>
             <p style={{ fontSize: "13px", color: "var(--text)", fontWeight: "600", marginBottom: "4px" }}>Allowance unspent</p>
             <p style={{ fontSize: "12px", color: "var(--text-3)", marginBottom: "12px" }}>{userStatus.remaining} free scan{userStatus.remaining !== 1 ? "s" : ""} remaining today.</p>
@@ -679,7 +693,7 @@ export default function Home() {
           {userStatus.isPaid ? (
             <span style={{ fontSize: "11px", color: "var(--green)", fontWeight: "600", background: "var(--green-dim)", padding: "3px 10px", borderRadius: "20px", border: "1px solid var(--green-border)" }}>Unlimited</span>
           ) : (
-            <button onClick={() => setShowLoginForm(true)} className="btn-ghost" style={{ borderRadius: "8px", padding: "6px 14px", fontSize: "13px" }}>Sign in</button>
+            <button onClick={() => setShowLoginForm(true)} className="btn-ghost" style={{ borderRadius: "8px", padding: "10px 14px", fontSize: "13px" }}>Sign in</button>
           )}
         </div>
       </nav>
@@ -724,7 +738,7 @@ export default function Home() {
           <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-2)" }}>{totalScans.toLocaleString("en-US")} scanned</span>
         </div>
 
-        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "20px", textTransform: "uppercase" }}>
+        <div className="balance" style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "20px", textTransform: "uppercase" }}>
           SEARCHING 50,000,000,000+ LIVE PRODUCT LISTINGS
         </div>
 
@@ -751,7 +765,10 @@ export default function Home() {
 
         {/* URL input */}
         <div style={{ display: "flex", gap: "8px", marginBottom: "10px" }}>
-          <input type="url" value={urlInput} onChange={e => setUrlInput(e.target.value)} placeholder="DROP A URL. WE DO THE REST."
+          <input ref={urlFieldRef} type="url" aria-label="Product link" value={urlInput} onChange={e => {
+            setUrlInput(e.target.value);
+            if (e.target.value.trim() && !inputTracked.current.url) { inputTracked.current.url = true; track("url_entered"); }
+          }} placeholder="Paste a product link"
             style={{ flex: 1, minWidth: 0, background: "var(--bg-glass)", border: "1px solid var(--border-mid)", borderRadius: "10px", padding: "12px 16px", color: "var(--text)", fontSize: "14px", outline: "none", fontFamily: "var(--font-sans), sans-serif" }}
             onFocus={e => (e.target.style.borderColor = "var(--accent-2)")}
             onBlur={e => (e.target.style.borderColor = "var(--border-mid)")}
@@ -760,9 +777,12 @@ export default function Home() {
             className="btn-primary"
             onClick={() => {
               if (!userStatus.isPaid && userStatus.remaining <= 0) { openPaywall("wall"); return; }
+              // Empty: point at the field instead of sitting there greyed out,
+              // which is how this button used to greet every visitor.
+              if (!urlInput.trim()) { urlFieldRef.current?.focus(); return; }
               runScan("url");
             }}
-            disabled={!urlInput.trim() || (!userStatus.isPaid && userStatus.remaining <= 0)}
+            disabled={!userStatus.isPaid && userStatus.remaining <= 0}
             style={{ borderRadius: "10px", padding: "12px 18px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif", whiteSpace: "nowrap" }}>
             X-ray URL
           </button>
@@ -796,7 +816,7 @@ export default function Home() {
               <div style={{ position: "absolute", top: "14px", left: "50%", transform: "translateX(-50%)", fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "8px", letterSpacing: "1.5px", color: "rgba(239,68,68,0.8)", background: "rgba(7,7,14,0.7)", padding: "2px 8px", animation: "fadeIn 0.15s ease forwards" }}>TARGET ACQUIRED</div>
             </div>
             <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 50%, rgba(7,7,14,0.95) 100%)", display: "flex", alignItems: "flex-end", padding: "14px" }}>
-              <button onClick={() => { setPreview(null); setUploadedFile(null); }} className="btn-ghost" style={{ borderRadius: "7px", padding: "6px 12px", fontSize: "12px" }}>Change</button>
+              <button onClick={() => { setPreview(null); setUploadedFile(null); }} className="btn-ghost" style={{ borderRadius: "8px", padding: "10px 16px", fontSize: "13px", background: "rgba(7,7,14,0.6)" }}>Change</button>
             </div>
           </div>
         )}
@@ -837,12 +857,13 @@ export default function Home() {
               PRICE VISIBLE = ACCURATE VERDICT.<br className="warning-break" /> NO PRICE = NO READING.
             </p>
             <div style={{ width: "28px", height: "1px", background: "rgba(255,255,255,0.08)", margin: "0 auto 12px" }} />
-            <p style={{ fontSize: "10.5px", color: "var(--text-3)", marginBottom: "8px", textAlign: "center" }}>
+            <p style={{ fontSize: "12px", color: "var(--text-2)", marginBottom: "10px", textAlign: "center" }}>
               What do you want to know about this product?
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
               <button
                 onClick={() => setUserIntent("verdict")}
+                aria-pressed={userIntent === "verdict"}
                 style={{
                   background: userIntent === "verdict"
                     ? "linear-gradient(160deg, rgba(124,108,246,0.13) 0%, rgba(124,108,246,0.04) 100%)"
@@ -855,22 +876,23 @@ export default function Home() {
                     ? "inset 0 1px 0 rgba(255,255,255,0.1), 0 0 20px rgba(124,108,246,0.15)"
                     : "inset 0 1px 0 rgba(255,255,255,0.05)",
                 }}>
-                <div style={{ fontSize: "11px", fontWeight: "700", color: userIntent === "verdict" ? "#9d8bfa" : "var(--text-2)", letterSpacing: "0.2px", marginBottom: "3px" }}>
+                <div style={{ fontSize: "12.5px", fontWeight: "700", color: userIntent === "verdict" ? "#9d8bfa" : "var(--text-2)", letterSpacing: "0.2px", marginBottom: "3px" }}>
                   {userIntent === "verdict" ? "✓ " : ""}Am I overcharged?
                 </div>
-                <div style={{ fontSize: "9px", color: "var(--text-3)", lineHeight: "1.3", marginBottom: "4px" }}>
+                <div style={{ fontSize: "11px", color: "var(--text-2)", lineHeight: "1.35", marginBottom: "5px" }}>
                   Get the full verdict card
                 </div>
                 <div style={{
-                  fontSize: "8.5px", color: userIntent === "verdict" ? "#9d8bfa" : "var(--text-3)",
-                  opacity: userIntent === "verdict" ? 0.9 : 0.5, lineHeight: "1.25",
-                  borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "4px", marginTop: "1px",
+                  fontSize: "10.5px", color: userIntent === "verdict" ? "#9d8bfa" : "var(--text-3)",
+                  opacity: userIntent === "verdict" ? 1 : 0.85, lineHeight: "1.3",
+                  borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "5px", marginTop: "1px",
                 }}>
                   Needs the price visible
                 </div>
               </button>
               <button
                 onClick={() => setUserIntent("finder")}
+                aria-pressed={userIntent === "finder"}
                 style={{
                   background: userIntent === "finder"
                     ? "linear-gradient(160deg, rgba(231,95,209,0.13) 0%, rgba(231,95,209,0.04) 100%)"
@@ -883,16 +905,16 @@ export default function Home() {
                     ? "inset 0 1px 0 rgba(255,255,255,0.1), 0 0 20px rgba(231,95,209,0.15)"
                     : "inset 0 1px 0 rgba(255,255,255,0.05)",
                 }}>
-                <div style={{ fontSize: "11px", fontWeight: "700", color: userIntent === "finder" ? "#f08fe0" : "var(--text-2)", letterSpacing: "0.2px", marginBottom: "3px" }}>
+                <div style={{ fontSize: "12.5px", fontWeight: "700", color: userIntent === "finder" ? "#f08fe0" : "var(--text-2)", letterSpacing: "0.2px", marginBottom: "3px" }}>
                   {userIntent === "finder" ? "✓ " : ""}Where is it cheapest?
                 </div>
-                <div style={{ fontSize: "9px", color: "var(--text-3)", lineHeight: "1.3", marginBottom: "4px" }}>
+                <div style={{ fontSize: "11px", color: "var(--text-2)", lineHeight: "1.35", marginBottom: "5px" }}>
                   Just the cheapest link
                 </div>
                 <div style={{
-                  fontSize: "8.5px", color: userIntent === "finder" ? "#f08fe0" : "var(--text-3)",
-                  opacity: userIntent === "finder" ? 0.9 : 0.5, lineHeight: "1.25",
-                  borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "4px", marginTop: "1px",
+                  fontSize: "10.5px", color: userIntent === "finder" ? "#f08fe0" : "var(--text-3)",
+                  opacity: userIntent === "finder" ? 1 : 0.85, lineHeight: "1.3",
+                  borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "5px", marginTop: "1px",
                 }}>
                   No verdict, no price shown
                 </div>
@@ -1016,7 +1038,7 @@ export default function Home() {
 
         {!userStatus.isPaid && (
           <p style={{ fontSize: "12px", color: "var(--text-3)", marginTop: "10px" }}>
-            {userStatus.remaining} free scan{userStatus.remaining !== 1 ? "s" : ""} left today. <button onClick={() => openPaywall("choice")} style={{ background: "none", border: "none", color: "var(--accent-bright)", cursor: "pointer", fontSize: "12px", textDecoration: "underline" }}>Unlimited for $4.99</button>
+            {userStatus.remaining} free scan{userStatus.remaining !== 1 ? "s" : ""} left today. <button onClick={() => openPaywall("choice")} style={{ background: "none", border: "none", color: "var(--accent-bright)", cursor: "pointer", fontSize: "12px", textDecoration: "underline", padding: "12px 4px", margin: "-12px 0" }}>Unlimited for $4.99</button>
           </p>
         )}
       </section>
@@ -1199,18 +1221,18 @@ export default function Home() {
 
       {/* Footer */}
       <footer style={{ textAlign: "center", padding: "24px", borderTop: "1px solid var(--border)", position: "relative", zIndex: 2 }}>
-        <div style={{ marginBottom: "12px" }}>
-          <span style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "700", fontSize: "13px", color: "var(--text-3)" }}>BustedLab</span>
-          <span style={{ color: "var(--text-3)", fontSize: "12px", marginLeft: "12px" }}>The price was always real. Now you can see it.</span>
+        <div style={{ marginBottom: "8px" }}>
+          <div style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "700", fontSize: "13px", color: "var(--text-3)", marginBottom: "4px" }}>BustedLab</div>
+          <div className="balance" style={{ color: "var(--text-3)", fontSize: "12px" }}>The price was always real. Now you can see it.</div>
         </div>
-        <div style={{ display: "flex", justifyContent: "center", gap: "20px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: "4px 8px", flexWrap: "wrap" }}>
           {[
             { label: "The Index", href: "/the-index" },
             { label: "Terms", href: "/terms" },
             { label: "Privacy", href: "/privacy" },
             { label: "DMCA", href: "/dmca" },
           ].map(link => (
-            <a key={link.href} href={link.href} style={{ color: "var(--text-3)", fontSize: "12px", textDecoration: "none" }}
+            <a key={link.href} href={link.href} style={{ color: "var(--text-3)", fontSize: "12px", textDecoration: "none", padding: "12px 8px", display: "inline-block" }}
               onMouseEnter={e => (e.currentTarget.style.color = "var(--text-2)")}
               onMouseLeave={e => (e.currentTarget.style.color = "var(--text-3)")}>
               {link.label}

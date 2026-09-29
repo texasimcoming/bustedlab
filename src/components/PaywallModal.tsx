@@ -121,7 +121,7 @@ export default function PaywallModal({
             onClick={onClose}
             aria-label="Close"
             style={{
-              marginLeft: "auto", width: "28px", height: "28px", borderRadius: "8px",
+              margin: "-4px -8px -4px auto", width: "36px", height: "36px", borderRadius: "9px",
               display: "flex", alignItems: "center", justifyContent: "center",
               background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
               color: "rgba(238,238,246,0.7)", cursor: "pointer", padding: 0,
@@ -199,8 +199,8 @@ export default function PaywallModal({
             onClick={onLogin}
             style={{
               width: "100%", background: "none", border: "none",
-              color: "rgba(238,238,246,0.62)", fontSize: "12px",
-              cursor: "pointer", padding: "8px", fontFamily: "var(--font-sans), sans-serif",
+              color: "rgba(238,238,246,0.62)", fontSize: "13px",
+              cursor: "pointer", padding: "12px 8px", fontFamily: "var(--font-sans), sans-serif",
             }}
           >
             Already paid? Sign in with email

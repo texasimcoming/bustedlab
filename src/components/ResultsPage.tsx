@@ -52,6 +52,9 @@ export default function ResultsPage({
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+  // The result screen actually rendered: the step between the server
+  // finishing a scan and anyone seeing it.
+  useEffect(() => { track("result_shown"); }, []);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const { sourceProduct: sp, analysis: an, mode, matchConfidence } = result;
@@ -97,6 +100,9 @@ export default function ResultsPage({
       }
       const canvas = await html2canvas(cardRef.current, {
         backgroundColor: "#07070e", scale: 3, useCORS: true, allowTaint: true, logging: false,
+        // The text offset html2canvas used to add to every saved card is
+        // fixed in globals.css (search "html2canvas"), not here: it measures
+        // fonts in the live page, so an option on the copy cannot reach it.
       });
       return new Promise((resolve) => {
         canvas.toBlob(blob => {
@@ -234,11 +240,13 @@ export default function ResultsPage({
           </div>
         ) : (
           <>
-            <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
-              <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "14px", borderRadius: "10px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif", background: "linear-gradient(135deg, #9d7fd4, #7b5ea7)", color: "white", border: "none", cursor: "pointer", transition: "all 0.18s ease", opacity: saving ? 0.5 : 1 }}>
+            {/* Its own layer: the card above is positioned, so its drop shadow
+                otherwise paints on top of this row and greys the buttons out. */}
+            <div style={{ display: "flex", gap: "8px", marginBottom: "8px", position: "relative", zIndex: 1 }}>
+              <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "14px", borderRadius: "10px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif", background: "linear-gradient(135deg, #8563c0, #7b5ea7)", color: "white", border: "none", cursor: "pointer", transition: "all 0.18s ease", opacity: saving ? 0.5 : 1 }}>
                 {saving ? "Generating..." : saved ? "Saved" : "Save to photos"}
               </button>
-              <button onClick={handleShare} disabled={sharing} style={{ padding: "14px 16px", borderRadius: "10px", fontSize: "14px", background: "transparent", color: copied ? "#10d9a0" : "rgba(238,238,246,0.5)", border: copied ? "1px solid rgba(16,217,160,0.3)" : "1px solid rgba(255,255,255,0.09)", cursor: sharing ? "default" : "pointer", transition: "color 0.18s ease, border-color 0.18s ease", fontFamily: "var(--font-sans), sans-serif", opacity: sharing ? 0.5 : 1 }}>
+              <button onClick={handleShare} disabled={sharing} style={{ padding: "14px 16px", borderRadius: "10px", fontSize: "14px", background: "transparent", color: copied ? "#10d9a0" : "rgba(238,238,246,0.8)", border: copied ? "1px solid rgba(16,217,160,0.3)" : "1px solid rgba(255,255,255,0.14)", cursor: sharing ? "default" : "pointer", transition: "color 0.18s ease, border-color 0.18s ease", fontFamily: "var(--font-sans), sans-serif", opacity: sharing ? 0.5 : 1 }}>
                 {sharing ? "Rendering" : copied ? "Copied" : "Share"}
               </button>
             </div>
@@ -307,7 +315,7 @@ export default function ResultsPage({
                 <p style={{ fontSize: "13px", color: "rgba(238,238,246,0.5)", marginBottom: "16px", lineHeight: "1.55" }}>
                   One-time $4.99. Unlimited scans. HD verdict cards. Forever.
                 </p>
-                <button onClick={onUpgrade} onPointerEnter={onUpgradeIntent} onPointerDown={onUpgradeIntent} onFocus={onUpgradeIntent} style={{ padding: "11px 28px", borderRadius: "9px", fontSize: "14px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif", background: "linear-gradient(135deg, #9d7fd4, #7b5ea7)", color: "white", border: "none", cursor: "pointer" }}>
+                <button onClick={onUpgrade} onPointerEnter={onUpgradeIntent} onPointerDown={onUpgradeIntent} onFocus={onUpgradeIntent} style={{ padding: "11px 28px", borderRadius: "9px", fontSize: "14px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif", background: "linear-gradient(135deg, #8563c0, #7b5ea7)", color: "white", border: "none", cursor: "pointer" }}>
                   Get unlimited access
                 </button>
               </div>

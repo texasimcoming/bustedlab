@@ -3,7 +3,7 @@ import { Redis } from "@upstash/redis";
 /**
  * FIRST-PARTY ANALYTICS.
  *
- * Six events, counted in Redis, and nothing else. No PostHog, no Plausible, no
+ * A handful of events, counted in Redis, and nothing else. No PostHog, no Plausible, no
  * Google, no script tag, no cookie, no identifier of any kind. That is not
  * squeamishness: the privacy policy states that no third-party scripts run on
  * this site, and the moment a tag manager lands on the page that sentence
@@ -17,20 +17,40 @@ import { Redis } from "@upstash/redis";
  * scans finished". That is enough to run the machine and it is the most that
  * can be collected without becoming the thing this product exists to expose.
  *
- * AUTHORITATIVE vs BEST-EFFORT. Three of these are counted on the server at
+ * AUTHORITATIVE vs BEST-EFFORT. Some of these are counted on the server at
  * the moment the thing happens and cannot be forged from outside:
- * scan_completed, the three verdict counters, and email_captured. The other
- * three are browser interactions and reach the server through a public beacon,
- * so they are rate limited but ultimately best-effort. The read endpoint
- * labels which is which, because a funnel that silently mixes a number you can
- * trust with one you cannot is worse than no funnel.
+ * scan_completed, the verdict and result-type counters, and email_captured.
+ * The rest are browser interactions and reach the server through a public
+ * beacon, so they are rate limited but ultimately best-effort. The read
+ * endpoint labels which is which, because a funnel that silently mixes a
+ * number you can trust with one you cannot is worse than no funnel.
+ *
+ * THE FUNNEL, in the order a visitor meets it:
+ *   landing_viewed      the landing page rendered in a browser running JS
+ *   photo_selected /    the visitor gave it something to scan: a photo
+ *   url_entered         picked or taken, or a link typed or pasted (once each
+ *                       per page load, so fiddling with the field is one)
+ *   scan_started        a scan request actually went out
+ *   scan_completed      the server finished it (server-side), split into
+ *                       verdict_* / result_finder / result_unresolved
+ *   result_shown        the result screen rendered in the browser
+ *   scan_failed         the browser gave up: timeout or dropped connection
+ *   share_tapped, paywall_shown, email_captured, checkout_clicked
  */
 
 export const EVENTS = [
+  "landing_viewed",
+  "photo_selected",
+  "url_entered",
+  "scan_started",
   "scan_completed",
   "verdict_busted",
   "verdict_overpriced",
   "verdict_fair",
+  "result_finder",
+  "result_unresolved",
+  "result_shown",
+  "scan_failed",
   "share_tapped",
   "paywall_shown",
   "email_captured",
@@ -41,6 +61,12 @@ export type EventName = (typeof EVENTS)[number];
 
 /** The events a browser is allowed to report. Everything else is server-side. */
 export const CLIENT_EVENTS: readonly EventName[] = [
+  "landing_viewed",
+  "photo_selected",
+  "url_entered",
+  "scan_started",
+  "result_shown",
+  "scan_failed",
   "share_tapped",
   "paywall_shown",
   "checkout_clicked",
@@ -131,8 +157,8 @@ function lastNDays(n: number): string[] {
 /**
  * Reads the whole board in two round trips regardless of the window: one MGET
  * for every day of every event, one for the lifetime totals. A day-by-day loop
- * would be 8 x days round trips, which for a 30-day window is 240 requests to
- * render one page.
+ * would be events x days round trips, which for a 30-day window is hundreds
+ * of requests to render one page.
  */
 export async function readEvents(days = 30): Promise<EventSeries[]> {
   const window = lastNDays(days);
@@ -170,7 +196,21 @@ export async function readEvents(days = 30): Promise<EventSeries[]> {
 }
 
 export interface Funnel {
+  landings: number;
+  inputs: { photo: number; url: number };
+  /** Landings where the visitor gave it something to scan. */
+  inputRate: number | null;
+  scanStarts: number;
+  /** Landings that started a scan: the number the first screen exists for. */
+  scanStartRate: number | null;
   scans: number;
+  results: { verdict: number; finder: number; unresolved: number };
+  /** Completed scans that found nothing to show. */
+  unresolvedRate: number | null;
+  resultsShown: number;
+  scanFailures: number;
+  /** Started scans the browser gave up on (timeout, dropped connection). */
+  scanFailureRate: number | null;
   verdicts: { busted: number; overpriced: number; fair: number };
   bustedRate: number | null;
   shares: number;
@@ -203,6 +243,14 @@ export function buildFunnel(series: EventSeries[], scope: "window" | "total" = "
     return scope === "total" ? found.total : found.windowTotal;
   };
 
+  const landings = get("landing_viewed");
+  const photo = get("photo_selected");
+  const url = get("url_entered");
+  const scanStarts = get("scan_started");
+  const finder = get("result_finder");
+  const unresolved = get("result_unresolved");
+  const resultsShown = get("result_shown");
+  const scanFailures = get("scan_failed");
   const scans = get("scan_completed");
   const busted = get("verdict_busted");
   const overpriced = get("verdict_overpriced");
@@ -214,7 +262,19 @@ export function buildFunnel(series: EventSeries[], scope: "window" | "total" = "
   const checkoutClicks = get("checkout_clicked");
 
   return {
+    landings,
+    inputs: { photo, url },
+    // A visitor can do both, so this can overstate slightly; it is a rate of
+    // input events per landing, not of distinct visitors.
+    inputRate: pct(photo + url, landings),
+    scanStarts,
+    scanStartRate: pct(scanStarts, landings),
     scans,
+    results: { verdict: verdictTotal, finder, unresolved },
+    unresolvedRate: pct(unresolved, scans),
+    resultsShown,
+    scanFailures,
+    scanFailureRate: pct(scanFailures, scanStarts),
     verdicts: { busted, overpriced, fair },
     bustedRate: pct(busted, verdictTotal),
     shares,

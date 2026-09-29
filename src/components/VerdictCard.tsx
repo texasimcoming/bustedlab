@@ -527,7 +527,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
             lineHeight: "1.4", whiteSpace: "nowrap",
           }}>BUSTEDLAB SCAN</div>
           <div style={{
-            fontSize: compact ? "7px" : "8px", color: "rgba(238,238,246,0.22)", letterSpacing: "0.3px",
+            fontSize: compact ? "7.5px" : "8.5px", color: "rgba(238,238,246,0.45)", letterSpacing: "0.3px",
             marginTop: "2px", fontFamily: "var(--font-mono), ui-monospace, monospace", lineHeight: "1.5",
           }}
           // The results page pins its moment in a state initialiser, which
@@ -613,7 +613,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                   borderRadius: compact ? "12px" : "14px", padding: compact ? "16px" : "20px",
                   marginBottom: compact ? "12px" : "14px", textAlign: "center",
                 }}>
-                  <div style={{ fontSize: compact ? "9px" : "10px", color: "rgba(238,238,246,0.35)", textTransform: "uppercase", letterSpacing: "1.2px", marginBottom: "8px", fontWeight: "600" }}>
+                  <div style={{ fontSize: compact ? "9px" : "10px", color: "rgba(238,238,246,0.5)", textTransform: "uppercase", letterSpacing: "1.2px", marginBottom: "8px", fontWeight: "600" }}>
                     Cheapest price found
                   </div>
                   <div style={{
@@ -735,7 +735,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                       {data.markup > 9999 ? "9999+" : `${data.markup}%`}
                     </div>
                     <div style={{
-                      fontSize: "7px", color: "rgba(238,238,246,0.3)",
+                      fontSize: "7px", color: "rgba(238,238,246,0.5)",
                       letterSpacing: "0.8px", marginTop: "3px",
                       textTransform: "uppercase",
                     }}>markup</div>
@@ -755,28 +755,30 @@ export default function VerdictCard({ data, animate = true, compact = false, car
             {/* Price comparison row */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 20px 1fr", gap: compact ? "8px" : "10px", alignItems: "center", marginBottom: compact ? "16px" : "20px" }}>
               <div style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)", borderRadius: compact ? "10px" : "12px", padding: compact ? "11px 13px" : "13px 15px" }}>
-                <div style={{ fontSize: compact ? "9px" : "10px", color: "rgba(238,238,246,0.3)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: compact ? "4px" : "5px", fontWeight: "600" }}>
+                <div style={{ fontSize: compact ? "9px" : "10px", color: "rgba(238,238,246,0.5)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: compact ? "4px" : "5px", fontWeight: "600" }}>
                   Retail asking
                 </div>
-                <div style={{ position: "relative", display: "inline-block" }}>
-                  <div style={{
-                    fontFamily: "var(--font-display), sans-serif", fontSize: compact ? "20px" : "24px", fontWeight: "700", color: "#ef4444", letterSpacing: "-0.8px", lineHeight: "1.2",
-                    opacity: numbersIn ? 1 : 0,
-                    transform: numbersIn ? "none" : "translateY(4px)",
-                    transition: "opacity 0.25s ease 0.05s, transform 0.25s ease 0.05s",
-                  }}>
-                    ${data.retailPrice.toFixed(2)}
-                  </div>
-                  {isVerdict && (
-                    <div style={{ position: "absolute", top: "50%", left: "-2px", right: "-2px", height: "2px", background: "linear-gradient(90deg, transparent, #ef4444, #ef4444, transparent)", marginTop: "-1px", opacity: 0.7 }} />
-                  )}
+                {/* The strike is a text decoration rather than a line laid
+                    over the number, so it sits on the text wherever the text is
+                    drawn: on screen and in the saved image (see "html2canvas"
+                    in globals.css for why those used to disagree). */}
+                <div style={{
+                  fontFamily: "var(--font-display), sans-serif", fontSize: compact ? "20px" : "24px", fontWeight: "700", color: "#ef4444", letterSpacing: "-0.8px", lineHeight: "1.2",
+                  textDecoration: isVerdict ? "line-through" : "none",
+                  textDecorationColor: "rgba(239,68,68,0.75)",
+                  textDecorationThickness: "2px",
+                  opacity: numbersIn ? 1 : 0,
+                  transform: numbersIn ? "none" : "translateY(4px)",
+                  transition: "opacity 0.25s ease 0.05s, transform 0.25s ease 0.05s",
+                }}>
+                  ${data.retailPrice.toFixed(2)}
                 </div>
               </div>
 
-              <div style={{ textAlign: "center", fontSize: compact ? "9px" : "10px", color: "rgba(238,238,246,0.2)", fontWeight: "600", letterSpacing: "0.5px" }}>VS</div>
+              <div style={{ textAlign: "center", fontSize: compact ? "9px" : "10px", color: "rgba(238,238,246,0.38)", fontWeight: "600", letterSpacing: "0.5px" }}>VS</div>
 
               <div style={{ background: "rgba(16,217,160,0.06)", border: "1px solid rgba(16,217,160,0.18)", borderRadius: compact ? "10px" : "12px", padding: compact ? "11px 13px" : "13px 15px" }}>
-                <div style={{ fontSize: compact ? "9px" : "10px", color: "rgba(238,238,246,0.3)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: compact ? "4px" : "5px", fontWeight: "600" }}>
+                <div style={{ fontSize: compact ? "9px" : "10px", color: "rgba(238,238,246,0.5)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: compact ? "4px" : "5px", fontWeight: "600" }}>
                   {isVerdict ? "Wholesale from" : "Closest listing"}
                 </div>
                 <div style={{
@@ -815,7 +817,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                       alt=""
                       onError={() => setImageFailed(true)}
                       style={{
-                        width: "100%", height: "100%", objectFit: "cover",
+                        display: "block", width: "100%", height: "100%", objectFit: "cover",
                         filter: isFinder ? "saturate(0.35) brightness(0.85)" : "none",
                       }}
                     />
@@ -860,12 +862,12 @@ export default function VerdictCard({ data, animate = true, compact = false, car
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: "#10d9a0", boxShadow: "0 0 4px rgba(16,217,160,0.6)" }} />
-          <span style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "700", fontSize: compact ? "10px" : "11px", color: "rgba(184,160,232,0.6)", letterSpacing: "0.5px" }}>
+          <span style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "700", fontSize: compact ? "12px" : "13px", color: "rgba(196,175,248,0.9)", letterSpacing: "0.3px" }}>
             bustedlab.com
           </span>
         </div>
         {data.scanId && (
-          <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: compact ? "8px" : "9px", color: "rgba(238,238,246,0.15)", letterSpacing: "0.5px" }}>
+          <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: compact ? "8px" : "9px", color: "rgba(238,238,246,0.35)", letterSpacing: "0.5px" }}>
             {data.scanId}
           </div>
         )}

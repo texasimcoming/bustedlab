@@ -310,7 +310,7 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
           <p key={extended ? "dext" : `d${stageIndex}`} style={{
             fontFamily: "var(--font-mono), ui-monospace, monospace",
             fontSize: "11px",
-            color: "rgba(238,238,246,0.35)",
+            color: "rgba(238,238,246,0.55)",
             letterSpacing: "0.5px",
             animation: "stageFadeUp 0.3s ease 0.05s forwards",
             opacity: 0,
@@ -381,7 +381,7 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
             </div>
           </div>
         </div>
-        <div style={{ marginTop: "8px", textAlign: "center", fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px", color: "rgba(238,238,246,0.16)", letterSpacing: "1px" }}>
+        <div style={{ marginTop: "8px", textAlign: "center", fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px", color: "rgba(238,238,246,0.35)", letterSpacing: "1px" }}>
           {extended ? "EXTENDED SEARCH" : `STAGE ${stageIndex + 1} / ${SCAN_STAGES.length}`}
         </div>
       </div>
