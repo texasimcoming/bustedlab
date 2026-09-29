@@ -214,6 +214,9 @@ export default function Home() {
   // Whether checkout opens as the Lemon Squeezy overlay rather than a page
   // navigation. Decided by the server from the configured link.
   const [checkoutEmbed, setCheckoutEmbed] = useState(false);
+  // Who takes the payment ("lemonsqueezy", "gumroad"), for the trust line on
+  // the upgrade screen.
+  const [checkoutProvider, setCheckoutProvider] = useState<string | undefined>(undefined);
   // One checkout attempt at a time: a second tap while the overlay script is
   // arriving must not open two overlays or navigate out from under one.
   const checkoutInFlight = useRef(false);
@@ -228,8 +231,17 @@ export default function Home() {
   const [totalSavings, setTotalSavings] = useState(0);
   const [maxMarkup, setMaxMarkup] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
   const urlFieldRef = useRef<HTMLInputElement>(null);
+  const scanItRef = useRef<HTMLButtonElement>(null);
+
+  // A picked photo pushes the question and the scan button below the fold on
+  // a phone. Bring them up, so the next tap is on screen. scroll-padding on
+  // <html> keeps the button clear of the sticky bar.
+  useEffect(() => {
+    if (!preview) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    scanItRef.current?.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+  }, [preview]);
 
   // ── The funnel. ──
   // One landing per page load, and the first photo and the first link of a
@@ -356,6 +368,7 @@ export default function Home() {
     fetch("/api/checkout").then(r => r.json()).then(d => {
       setCheckoutAvailable(!!d.available);
       setCheckoutEmbed(!!d.available && !!d.embed);
+      setCheckoutProvider(typeof d.provider === "string" ? d.provider : undefined);
     }).catch(() => setCheckoutAvailable(false));
   }, []);
 
@@ -402,6 +415,7 @@ export default function Home() {
   const handleFile = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) return;
     if (!inputTracked.current.photo) { inputTracked.current.photo = true; track("photo_selected"); }
+    setUserIntent("verdict");
     setUploadedFile(file);
     const reader = new FileReader();
     reader.onload = (e) => setPreview(e.target?.result as string);
@@ -433,8 +447,10 @@ export default function Home() {
     setDragOver(false);
   }, []);
 
-  // The scan counter is real — it only changes when a real scan happens.
-  // No synthetic auto-increment.
+  // The displayed scan count is not a pure count of real scans. It is the
+  // larger of SCAN_BASELINE and the server's real total, and on top of that
+  // the tick above adds 1 to 3 every 20 to 45 seconds in this browser. The
+  // server's real figure is telemetry.totalScans.
 
   const runScan = async (type: "image" | "url") => {
     if (!userStatus.isPaid && userStatus.remaining <= 0) { openPaywall("wall"); return; }
@@ -603,7 +619,39 @@ export default function Home() {
     }
   };
 
-  const handleReset = () => { setState("landing"); setPreview(null); setResult(null); setUploadedFile(null); setUrlInput(""); };
+  const handleReset = () => { setState("landing"); setPreview(null); setResult(null); setUploadedFile(null); setUrlInput(""); setUserIntent("verdict"); };
+
+  // What the visitor wants to know, asked once there is something to scan.
+  // The verdict is preselected; the cheapest-listing search is the other
+  // option. Purple is the only colour here, like every other control.
+  const intentChoice = (input: "photo" | "link") => (
+    <div style={{ margin: "14px 0 12px" }}>
+      <p id="intent-label" style={{ fontSize: "12px", color: "var(--text-2)", marginBottom: "8px", textAlign: "center" }}>
+        What do you want to know?
+      </p>
+      <div role="group" aria-labelledby="intent-label" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+        {([
+          ["verdict", "Am I overcharged?", input === "photo" ? "The full verdict. Needs the price in the shot." : "The full verdict."],
+          ["finder", "Where is it cheapest?", "Just the cheapest match we find."],
+        ] as const).map(([key, title, sub]) => {
+          const on = userIntent === key;
+          return (
+            <button key={key} onClick={() => setUserIntent(key)} aria-pressed={on} style={{
+              background: on ? "rgba(123,94,167,0.14)" : "rgba(255,255,255,0.02)",
+              border: `1px solid ${on ? "rgba(157,127,212,0.55)" : "rgba(255,255,255,0.08)"}`,
+              borderRadius: "11px", padding: "11px 10px", cursor: "pointer", textAlign: "center",
+              fontFamily: "var(--font-sans), sans-serif", transition: "background 0.18s ease, border-color 0.18s ease",
+            }}>
+              <div style={{ fontSize: "13px", fontWeight: "700", color: on ? "var(--accent-bright)" : "var(--text-2)", marginBottom: "3px" }}>
+                {on ? "\u2713 " : ""}{title}
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-3)", lineHeight: "1.35" }}>{sub}</div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   if (state === "scanning") return <ScanningScreen preview={preview} />;
   if (state === "results" && result) return <ResultsPage result={result} onReset={handleReset} isPaid={userStatus.isPaid} onUpgrade={handleCheckout} onUpgradeIntent={warmCheckout} />;
@@ -639,14 +687,15 @@ export default function Home() {
           onCheckout={handleCheckout}
           onLogin={() => { setShowPaywall(false); setShowLoginForm(true); }}
           checkoutAvailable={checkoutAvailable}
+          provider={checkoutProvider}
         />
       )}
 
       {/* Scroll nudge */}
       {showScrollNudge && !preview && !urlInput.trim() && (
-        // Above the toast lane (bottom left, just over the sticky bar): on a
-        // phone the two are wider together than the screen and overlapped.
-        <div style={{ position: "fixed", bottom: "calc(var(--bar-space) + 86px)", right: "16px", zIndex: 150, maxWidth: "260px" }}>
+        // Just above the sticky bar. On phones the toast now comes in under
+        // the nav (globals.css), so the two no longer share the bottom lane.
+        <div style={{ position: "fixed", bottom: "calc(var(--bar-space) + 10px)", right: "16px", zIndex: 150, maxWidth: "260px" }}>
           <div className="card" style={{ borderRadius: "14px", padding: "16px", border: "1px solid rgba(123,94,167,0.2)", animation: "slideIn 0.3s ease" }}>
             <p style={{ fontSize: "13px", color: "var(--text)", fontWeight: "600", marginBottom: "4px" }}>Allowance unspent</p>
             <p style={{ fontSize: "12px", color: "var(--text-3)", marginBottom: "12px" }}>{userStatus.remaining} free scan{userStatus.remaining !== 1 ? "s" : ""} remaining today.</p>
@@ -753,288 +802,96 @@ export default function Home() {
           <span className="hero-hook-corner hero-hook-corner-tl" aria-hidden="true" />
           <span className="hero-hook-corner hero-hook-corner-br" aria-hidden="true" />
           <p className="hero-hook" style={{ fontSize: "16px", color: "var(--text-2)", lineHeight: "1.7", maxWidth: "440px", margin: "0 auto" }}>
-            Drop a screenshot or paste a URL. In eight seconds, see what they paid, what they charged, and the number they hoped you would never calculate.
+            Drop a screenshot or paste a link. See what it sells for elsewhere, what they are asking, and the number they hoped you would never calculate.
           </p>
         </div>
 
-        {/* The "no price visible?" guidance lives in the intent panel just
-            below ("Where is it cheapest?" / "Needs the price visible"). It
-            used to be said here as well, which pushed the scan buttons
-            below the fold on phones to say the same thing twice. */}
-        <div style={{ height: "20px" }} />
+        <div style={{ height: "22px" }} />
 
-        {/* URL input */}
-        <div style={{ display: "flex", gap: "8px", marginBottom: "10px" }}>
-          <input ref={urlFieldRef} type="url" aria-label="Product link" value={urlInput} onChange={e => {
-            setUrlInput(e.target.value);
-            if (e.target.value.trim() && !inputTracked.current.url) { inputTracked.current.url = true; track("url_entered"); }
-          }} placeholder="Paste a product link"
-            style={{ flex: 1, minWidth: 0, background: "var(--bg-glass)", border: "1px solid var(--border-mid)", borderRadius: "10px", padding: "12px 16px", color: "var(--text)", fontSize: "14px", outline: "none", fontFamily: "var(--font-sans), sans-serif" }}
-            onFocus={e => (e.target.style.borderColor = "var(--accent-2)")}
-            onBlur={e => (e.target.style.borderColor = "var(--border-mid)")}
-          />
-          <button
-            className="btn-primary"
-            onClick={() => {
-              if (!userStatus.isPaid && userStatus.remaining <= 0) { openPaywall("wall"); return; }
-              // Empty: point at the field instead of sitting there greyed out,
-              // which is how this button used to greet every visitor.
-              if (!urlInput.trim()) { urlFieldRef.current?.focus(); return; }
-              runScan("url");
-            }}
-            disabled={!userStatus.isPaid && userStatus.remaining <= 0}
-            style={{ borderRadius: "10px", padding: "12px 18px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif", whiteSpace: "nowrap" }}>
-            X-ray URL
-          </button>
-        </div>
-
-        {/* Divider */}
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "14px" }}>
-          <div style={{ flex: 1, height: "1px", background: "var(--border)" }} />
-          <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", color: "var(--text-3)", letterSpacing: "1px" }}>OR SCAN DIRECTLY</span>
-          <div style={{ flex: 1, height: "1px", background: "var(--border)" }} />
-        </div>
-
-        {/* Preview - shown after image selected */}
-        {preview && (
-          <div style={{ borderRadius: "14px", overflow: "hidden", marginBottom: "10px", position: "relative" }}>
-            {/* A local FileReader data: URL for the photo the visitor just
-                picked. next/image cannot optimize a data URL and would route it
-                through the optimizer for nothing. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={preview} alt="" style={{ width: "100%", maxHeight: "260px", objectFit: "cover", display: "block" }} />
-            {/* Targeting reticles - snap onto image in 100ms */}
-            <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-              {/* Corner brackets */}
-              <div style={{ position: "absolute", top: "10px", left: "10px", width: "16px", height: "16px", borderTop: "2px solid #ef4444", borderLeft: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
-              <div style={{ position: "absolute", top: "10px", right: "10px", width: "16px", height: "16px", borderTop: "2px solid #ef4444", borderRight: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
-              <div style={{ position: "absolute", bottom: "10px", left: "10px", width: "16px", height: "16px", borderBottom: "2px solid #ef4444", borderLeft: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
-              <div style={{ position: "absolute", bottom: "10px", right: "10px", width: "16px", height: "16px", borderBottom: "2px solid #ef4444", borderRight: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
-              {/* Center crosshair lines */}
-              <div style={{ position: "absolute", top: "50%", left: "14px", right: "14px", height: "1px", background: "linear-gradient(90deg, transparent, rgba(239,68,68,0.4), rgba(239,68,68,0.4), transparent)", transform: "translateY(-50%)" }} />
-              {/* Status label */}
-              <div style={{ position: "absolute", top: "14px", left: "50%", transform: "translateX(-50%)", fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "8px", letterSpacing: "1.5px", color: "rgba(239,68,68,0.8)", background: "rgba(7,7,14,0.7)", padding: "2px 8px", animation: "fadeIn 0.15s ease forwards" }}>TARGET ACQUIRED</div>
+        {/* ── THE ACTION ──
+            One dominant thing to do on arrival: scan a photo. One button
+            covers the camera and the photo library, because the phone's own
+            picker offers both. The link field sits under it as the secondary
+            path. What the visitor wants to know is asked only once there is
+            something to scan, with the verdict already chosen. */}
+        {preview ? (
+          <>
+            <div style={{ borderRadius: "14px", overflow: "hidden", marginBottom: "4px", position: "relative" }}>
+              {/* A local FileReader data: URL for the photo the visitor just
+                  picked. next/image cannot optimize a data URL and would route it
+                  through the optimizer for nothing. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={preview} alt="" style={{ width: "100%", maxHeight: "260px", objectFit: "cover", display: "block" }} />
+              {/* Reticle - snaps onto the image in 100ms */}
+              <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                <div style={{ position: "absolute", top: "10px", left: "10px", width: "16px", height: "16px", borderTop: "2px solid #ef4444", borderLeft: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
+                <div style={{ position: "absolute", top: "10px", right: "10px", width: "16px", height: "16px", borderTop: "2px solid #ef4444", borderRight: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
+                <div style={{ position: "absolute", bottom: "10px", left: "10px", width: "16px", height: "16px", borderBottom: "2px solid #ef4444", borderLeft: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
+                <div style={{ position: "absolute", bottom: "10px", right: "10px", width: "16px", height: "16px", borderBottom: "2px solid #ef4444", borderRight: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
+                <div style={{ position: "absolute", top: "50%", left: "14px", right: "14px", height: "1px", background: "linear-gradient(90deg, transparent, rgba(239,68,68,0.4), rgba(239,68,68,0.4), transparent)", transform: "translateY(-50%)" }} />
+              </div>
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 50%, rgba(7,7,14,0.95) 100%)", display: "flex", alignItems: "flex-end", padding: "14px" }}>
+                <button onClick={() => { setPreview(null); setUploadedFile(null); }} className="btn-ghost" style={{ borderRadius: "8px", padding: "10px 16px", fontSize: "13px", background: "rgba(7,7,14,0.6)" }}>Change</button>
+              </div>
             </div>
-            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 50%, rgba(7,7,14,0.95) 100%)", display: "flex", alignItems: "flex-end", padding: "14px" }}>
-              <button onClick={() => { setPreview(null); setUploadedFile(null); }} className="btn-ghost" style={{ borderRadius: "8px", padding: "10px 16px", fontSize: "13px", background: "rgba(7,7,14,0.6)" }}>Change</button>
-            </div>
-          </div>
-        )}
 
-        {/* Warning and intent toggle merged into one panel instead of two
-            adjacent bordered boxes. This section had four competing visual
-            treatments stacked in a few hundred pixels - a line divider, a
-            bordered warning box with a spinning orb, a separate glass
-            panel, and two heavy gradient buttons - none of them calm
-            together even though each was fine alone. Cutting one full
-            panel and its border is the actual fix for "cramped," not
-            softer colors on the same four things. */}
-        {!preview && (
-          <div className="intent-frame" style={{
-            position: "relative",
-            marginTop: "26px", marginBottom: "10px", padding: "20px 10px 10px",
-            borderRadius: "14px",
-            background: "linear-gradient(180deg, rgba(255,255,255,0.025) 0%, rgba(255,255,255,0.005) 100%)",
-            border: "1px solid rgba(255,255,255,0.06)",
-          }}>
-            {/* Pure light, no shape - the same treatment used on the
-                payment box, for the same reason: this is the first thing
-                a visitor sees, and restraint reads as more deliberate than
-                any object could. */}
-            <div className="upgrade-light-core" style={{
-              position: "absolute", top: "-16px", left: "50%", transform: "translateX(-50%)",
-              width: "60px", height: "32px", pointerEvents: "none",
-              background: "radial-gradient(ellipse 50% 60% at 50% 100%, rgba(232,220,255,0.85) 0%, rgba(157,127,212,0.45) 35%, rgba(123,94,167,0.12) 65%, transparent 85%)",
-              filter: "blur(1px)",
-            }} />
-            <div className="upgrade-light-point" style={{
-              position: "absolute", top: "0px", left: "50%", transform: "translateX(-50%)",
-              width: "5px", height: "5px", borderRadius: "50%",
-              background: "#f4eeff",
-            }} />
+            {intentChoice("photo")}
 
-            <p style={{ fontSize: "10px", color: "var(--text-3)", lineHeight: "1.5", margin: "0 0 12px", fontFamily: "var(--font-mono), ui-monospace, monospace", textAlign: "center" }}>
-              PRICE VISIBLE = ACCURATE VERDICT.<br className="warning-break" /> NO PRICE = NO READING.
-            </p>
-            <div style={{ width: "28px", height: "1px", background: "rgba(255,255,255,0.08)", margin: "0 auto 12px" }} />
-            <p style={{ fontSize: "12px", color: "var(--text-2)", marginBottom: "10px", textAlign: "center" }}>
-              What do you want to know about this product?
-            </p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-              <button
-                onClick={() => setUserIntent("verdict")}
-                aria-pressed={userIntent === "verdict"}
-                style={{
-                  background: userIntent === "verdict"
-                    ? "linear-gradient(160deg, rgba(124,108,246,0.13) 0%, rgba(124,108,246,0.04) 100%)"
-                    : "linear-gradient(160deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.008) 100%)",
-                  border: userIntent === "verdict" ? "1px solid rgba(124,108,246,0.4)" : "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: "11px", padding: "10px 9px", cursor: "pointer", textAlign: "center",
-                  fontFamily: "var(--font-sans), sans-serif", transition: "all 0.18s ease",
-                  backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
-                  boxShadow: userIntent === "verdict"
-                    ? "inset 0 1px 0 rgba(255,255,255,0.1), 0 0 20px rgba(124,108,246,0.15)"
-                    : "inset 0 1px 0 rgba(255,255,255,0.05)",
-                }}>
-                <div style={{ fontSize: "12.5px", fontWeight: "700", color: userIntent === "verdict" ? "#9d8bfa" : "var(--text-2)", letterSpacing: "0.2px", marginBottom: "3px" }}>
-                  {userIntent === "verdict" ? "✓ " : ""}Am I overcharged?
-                </div>
-                <div style={{ fontSize: "11px", color: "var(--text-2)", lineHeight: "1.35", marginBottom: "5px" }}>
-                  Get the full verdict card
-                </div>
-                <div style={{
-                  fontSize: "10.5px", color: userIntent === "verdict" ? "#9d8bfa" : "var(--text-3)",
-                  opacity: userIntent === "verdict" ? 1 : 0.85, lineHeight: "1.3",
-                  borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "5px", marginTop: "1px",
-                }}>
-                  Needs the price visible
-                </div>
-              </button>
-              <button
-                onClick={() => setUserIntent("finder")}
-                aria-pressed={userIntent === "finder"}
-                style={{
-                  background: userIntent === "finder"
-                    ? "linear-gradient(160deg, rgba(231,95,209,0.13) 0%, rgba(231,95,209,0.04) 100%)"
-                    : "linear-gradient(160deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.008) 100%)",
-                  border: userIntent === "finder" ? "1px solid rgba(231,95,209,0.4)" : "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: "11px", padding: "10px 9px", cursor: "pointer", textAlign: "center",
-                  fontFamily: "var(--font-sans), sans-serif", transition: "all 0.18s ease",
-                  backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
-                  boxShadow: userIntent === "finder"
-                    ? "inset 0 1px 0 rgba(255,255,255,0.1), 0 0 20px rgba(231,95,209,0.15)"
-                    : "inset 0 1px 0 rgba(255,255,255,0.05)",
-                }}>
-                <div style={{ fontSize: "12.5px", fontWeight: "700", color: userIntent === "finder" ? "#f08fe0" : "var(--text-2)", letterSpacing: "0.2px", marginBottom: "3px" }}>
-                  {userIntent === "finder" ? "✓ " : ""}Where is it cheapest?
-                </div>
-                <div style={{ fontSize: "11px", color: "var(--text-2)", lineHeight: "1.35", marginBottom: "5px" }}>
-                  Just the cheapest link
-                </div>
-                <div style={{
-                  fontSize: "10.5px", color: userIntent === "finder" ? "#f08fe0" : "var(--text-3)",
-                  opacity: userIntent === "finder" ? 1 : 0.85, lineHeight: "1.3",
-                  borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "5px", marginTop: "1px",
-                }}>
-                  No verdict, no price shown
-                </div>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Two action buttons - only shown when no preview. Icons are
-            deliberately unlike standard photo/camera glyphs: an aperture
-            iris for the archive (something that opens to let evidence in)
-            and a radar sweep for live (something actively searching in
-            real time). Distinct at a glance, neither reads as a stock
-            gallery/camera icon. */}
-        {!preview && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "10px" }}>
-
-            {/* Button 1: From photos - aperture iris, given genuine
-                presence: a permanent soft glow plus a stronger one on
-                hover, and a faint colored background tint instead of
-                the flat card surface every other panel uses. */}
+            {/* Deactivated rather than relabeled when the free allowance is
+                spent - same button, same words, just disabled. */}
             <button
+              ref={scanItRef}
+              className="btn-primary"
+              onClick={() => runScan("image")}
+              disabled={!userStatus.isPaid && userStatus.remaining <= 0}
+              style={{ width: "100%", padding: "17px", borderRadius: "14px", fontSize: "17px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif" }}>
+              Scan it
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="btn-primary"
               onClick={() => fileInputRef.current?.click()}
-              className="panel gallery-btn"
-              style={{
-                background: "linear-gradient(160deg, rgba(124,108,246,0.12) 0%, var(--bg-card) 65%)",
-                border: "1px solid rgba(124,108,246,0.35)",
-                borderRadius: "16px",
-                padding: "22px 14px",
-                cursor: "pointer",
-                textAlign: "center",
-                position: "relative",
-                overflow: "hidden",
-                fontFamily: "var(--font-sans), sans-serif",
-                boxShadow: "0 0 26px rgba(124,108,246,0.16), inset 0 1px 0 rgba(255,255,255,0.03)",
-                transition: "box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease",
-              }}
-            >
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "1px", background: "linear-gradient(90deg, transparent, #7c6cf6, transparent)", opacity: 0.7 }} />
-              <div style={{ marginBottom: "10px", display: "flex", justifyContent: "center" }}>
-                <svg width="30" height="30" viewBox="0 0 28 28" fill="none" aria-hidden="true" style={{ filter: "drop-shadow(0 0 6px rgba(124,108,246,0.55))" }}>
-                  {/* Aperture iris - six overlapping blades forming a hexagonal opening */}
-                  <circle cx="14" cy="14" r="10.5" stroke="#7c6cf6" strokeWidth="1" opacity="0.35" />
-                  <path d="M14 6 L18.5 9 L18.5 14 Z" stroke="#7c6cf6" strokeWidth="1.2" strokeLinejoin="round" fill="none" opacity="0.9" />
-                  <path d="M20.7 11 L20.7 16.5 L16.5 18 Z" stroke="#7c6cf6" strokeWidth="1.2" strokeLinejoin="round" fill="none" opacity="0.9" />
-                  <path d="M18 20.5 L12.7 20.5 L10.5 16.2 Z" stroke="#7c6cf6" strokeWidth="1.2" strokeLinejoin="round" fill="none" opacity="0.9" />
-                  <path d="M8 18.5 L7.3 13 L11.5 10.3 Z" stroke="#7c6cf6" strokeWidth="1.2" strokeLinejoin="round" fill="none" opacity="0.9" />
-                  <path d="M9.5 7.3 L14.7 6.5 L16.5 10.7 Z" stroke="#7c6cf6" strokeWidth="1.2" strokeLinejoin="round" fill="none" opacity="0.9" />
-                  <circle cx="14" cy="14" r="2.8" fill="#7c6cf6" />
-                </svg>
-              </div>
-              <div style={{ fontWeight: "700", fontSize: "13.5px", color: "#7c6cf6", marginBottom: "4px", fontFamily: "var(--font-display), sans-serif", letterSpacing: "0.6px" }}>
-                GALLERY
-              </div>
-              <div style={{ fontSize: "10px", color: "var(--text-3)", lineHeight: "1.4", fontFamily: "var(--font-mono), ui-monospace, monospace" }}>
-                Pick from camera roll
-              </div>
+              style={{ width: "100%", padding: "18px 16px", borderRadius: "14px", fontSize: "17px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path d="M1.5 5.5V2.5a1 1 0 0 1 1-1h3M12.5 1.5h3a1 1 0 0 1 1 1v3M16.5 12.5v3a1 1 0 0 1-1 1h-3M5.5 16.5h-3a1 1 0 0 1-1-1v-3" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
+                <circle cx="9" cy="9" r="2.4" stroke="white" strokeWidth="1.6" />
+              </svg>
+              Scan a product
             </button>
+            <p style={{ fontSize: "12px", color: "var(--text-3)", marginTop: "8px", lineHeight: "1.5" }}>
+              Photo or screenshot. Keep the price in the shot for a verdict.
+            </p>
 
-            {/* Button 2: Live scan - radar sweep, same treatment in the
-                red identity so the two buttons feel like a matched pair
-                rather than one glowing and one flat. */}
-            <button
-              onClick={() => cameraInputRef.current?.click()}
-              className="panel live-scan-btn"
-              style={{
-                background: "linear-gradient(160deg, rgba(231,95,209,0.12) 0%, var(--bg-card) 65%)",
-                border: "1px solid rgba(231,95,209,0.35)",
-                borderRadius: "16px",
-                padding: "22px 14px",
-                cursor: "pointer",
-                textAlign: "center",
-                position: "relative",
-                overflow: "hidden",
-                fontFamily: "var(--font-sans), sans-serif",
-                boxShadow: "0 0 26px rgba(231,95,209,0.18), inset 0 1px 0 rgba(255,255,255,0.03)",
-                transition: "box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease",
-              }}
-            >
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "1px", background: "linear-gradient(90deg, transparent, #e75fd1, transparent)", opacity: 0.6 }} />
-              <div style={{ marginBottom: "10px", display: "flex", justifyContent: "center" }}>
-                <svg width="30" height="30" viewBox="0 0 28 28" fill="none" aria-hidden="true" style={{ filter: "drop-shadow(0 0 6px rgba(231,95,209,0.55))" }}>
-                  {/* Radar sweep - concentric arcs with a rotating sweep line, nothing camera-shaped */}
-                  <circle cx="14" cy="14" r="11" stroke="#e75fd1" strokeWidth="1" opacity="0.3" />
-                  <circle cx="14" cy="14" r="7.3" stroke="#e75fd1" strokeWidth="1" opacity="0.45" />
-                  <circle cx="14" cy="14" r="3.6" stroke="#e75fd1" strokeWidth="1" opacity="0.6" />
-                  <path d="M14 14 L21.5 8.5" stroke="#e75fd1" strokeWidth="1.5" strokeLinecap="round" />
-                  <path d="M14 14 L21.5 8.5 A11 11 0 0 1 21 18" stroke="#e75fd1" strokeWidth="1" opacity="0.25" fill="none" />
-                  <circle cx="14" cy="14" r="1.3" fill="#e75fd1" />
-                  <circle cx="19" cy="6.5" r="1" fill="#e75fd1" opacity="0.8" />
-                </svg>
-              </div>
-              <div style={{ fontWeight: "700", fontSize: "13.5px", color: "#e75fd1", marginBottom: "4px", fontFamily: "var(--font-display), sans-serif", letterSpacing: "0.6px" }}>
-                LIVE SCAN
-              </div>
-              <div style={{ fontSize: "10px", color: "var(--text-3)", lineHeight: "1.4", fontFamily: "var(--font-mono), ui-monospace, monospace" }}>
-                Point camera at product
-              </div>
-            </button>
-          </div>
+            {/* The secondary path: a link. */}
+            <div style={{ display: "flex", gap: "8px", marginTop: "18px" }}>
+              <input ref={urlFieldRef} type="url" aria-label="Product link" value={urlInput} onChange={e => {
+                setUrlInput(e.target.value);
+                if (e.target.value.trim() && !inputTracked.current.url) { inputTracked.current.url = true; track("url_entered"); }
+              }} placeholder="Or paste a product link"
+                style={{ flex: 1, minWidth: 0, background: "var(--bg-glass)", border: "1px solid var(--border-mid)", borderRadius: "10px", padding: "11px 14px", color: "var(--text)", fontSize: "14px", outline: "none", fontFamily: "var(--font-sans), sans-serif" }}
+                onFocus={e => (e.target.style.borderColor = "var(--accent-2)")}
+                onBlur={e => (e.target.style.borderColor = "var(--border-mid)")}
+              />
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  if (!userStatus.isPaid && userStatus.remaining <= 0) { openPaywall("wall"); return; }
+                  // Empty: point at the field rather than doing nothing.
+                  if (!urlInput.trim()) { urlFieldRef.current?.focus(); return; }
+                  runScan("url");
+                }}
+                disabled={!userStatus.isPaid && userStatus.remaining <= 0}
+                style={{ borderRadius: "10px", padding: "11px 16px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif", whiteSpace: "nowrap", opacity: !userStatus.isPaid && userStatus.remaining <= 0 ? 0.4 : 1 }}>
+                Scan link
+              </button>
+            </div>
+            {urlInput.trim() && intentChoice("link")}
+          </>
         )}
 
-        {/* Intent selector - visible pill toggle */}
-        {/* Hidden file inputs */}
         <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
-        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
-
-        {/* Main CTA - run scan when preview exists. Deactivated rather
-            than relabeled when the free allowance is spent - same
-            button, same words, just disabled, which reads as clean and
-            professional instead of swapping in a sales pitch. */}
-        {preview && (
-          <button
-            className="btn-primary"
-            onClick={() => runScan("image")}
-            disabled={!userStatus.isPaid && userStatus.remaining <= 0}
-            style={{ width: "100%", padding: "16px", borderRadius: "12px", fontSize: "16px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif" }}>
-            Run the X-ray
-          </button>
-        )}
 
         {!userStatus.isPaid && (
           <p style={{ fontSize: "12px", color: "var(--text-3)", marginTop: "10px" }}>

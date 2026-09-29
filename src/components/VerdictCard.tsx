@@ -27,6 +27,7 @@
 
 import { useEffect, useState } from "react";
 import { playVerdictTone } from "@/lib/sound";
+import { buildFinderMessage, buildMessage } from "@/lib/verdict-copy";
 
 export type VerdictType = "HIGH_MARKUP" | "OVERPRICED" | "FAIR" | "UNVERIFIED";
 export type CardMode = "VERDICT" | "FINDER" | "UNRESOLVED";
@@ -118,178 +119,6 @@ const PLATE_LABEL: Record<MatchConfidence, string> = {
   likely: "VISUAL MATCH CONFIRMED",
   unverified: "MATCH NOT CONFIRMED",
 };
-
-// THE LINE. The one a person reads before deciding whether to screenshot it.
-//
-// Computed from the real numbers on every render, never a static template
-// dropped over any result. Three rules, and they are not stylistic:
-//
-//  1. EVERY message states the exact dollar gap. The percentage is the
-//     headline; the dollar figure is what a person feels. A card that omits
-//     it is a card that gets scrolled past.
-//  2. Sharp, human, funny, angry where anger is earned. This is the copy that
-//     travels. Clinical language is safe and gets zero reposts, and a verdict
-//     nobody shares is a verdict nobody sees. The Terms exist to hold exactly
-//     this: everything the Service outputs is framed there as editorial market
-//     analysis and opinion, which is what these lines are.
-//  3. Every claim stays anchored to something the engine actually measured.
-//     The scan found the same product listed elsewhere at a price and compared
-//     it to the asking price. So the copy says "it sells for $X", "available
-//     at $X", "the market says $X" rather than "they paid $X for it" - the
-//     first is an unarguable observation about a public listing, the second is
-//     an assertion about a business's internal costs that no scan can see.
-//     The measured version is not softer. It is harder, because there is
-//     nothing in it to deny.
-//
-// Calibration is by intensity, not by topic. BUSTED is outrage with receipts.
-// OVERPRICED is sharp frustration that never inflates itself into outrage it
-// has not earned. FAIR is dry surprise, because honest pricing is rare enough
-// to be the story.
-// FINDER mode's own voice — deliberately not the verdict voice. VERDICT is
-// outrage with receipts; this is confident discovery. There is no gap to
-// expose here, no brand to indict — the job is simply "this is the real
-// floor price, verified, here it is." The tone is satisfaction, not
-// accusation: a target acquired, not a crime uncovered.
-//
-// Built as three independently-seeded clauses rather than one fixed list,
-// the same principle the toast system already uses for its 313,200+
-// combinations. Opener x connector x closer gives 288 grammatically clean
-// combinations from real data, with no added latency or API cost per scan
-// - every sentence is still assembled locally, deterministically, and
-// includes the real price and platform every time. Three separate hashes
-// (price cents, title character sum, platform character sum) drive the
-// three indices so they drift out of sync with each other rather than all
-// advancing together, which is what would make a small pool feel like it
-// was visibly cycling.
-function buildFinderMessage(data: VerdictData): string {
-  const price = data.wholesalePrice.toFixed(2);
-  const platform = data.platform || "the listing";
-
-  const charSum = (s: string) => s.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-
-  const OPENERS = [
-    `Verified at $${price}.`,
-    `Locked onto $${price}.`,
-    `The real number: $${price}.`,
-    `Target acquired at $${price}.`,
-    `Confirmed floor price: $${price}.`,
-    `$${price}. That is the real figure.`,
-    `Found it at $${price}.`,
-    `No guesswork. $${price} is real.`,
-  ];
-
-  const CONNECTORS = [
-    `Live on ${platform}.`,
-    `Available now on ${platform}.`,
-    `Checked directly against ${platform}.`,
-    `${platform} has it in stock at this price.`,
-    `Sourced from ${platform}.`,
-    `${platform} confirms it.`,
-  ];
-
-  const CLOSERS = [
-    `Nothing cheaper we could verify.`,
-    `This is as low as it goes right now.`,
-    `Not an estimate. A measurement.`,
-    `You will not find it lower today.`,
-    `This is the floor, not a guess.`,
-    `That is the number to act on.`,
-  ];
-
-  const priceCents = Math.round(data.wholesalePrice * 100);
-  const openerIdx = priceCents % OPENERS.length;
-  const connectorIdx = charSum(data.productTitle || "") % CONNECTORS.length;
-  const closerIdx = charSum(platform) % CLOSERS.length;
-
-  return `${OPENERS[openerIdx]} ${CONNECTORS[connectorIdx]} ${CLOSERS[closerIdx]}`;
-}
-
-function buildMessage(data: VerdictData): string {
-  const s = data.savings.toFixed(2);
-  const retail = data.retailPrice.toFixed(2);
-  const source = data.wholesalePrice.toFixed(2);
-  const m = data.wholesalePrice > 0 ? (data.retailPrice / data.wholesalePrice).toFixed(1) : "0";
-  const idx = Math.floor((data.savings * 100 + data.retailPrice * 7 + data.markup * 3)) % 20;
-
-  // ── BUSTED. Outrage with receipts. ──
-  const HIGH = [
-    `It sells for $${source}. They charged you $${retail}. That $${s} gap has a name.`,
-    `You were about to pay ${m}x what this actually costs. $${s} of it was the story.`,
-    `$${s}. That is what the aesthetic cost you.`,
-    `Somebody's rent got paid with your $${s}.`,
-    `The product is $${source}. The other $${s} is the ad you fell for.`,
-    `$${s} above what everyone else charges. They were betting you would not check.`,
-    `${m}x markup, $${s} deep, and the ad had soft lighting.`,
-    `A $${source} item in a $${retail} costume. The costume runs $${s}.`,
-    `$${s} of that price is not the product. It never was.`,
-    `Same item, $${source}, publicly listed. Yours was $${retail}. The logo cost $${s}.`,
-    `You nearly funded a $${s} marketing budget. One scan.`,
-    `$${s}. Not a discount you missed. A markup you were handed.`,
-    `Buy at $${source}, sell at $${retail}. The $${s} in the middle is the entire company.`,
-    `${m}x the real price. That is not a margin, that is a personality, and it costs $${s}.`,
-    `They called it premium. The market calls it $${source}. You were charged $${s} extra for the adjective.`,
-    `$${s}. Screenshot this and send it to whoever recommended it.`,
-    `Available right now for $${source}. You were quoted $${retail}. Do what you like with that. ($${s}.)`,
-    `They are not selling a product. They are selling a $${retail} price tag with a $${source} product attached. You keep the $${s}.`,
-    `${m}x. $${s}. And it ships from the same warehouse as the cheap one.`,
-    `$${s} over market. That is not a business model, that is a magic trick, and you just saw the wires.`,
-  ];
-
-  // ── OVERPRICED. Sharp frustration. Real, never inflated. ──
-  const OVER = [
-    `$${s} over. Not a scandal. Still your $${s}.`,
-    `Overpriced by $${s}. Not criminal. Just optimistic.`,
-    `$${s}. The kind of gap you only catch when something is actually checking.`,
-    `They are not robbing you. They are rounding up, by $${s}.`,
-    `$${s} above market. Small enough to shrug at. That is exactly the point.`,
-    `The market says $${source}. They say $${retail}. Somebody is $${s} braver than the data.`,
-    `$${s} of confidence baked into the price.`,
-    `Not outrageous. Just $${s} more than it needed to be.`,
-    `$${s} over the going rate, and nothing about the product explains it.`,
-    `You would not have noticed the $${s}. That is what it was counting on.`,
-    `Overpriced by $${s}. Buy it if you want it. Just buy it knowing.`,
-    `$${s}. Enough for lunch. They would rather have it than you.`,
-    `The listing looks completely normal. The price runs $${s} hot.`,
-    `$${s} above what this openly sells for elsewhere. Your call now.`,
-    `A $${s} premium for the privilege of not checking.`,
-    `Market rate $${source}, asking $${retail}. That is $${s} of nerve.`,
-    `$${s} over. Not the worst we have seen today. Not nothing either.`,
-    `They are $${s} ahead of the market and hoping nobody keeps score.`,
-    `Overpriced by $${s}. Now it is a decision instead of an accident.`,
-    `$${s}. Small gap, real gap, your money.`,
-  ];
-
-  // ── FAIR. Dry surprise. Honest pricing is rare and the rarity is the story. ──
-  const FAIR = [
-    `Fair. $${s} off market. We checked twice, because that is unusual.`,
-    `Priced honestly. A $${s} spread. We are as surprised as you are.`,
-    `No markup theatre. $${s}. Somebody here has principles or terrible margins.`,
-    `$${s} from the market floor. That is a business, not a funnel.`,
-    `Clean scan. $${s}. Nothing to expose, which is its own kind of news.`,
-    `They could have charged you $${retail} and more. They did not. $${s} spread.`,
-    `Fair price confirmed at $${s}. Screenshot it anyway. It is rarer than the bad ones.`,
-    `$${s}. That is what a normal margin looks like, in case you had forgotten.`,
-    `We came here to find a markup. We found $${s} and a straight answer.`,
-    `Actually fair. $${s} of honest margin and no story underneath it.`,
-    `$${s}. Either the margins are thin or the ethics are intact. Either way it passes.`,
-    `Priced at what it costs plus $${s}. Revolutionary, apparently.`,
-    `No inflation, no theatre, $${s}. Buy it and stop worrying.`,
-    `The market price and the asking price agree within $${s}. Frame this.`,
-    `$${s} spread. This seller is not running the play everyone else is running.`,
-    `Fair. $${s}. We ran it twice because the first result looked like a mistake.`,
-    `$${s} above cost and honest about it. That should not be remarkable.`,
-    `Nothing hidden here. $${s}, and the price is just the price.`,
-    `$${s}. You are not subsidising anyone's ad spend on this one.`,
-    `Clean. $${s}. Enjoy the rare sensation of not being worked.`,
-  ];
-
-  switch (data.verdict) {
-    case "HIGH_MARKUP": return HIGH[idx % 20];
-    case "OVERPRICED": return OVER[idx % 20];
-    case "FAIR": return FAIR[idx % 20];
-    default: return `No confirmed asking price to compare against. Closest listing found runs $${source}.`;
-  }
-}
 
 interface Props {
   data: VerdictData;
@@ -634,19 +463,20 @@ export default function VerdictCard({ data, animate = true, compact = false, car
               </>
             ) : (
             <>
-            {/* Verdict headline + markup ring — leads the card */}
+            {/* Verdict stamp + markup ring, then the one number the card is
+                built around. */}
             <div style={{
                 display: "grid",
                 gridTemplateColumns: compact ? "1fr 68px" : "1fr 88px",
                 alignItems: "center",
                 gap: compact ? "12px" : "16px",
-                marginBottom: compact ? "16px" : "20px",
+                marginBottom: compact ? "8px" : "10px",
               }}>
               {/* Verdict label - grid column 1 */}
               <div>
                 <div style={{
                   fontFamily: "var(--font-display), sans-serif",
-                  fontSize: compact ? (isFinder ? "22px" : "38px") : (isFinder ? "30px" : "48px"),
+                  fontSize: compact ? (isFinder ? "22px" : "32px") : (isFinder ? "30px" : "40px"),
                   fontWeight: "800", color: cfg.accentColor,
                   letterSpacing: compact ? "1.5px" : "3px", lineHeight: "1.12",
                   paddingBottom: "2px",
@@ -655,24 +485,6 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                   transition: "opacity 0.3s ease, transform 0.3s ease",
                   whiteSpace: "nowrap",
                 }}>{cfg.label}</div>
-                {isVerdict && (
-                  <div style={{
-                    fontFamily: "var(--font-display), sans-serif",
-                    fontSize: compact ? "13px" : "15px",
-                    fontWeight: "700",
-                    color: data.verdict === "FAIR" ? "#10d9a0" : data.verdict === "HIGH_MARKUP" ? "#ef4444" : "#f59e0b",
-                    letterSpacing: "-0.3px",
-                    lineHeight: "1.35",
-                    marginTop: compact ? "4px" : "6px",
-                    opacity: numbersIn ? 1 : 0,
-                    transform: numbersIn ? "none" : "translateY(3px)",
-                    transition: "opacity 0.2s ease 0.1s, transform 0.2s ease 0.1s",
-                  }}>
-                    {data.verdict === "FAIR"
-                      ? `$${data.savings.toFixed(2)} spread`
-                      : `Save $${data.savings.toFixed(2)}`}
-                  </div>
-                )}
               </div>
 
               {/* Markup ring */}
@@ -743,6 +555,35 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                 </div>
               )}
             </div>
+
+            {/* THE NUMBER. One figure leads the card and it is the dollar gap:
+                "$64.88 above market" is a number a person feels, the
+                percentage in the ring is a statistic. Sized to survive a feed
+                thumbnail, and larger than the stamp above it. */}
+            {isVerdict && data.verdict !== "UNVERIFIED" && (() => {
+              const hero = `$${data.savings.toFixed(2)}`;
+              const size = compact
+                ? (hero.length <= 6 ? 58 : hero.length === 7 ? 50 : 42)
+                : (hero.length <= 6 ? 72 : hero.length === 7 ? 62 : 52);
+              return (
+                <div style={{
+                  display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "2px 10px",
+                  marginBottom: compact ? "12px" : "16px",
+                  opacity: numbersIn ? 1 : 0,
+                  transform: numbersIn ? "none" : "translateY(4px)",
+                  transition: "opacity 0.25s ease, transform 0.25s ease",
+                }}>
+                  <span style={{
+                    fontFamily: "var(--font-display), sans-serif", fontSize: `${size}px`, fontWeight: "800",
+                    color: cfg.accentColor, letterSpacing: "-2px", lineHeight: "1",
+                    textShadow: `0 0 ${compact ? "16px" : "26px"} ${cfg.accentGlow}`,
+                  }}>{hero}</span>
+                  <span style={{ fontSize: compact ? "13px" : "15px", fontWeight: "600", color: "rgba(238,238,246,0.72)" }}>
+                    {data.verdict === "FAIR" ? "spread" : "above market"}
+                  </span>
+                </div>
+              );
+            })()}
 
             {/* Human-voice line — computed, not static copy */}
             <div style={{

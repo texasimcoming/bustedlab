@@ -140,17 +140,19 @@ export default async function IndexPage({ searchParams }: Props) {
       }}>
         <Link href="/" style={{ display: "flex", alignItems: "center", gap: "9px", textDecoration: "none" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-120.webp" alt="" width={40} height={40} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
+          <img src="/logo-120.webp" alt="" width={32} height={32} style={{ borderRadius: "8px", display: "block", objectFit: "cover" }} />
           <span style={{
             fontFamily: "var(--font-display), sans-serif", fontWeight: "800",
-            fontSize: "20px", letterSpacing: "-0.5px", color: "var(--text)",
+            fontSize: "18px", letterSpacing: "-0.5px", color: "var(--text)",
           }}>BustedLab</span>
         </Link>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {/* Sized so the labelled sound toggle and the button fit beside the
+            wordmark on a 390px phone without wrapping. */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <SoundToggle />
           <Link href="/" className="btn-primary" style={{
-            borderRadius: "8px", padding: "8px 16px", fontSize: "13px", fontWeight: "600",
-            fontFamily: "var(--font-display), sans-serif", textDecoration: "none",
+            borderRadius: "8px", padding: "10px 12px", fontSize: "13px", fontWeight: "600",
+            fontFamily: "var(--font-display), sans-serif", textDecoration: "none", whiteSpace: "nowrap",
           }}>
             Scan a product
           </Link>

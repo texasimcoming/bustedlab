@@ -27,7 +27,7 @@ section("EVERY STEP A VISITOR TAKES IS COUNTED");
 
 env(); reset();
 const STEPS = ["landing_viewed", "photo_selected", "url_entered", "scan_started", "result_shown",
-  "scan_failed", "card_saved", "share_tapped", "paywall_shown", "checkout_clicked"];
+  "scan_failed", "card_saved", "story_saved", "share_tapped", "paywall_shown", "checkout_clicked"];
 for (const step of STEPS) await send(step, { browser: browser(1) });
 const missing = STEPS.filter(step => total(step) !== 1);
 check("each browser-side step is accepted and counted once", missing.length === 0, missing.join(", "));
@@ -85,7 +85,7 @@ const f = analytics.buildFunnel(series({
   landing_viewed: 1000, photo_selected: 300, url_entered: 100, scan_started: 350,
   scan_completed: 330, verdict_busted: 120, verdict_overpriced: 60, verdict_fair: 20,
   result_finder: 80, result_unresolved: 50, result_shown: 325, scan_failed: 20,
-  card_saved: 99, share_tapped: 66, paywall_shown: 90, checkout_clicked: 9,
+  card_saved: 99, story_saved: 33, share_tapped: 66, paywall_shown: 90, checkout_clicked: 9,
 }));
 check("scan-start rate is scans started per landing", f.scanStartRate === 35, String(f.scanStartRate));
 check("input rate counts photos and links per landing", f.inputRate === 40, String(f.inputRate));
@@ -94,8 +94,8 @@ check("results split into verdict, closest match and nothing found",
 check("nothing-found rate is per completed scan", f.unresolvedRate === 15.2, String(f.unresolvedRate));
 check("failure rate is per scan started", f.scanFailureRate === 5.7, String(f.scanFailureRate));
 check("shares and saves per scan, and checkout rate, computed",
-      f.sharesPerScan === 0.2 && f.savesPerScan === 0.3 && f.checkoutClickRate === 10,
-      `${f.sharesPerScan} ${f.savesPerScan} ${f.checkoutClickRate}`);
+      f.sharesPerScan === 0.2 && f.savesPerScan === 0.3 && f.storySavesPerScan === 0.1 && f.checkoutClickRate === 10,
+      `${f.sharesPerScan} ${f.savesPerScan} ${f.storySavesPerScan} ${f.checkoutClickRate}`);
 const empty = analytics.buildFunnel(series({}));
 check("an empty day reads as no data, not as 0% or a division error",
       empty.scanStartRate === null && empty.unresolvedRate === null && empty.scanFailureRate === null);

@@ -13,37 +13,6 @@ const SCAN_STAGES = [
   { label: "Building verdict", detail: "Compiling confidence-scored report", duration: 600 },
 ];
 
-// These name BustedLab's own pipeline layers, not third-party platforms
-// the engine doesn't actually call. Never label a node with a real
-// company name unless the engine genuinely queries that company's API —
-// showing "Alibaba: MATCHED" when nothing ever touched Alibaba is a false
-// claim about a named third party, not just filler copy.
-const DATA_NODES = [
-  { label: "Reverse image match" },
-  { label: "Store signal" },
-  { label: "Shopping index" },
-  { label: "Visual verification" },
-  { label: "Price confidence" },
-  { label: "Category baseline" },
-];
-
-// Index sweep rate, in records per second of elapsed scan time.
-//
-// READ THIS BEFORE CHANGING IT. The counter is driven entirely by the real
-// clock: displayed value = elapsed milliseconds x this constant. It is not
-// a random accumulator and it does not run on its own timer, so it advances
-// at exactly the speed of the actual scan, halts the instant the scan does,
-// and shows the same figure every time for the same duration.
-//
-// What it is NOT is a count of individual comparisons the engine performed,
-// which the browser has no way to know mid-scan. It is a sweep-rate readout
-// against the shopping index the query runs on, in the same sense as any
-// "searching 4,210,000 of 2B" progress indicator. Labelled "RECORDS SWEPT"
-// rather than "compared" for exactly that reason. If this ever needs to
-// become a literal count, the scan route has to stream real candidate
-// counts back to the client; do not just relabel the constant.
-const RECORDS_PER_SECOND = 41800;
-
 // Shown when a scan outlives the scripted stage list. Every one of these
 // names a real fallback tier in scan.ts.
 const EXTENDED_STAGE = {
@@ -132,14 +101,6 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
 
   const circumference = 2 * Math.PI * 54;
   const strokeDash = (progress / 100) * circumference;
-  // Straight off the elapsed clock. Nothing random, nothing accumulating on
-  // its own timer.
-  const recordsCompared = Math.floor((elapsedMs / 1000) * RECORDS_PER_SECOND);
-  // Node activation is a pure function of the progress clock, so it is derived
-  // during render rather than mirrored into state by an effect. It was state
-  // before, which meant every progress tick scheduled a second render to
-  // recompute a value the first render already had.
-  const nodesActive = Math.floor((progress / 100) * DATA_NODES.length);
 
   return (
     <div style={{
@@ -183,7 +144,7 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
 
       {/* Top system bar */}
       <div style={{ position: "fixed", top: "16px", left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: "8px" }}>
-        <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 6px #ef4444", animation: "pulse 1s ease-in-out infinite" }} />
+        <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#9d7fd4", boxShadow: "0 0 6px #9d7fd4" }} />
         <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", color: "rgba(238,238,246,0.4)", letterSpacing: "2px" }}>SCAN IN PROGRESS</span>
       </div>
 
@@ -273,9 +234,6 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
               pointerEvents: "none",
             }} />
 
-            {/* Corner scan indicator dots */}
-            <div style={{ position: "absolute", top: "4px", left: "4px", width: "4px", height: "4px", borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 4px #ef4444", animation: "pulse 0.8s ease-in-out infinite" }} />
-            <div style={{ position: "absolute", top: "4px", right: "4px", width: "3px", height: "3px", borderRadius: "50%", background: "#9d7fd4", boxShadow: "0 0 4px #9d7fd4", animation: "pulse 1.2s ease-in-out infinite" }} />
           </div>
 
           {/* Progress percentage in center below image */}
@@ -333,51 +291,16 @@ export default function ScanningScreen({ preview }: { preview: string | null }) 
           ))}
         </div>
 
-        {/* ═══ LIVE DATA NODES ═══ */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          {DATA_NODES.map((node, i) => (
-            <div key={i} style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              padding: "8px 14px",
-              borderRadius: "8px",
-              background: i < nodesActive ? "rgba(123,94,167,0.06)" : "transparent",
-              border: i < nodesActive ? "1px solid rgba(123,94,167,0.12)" : "1px solid transparent",
-              transition: "all 0.4s ease",
-              opacity: i < nodesActive ? 1 : 0.2,
-            }}>
-              <div style={{
-                width: "5px", height: "5px", borderRadius: "50%",
-                background: i < nodesActive ? (i < stageIndex ? "#10d9a0" : "#9d7fd4") : "rgba(255,255,255,0.15)",
-                boxShadow: i < nodesActive ? `0 0 5px ${i < stageIndex ? "#10d9a0" : "#9d7fd4"}` : "none",
-                flexShrink: 0,
-                transition: "all 0.4s ease",
-              }} />
-              <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px", color: i < nodesActive ? "rgba(238,238,246,0.5)" : "rgba(238,238,246,0.15)", letterSpacing: "0.3px", flex: 1 }}>
-                {node.label}
-              </span>
-              {i < nodesActive && (
-                <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", color: i < stageIndex ? "#10d9a0" : "rgba(184,160,232,0.7)", letterSpacing: "0.5px" }}>
-                  {i < stageIndex ? "CONFIRMED" : "ACTIVE"}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* ═══ TELEMETRY FOOTER ═══ */}
-        <div style={{ marginTop: "16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-          <div style={{ padding: "10px 12px", borderRadius: "8px", background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.08)", textAlign: "center" }}>
-            <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px", color: "rgba(239,68,68,0.5)", letterSpacing: "1px", marginBottom: "2px" }}>ELAPSED</div>
-            <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "13px", color: "rgba(239,68,68,0.7)", fontWeight: "600" }}>
+        {/* ═══ ELAPSED ═══
+            The one live number on this screen, straight off the clock. The
+            layer list that lit up "CONFIRMED" on a timer and a "records swept"
+            figure computed from elapsed time are gone: neither was reporting
+            anything the scan had actually done. */}
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <div style={{ padding: "10px 22px", borderRadius: "8px", background: "rgba(123,94,167,0.05)", border: "1px solid rgba(123,94,167,0.14)", textAlign: "center" }}>
+            <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px", color: "rgba(184,160,232,0.7)", letterSpacing: "1px", marginBottom: "2px" }}>ELAPSED</div>
+            <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "14px", color: "var(--text-2)", fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>
               {(elapsedMs / 1000).toFixed(2)}s
-            </div>
-          </div>
-          <div style={{ padding: "10px 12px", borderRadius: "8px", background: "rgba(123,94,167,0.04)", border: "1px solid rgba(123,94,167,0.1)", textAlign: "center" }}>
-            <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px", color: "rgba(184,160,232,0.7)", letterSpacing: "1px", marginBottom: "2px" }}>RECORDS SWEPT</div>
-            <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "13px", color: "rgba(184,160,232,0.6)", fontWeight: "600", fontVariantNumeric: "tabular-nums" }}>
-              {recordsCompared.toLocaleString("en-US")}
             </div>
           </div>
         </div>

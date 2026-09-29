@@ -41,9 +41,10 @@ body{background:var(--bg);min-height:100vh;overflow-x:hidden;padding-bottom:var(
 /* Grain texture — keeps the page from feeling digital-flat */
 body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");pointer-events:none;z-index:9999}
 
-/* Subliminal radial pulse from centre. Light only — the ellipse never moves,
-   it breathes. */
-body::before{content:'';position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:900px;height:600px;background:radial-gradient(ellipse at center,rgba(123,94,167,0.06) 0%,transparent 65%);pointer-events:none;z-index:0;animation:bgPulse 8s ease-in-out infinite}
+/* A still radial light from centre. It used to breathe; the page now allows
+   itself two looping animations (the live dot by the scan count and the
+   reference card's glow) and this was not one of them. */
+body::before{content:'';position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:900px;height:600px;background:radial-gradient(ellipse at center,rgba(123,94,167,0.06) 0%,transparent 65%);pointer-events:none;z-index:0}
 
 .card{background:var(--bg-card);border:1px solid var(--border)}
 
@@ -76,9 +77,14 @@ body::before{content:'';position:fixed;top:50%;left:50%;transform:translate(-50%
 
 /* Signal strip */
 .toast{position:fixed;bottom:calc(var(--bar-space) + 10px);left:16px;z-index:200;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-width:290px;animation:signalIn 0.12s linear}
+/* On a phone the bottom of the screen is where the scan action and the
+   sticky bar are, and the toast sat on top of them. It comes in under the
+   nav instead, where it covers nothing a visitor needs to tap. */
+@media (max-width: 640px){
+  .toast{top:calc(env(safe-area-inset-top, 0px) + 84px);bottom:auto}
+}
 
 /* ═══ KEYFRAMES ═══ */
-@keyframes bgPulse{0%,100%{opacity:0.6;transform:translate(-50%,-50%) scale(1)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}}
 @keyframes signalIn{from{opacity:0;filter:brightness(2.2)}to{opacity:1;filter:brightness(1)}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
@@ -167,20 +173,8 @@ img[src^="data:image/gif"][width="1"][height="1"] { display: inline; }
   .warning-break { display: inline; }
 }
 
-/* Gallery/Live Scan hover: glow intensifies, button lifts slightly */
-.gallery-btn:hover { box-shadow: 0 0 40px rgba(124,108,246,0.28), inset 0 1px 0 rgba(255,255,255,0.05) !important; border-color: rgba(124,108,246,0.55) !important; transform: translateY(-1px); }
-.live-scan-btn:hover { box-shadow: 0 0 40px rgba(231,95,209,0.3), inset 0 1px 0 rgba(255,255,255,0.05) !important; border-color: rgba(231,95,209,0.55) !important; transform: translateY(-1px); }
 
-/* Intent frame: soft ambient breathing glow, distinct material from the
-   flat .card class used everywhere else on the page. Slow enough to read
-   as alive, not distracting. */
-.intent-frame {
-  animation: intentBreathe 8s ease-in-out infinite;
-}
-@keyframes intentBreathe {
-  0%, 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0px rgba(180,160,240,0); }
-  50% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 0 22px rgba(180,160,240,0.06); }
-}
+
 
 /* Scan-count anchor: lives in the nav on desktop only. On mobile it does
    not move anywhere else in the nav row - it already exists once, above
@@ -193,17 +187,13 @@ img[src^="data:image/gif"][width="1"][height="1"] { display: inline; }
   .hero-scan-count { display: flex; margin-top: 0; margin-bottom: 18px !important; }
   .hero-section { padding-top: 20px !important; }
   .nav-scan-count { display: none; }
-  /* With the scan count gone from the mobile nav, the sound toggle gets
-     the freed space and reads larger and clearer. */
-  .nav-sound-toggle { transform: scale(1.35); transform-origin: center; }
 }
 
 /* Hero hook frame: corner brackets on all devices, reusing the same
    targeting-reticle language already established on the image upload
    preview elsewhere on the page. Fully static - no glow pulse, no
    animation - so the line reads as flagged evidence rather than a
-   decorated pull-quote. Indigo top-left, magenta bottom-right, tying
-   directly into the rest of the alien palette. */
+   decorated pull-quote. Purple only, like every other accent. */
 .hero-hook-frame {
   position: relative;
   max-width: 460px;
@@ -218,13 +208,13 @@ img[src^="data:image/gif"][width="1"][height="1"] { display: inline; }
 }
 .hero-hook-corner-tl {
   top: 0; left: 0;
-  border-top: 1.5px solid #9d8bfa;
-  border-left: 1.5px solid #9d8bfa;
+  border-top: 1.5px solid var(--accent-bright);
+  border-left: 1.5px solid var(--accent-bright);
 }
 .hero-hook-corner-br {
   bottom: 0; right: 0;
-  border-bottom: 1.5px solid #e75fd1;
-  border-right: 1.5px solid #e75fd1;
+  border-bottom: 1.5px solid var(--accent);
+  border-right: 1.5px solid var(--accent);
 }
 
 /* On mobile the line drops a size so it no longer feels oversized
@@ -248,32 +238,20 @@ img[src^="data:image/gif"][width="1"][height="1"] { display: inline; }
   .nav-right-group { gap: 22px !important; }
 }
 
-/* Upgrade CTA ambient light - the same breathing glow already used on the
-   demo card, applied here so the money moment on the page has real
-   presence instead of sitting flat against the background like every
-   other panel. */
+/* Upgrade box light: a soft glow with a bright point at its base, held
+   still. It used to breathe on two offset rhythms; the page now keeps its
+   looping motion to two things, and a payment box is not where a visitor
+   needs something moving. */
 .upgrade-glow {
-  animation: alienGlow 6s ease-in-out infinite;
+  box-shadow: 0 0 34px rgba(123,94,167,0.13), 0 0 70px rgba(123,94,167,0.04);
 }
-
-/* Upgrade box light anchor - a soft glow with a bright point at its base,
-   no shape, no object. Pulses gently in its own rhythm, offset from the
-   box's own ambient glow so the two breathe independently rather than
-   moving in lockstep, which would read as one effect instead of two. */
 .upgrade-light-core {
-  animation: lightCorePulse 5s ease-in-out infinite;
+  opacity: 0.85;
 }
 .upgrade-light-point {
-  animation: lightPointPulse 5s ease-in-out infinite;
+  box-shadow: 0 0 8px 2px rgba(232,220,255,0.85), 0 0 18px 6px rgba(157,127,212,0.5);
 }
-@keyframes lightCorePulse {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 1; }
-}
-@keyframes lightPointPulse {
-  0%, 100% { box-shadow: 0 0 6px 1.5px rgba(232,220,255,0.75), 0 0 14px 4px rgba(157,127,212,0.4); }
-  50% { box-shadow: 0 0 10px 3px rgba(232,220,255,1), 0 0 24px 8px rgba(157,127,212,0.6); }
-}
+
 
 /* scroll-padding-bottom (on html, above) keeps anything scrolled into view
    or focused by keyboard clear of the fixed sticky bar at the bottom of the

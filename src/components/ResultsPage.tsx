@@ -4,6 +4,7 @@ import { useRef, useState, useEffect } from "react";
 import VerdictCard, { VerdictData, VerdictType, CardMode, MatchConfidence } from "@/components/VerdictCard";
 import SoundToggle from "@/components/SoundToggle";
 import { track } from "@/lib/track";
+import { shareCaption } from "@/lib/verdict-copy";
 
 interface ScanResult {
   found: boolean;
@@ -87,32 +88,100 @@ export default function ResultsPage({
     isDemo: false,
   };
 
+  // The card as a canvas, at 3x. html2canvas is loaded on first use.
+  const captureCard = async (): Promise<HTMLCanvasElement | null> => {
+    const { default: html2canvas } = await import("html2canvas");
+    if (!cardRef.current) return null;
+    // Wait for web fonts to finish loading before capture. Without this,
+    // a capture that races the font load falls back to a system font for
+    // that frame, producing a shared image with different typography
+    // than what the visitor is actually looking at on screen.
+    if (typeof document !== "undefined" && document.fonts?.ready) {
+      await document.fonts.ready;
+    }
+    // The text offset html2canvas used to add to every saved card is fixed
+    // in globals.css (search "html2canvas"): it measures fonts in the live
+    // page, so an option here cannot reach it.
+    return html2canvas(cardRef.current, {
+      backgroundColor: "#07070e", scale: 3, useCORS: true, allowTaint: true, logging: false,
+    });
+  };
+
+  const toPng = (canvas: HTMLCanvasElement, name: string) => new Promise<File | null>(resolve => {
+    canvas.toBlob(blob => resolve(blob ? new File([blob], name, { type: "image/png" }) : null), "image/png");
+  });
+
   const generateCardImage = async (): Promise<File | null> => {
     try {
-      const { default: html2canvas } = await import("html2canvas");
-      if (!cardRef.current) return null;
-      // Wait for web fonts to finish loading before capture. Without this,
-      // a capture that races the font load falls back to a system font for
-      // that frame, producing a shared image with different typography
-      // than what the visitor is actually looking at on screen.
-      if (typeof document !== "undefined" && document.fonts?.ready) {
-        await document.fonts.ready;
-      }
-      const canvas = await html2canvas(cardRef.current, {
-        backgroundColor: "#07070e", scale: 3, useCORS: true, allowTaint: true, logging: false,
-        // The text offset html2canvas used to add to every saved card is
-        // fixed in globals.css (search "html2canvas"), not here: it measures
-        // fonts in the live page, so an option on the copy cannot reach it.
-      });
-      return new Promise((resolve) => {
-        canvas.toBlob(blob => {
-          if (!blob) { resolve(null); return; }
-          resolve(new File([blob], "bustedlab-verdict.png", { type: "image/png" }));
-        }, "image/png");
-      });
+      const card = await captureCard();
+      return card ? toPng(card, "bustedlab-verdict.png") : null;
     } catch {
       return null;
     }
+  };
+
+  // The Stories export: 1080 x 1920, the size Instagram and TikTok stories
+  // use, so the card is not letterboxed into a square or cropped. The card
+  // sits centred on the page colour with the address underneath, large
+  // enough to read on a phone held at arm's length.
+  const generateStoryImage = async (): Promise<File | null> => {
+    try {
+      const card = await captureCard();
+      if (!card) return null;
+      const W = 1080, H = 1920;
+      const story = document.createElement("canvas");
+      story.width = W; story.height = H;
+      const ctx = story.getContext("2d");
+      if (!ctx) return null;
+      ctx.fillStyle = "#07070e";
+      ctx.fillRect(0, 0, W, H);
+      const glow = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, W * 0.9);
+      glow.addColorStop(0, "rgba(123,94,167,0.22)");
+      glow.addColorStop(1, "rgba(123,94,167,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, W, H);
+
+      const cardW = 920;
+      const cardH = Math.round(card.height * (cardW / card.width));
+      const maxCardH = 1440;
+      const scale = cardH > maxCardH ? maxCardH / cardH : 1;
+      const drawW = Math.round(cardW * scale), drawH = Math.round(cardH * scale);
+      const x = Math.round((W - drawW) / 2);
+      const y = Math.round((H - drawH) / 2) - 90;
+      ctx.drawImage(card, x, y, drawW, drawH);
+
+      const display = getComputedStyle(document.documentElement).getPropertyValue("--font-display").trim() || "sans-serif";
+      const sans = getComputedStyle(document.documentElement).getPropertyValue("--font-sans").trim() || "sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillStyle = "rgba(238,238,246,0.72)";
+      ctx.font = `500 38px ${sans}`;
+      ctx.fillText("Scan yours at", W / 2, y + drawH + 150);
+      ctx.fillStyle = "#c4aff8";
+      ctx.font = `700 64px ${display}`;
+      ctx.fillText("bustedlab.com", W / 2, y + drawH + 230);
+      return toPng(story, "bustedlab-verdict-story.png");
+    } catch {
+      return null;
+    }
+  };
+
+  // Saves an image the way each platform allows: the share sheet on phones
+  // (which is how an image reaches the camera roll on iOS), a download
+  // everywhere else.
+  const saveImage = async (file: File) => {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "BustedLab Verdict" });
+        return;
+      } catch { /* user cancelled or not supported, fall through to download */ }
+    }
+    const url = URL.createObjectURL(file);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.name;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleSave = async () => {
@@ -122,32 +191,28 @@ export default function ResultsPage({
     setSaving(true);
     try {
       const file = await generateCardImage();
-      if (!file) { setSaving(false); return; }
-
-      // Try Web Share API with file first - saves directly to Photos on iOS
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: "BustedLab Verdict" });
-          setSaved(true);
-          setTimeout(() => setSaved(false), 3000);
-          setSaving(false);
-          return;
-        } catch { /* user cancelled or not supported, fall through to download */ }
+      if (file) {
+        await saveImage(file);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
       }
-
-      // Fallback: trigger download
-      const url = URL.createObjectURL(file);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "bustedlab-verdict.png";
-      a.click();
-      URL.revokeObjectURL(url);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
     } catch (e) {
       console.error(e);
     }
     setSaving(false);
+  };
+
+  const [storySaving, setStorySaving] = useState(false);
+  const handleStory = async () => {
+    track("story_saved");
+    setStorySaving(true);
+    try {
+      const file = await generateStoryImage();
+      if (file) await saveImage(file);
+    } catch (e) {
+      console.error(e);
+    }
+    setStorySaving(false);
   };
 
   // The permanent address for this verdict. Present only when the ledger write
@@ -156,17 +221,13 @@ export default function ResultsPage({
     ? `${typeof window === "undefined" ? "https://bustedlab.com" : window.location.origin}/scan/${result.scanId}`
     : "https://bustedlab.com";
 
-  // The dollar figure is the hook, not the percentage: "$47.10 above market"
-  // is a number a person feels, "412% markup" is a statistic. Both go in,
-  // dollars first, because this string is the caption on every repost.
-  //
-  // The URL is the change that matters. Sharing only a PNG was a dead end: an
-  // image cannot be clicked, indexed or attributed, so every repost of a
-  // verdict card leaked its whole audience. The link now travels with the
-  // image and lands on this exact verdict.
-  const shareText = mode === "VERDICT"
-    ? `$${an.savings.toFixed(2)} above market on this one. ${an.markup}% markup, verified.`
-    : `Ran this through BustedLab. Closest listing found: $${sp.price.toFixed(2)}.`;
+  // What travels with the card: see shareCaption in src/lib/verdict-copy.ts.
+  // The URL is the part that matters. Sharing only a PNG was a dead end: an
+  // image cannot be clicked, indexed or attributed, so every repost leaked its
+  // audience. The link travels with the image and lands on this exact verdict.
+  const shareText = shareCaption({
+    mode, savings: an.savings, markup: an.markup, wholesalePrice: sp.price, hasPermalink: !!result.scanId,
+  });
 
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -221,13 +282,15 @@ export default function ResultsPage({
               and a srcset for an asset that is never rendered at another size.
               eslint-disable-next-line @next/next/no-img-element */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-120.webp" alt="" width={40} height={40} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
-          <span style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "800", fontSize: "20px", letterSpacing: "-0.5px", color: "#eeeef6" }}>BustedLab</span>
+          <img src="/logo-120.webp" alt="" width={32} height={32} style={{ borderRadius: "8px", display: "block", objectFit: "cover" }} />
+          <span style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "800", fontSize: "18px", letterSpacing: "-0.5px", color: "#eeeef6" }}>BustedLab</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {/* Sized so the labelled sound toggle and this button fit beside the
+            wordmark on a 390px phone without wrapping. */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <SoundToggle />
-          <button onClick={onReset} style={{ background: "transparent", color: "rgba(238,238,246,0.5)", border: "1px solid rgba(255,255,255,0.09)", cursor: "pointer", transition: "color 0.18s ease, border-color 0.18s ease", fontFamily: "var(--font-sans), sans-serif", borderRadius: "8px", padding: "7px 16px", fontSize: "13px" }}>
-            {isUnresolved ? "Try another scan" : "Check another"}
+          <button onClick={onReset} style={{ background: "transparent", color: "rgba(238,238,246,0.7)", border: "1px solid rgba(255,255,255,0.12)", cursor: "pointer", transition: "color 0.18s ease, border-color 0.18s ease", fontFamily: "var(--font-sans), sans-serif", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", whiteSpace: "nowrap" }}>
+            {isUnresolved ? "Try another scan" : "Scan another"}
           </button>
         </div>
       </nav>
@@ -248,6 +311,10 @@ export default function ResultsPage({
             <div style={{ display: "flex", gap: "8px", marginBottom: "8px", position: "relative", zIndex: 1 }}>
               <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "14px", borderRadius: "10px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif", background: "linear-gradient(135deg, #8563c0, #7b5ea7)", color: "white", border: "none", cursor: "pointer", transition: "all 0.18s ease", opacity: saving ? 0.5 : 1 }}>
                 {saving ? "Generating..." : saved ? "Saved" : "Save to photos"}
+              </button>
+              {/* 9:16, for Stories. */}
+              <button onClick={handleStory} disabled={storySaving} aria-label="Save for Stories" style={{ padding: "14px 14px", borderRadius: "10px", fontSize: "14px", background: "transparent", color: "rgba(238,238,246,0.8)", border: "1px solid rgba(255,255,255,0.14)", cursor: storySaving ? "default" : "pointer", fontFamily: "var(--font-sans), sans-serif", opacity: storySaving ? 0.5 : 1, whiteSpace: "nowrap" }}>
+                {storySaving ? "Rendering" : "Stories"}
               </button>
               <button onClick={handleShare} disabled={sharing} style={{ padding: "14px 16px", borderRadius: "10px", fontSize: "14px", background: "transparent", color: copied ? "#10d9a0" : "rgba(238,238,246,0.8)", border: copied ? "1px solid rgba(16,217,160,0.3)" : "1px solid rgba(255,255,255,0.14)", cursor: sharing ? "default" : "pointer", transition: "color 0.18s ease, border-color 0.18s ease", fontFamily: "var(--font-sans), sans-serif", opacity: sharing ? 0.5 : 1 }}>
                 {sharing ? "Rendering" : copied ? "Copied" : "Share"}
@@ -316,7 +383,7 @@ export default function ResultsPage({
               <div style={{ borderRadius: "14px", padding: "20px", textAlign: "center", background: "linear-gradient(135deg, rgba(123,94,167,0.08) 0%, transparent 100%)", border: "1px solid rgba(123,94,167,0.15)", backgroundColor: "#10101e" }}>
                 <p style={{ fontWeight: "600", fontSize: "14px", marginBottom: "4px", color: "#eeeef6" }}>Running low on scans?</p>
                 <p style={{ fontSize: "13px", color: "rgba(238,238,246,0.5)", marginBottom: "16px", lineHeight: "1.55" }}>
-                  One-time $4.99. Unlimited scans. HD verdict cards. Forever.
+                  One-time $4.99. Unlimited scans. Forever.
                 </p>
                 <button onClick={onUpgrade} onPointerEnter={onUpgradeIntent} onPointerDown={onUpgradeIntent} onFocus={onUpgradeIntent} style={{ padding: "11px 28px", borderRadius: "9px", fontSize: "14px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif", background: "linear-gradient(135deg, #8563c0, #7b5ea7)", color: "white", border: "none", cursor: "pointer" }}>
                   Get unlimited access

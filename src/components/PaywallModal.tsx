@@ -26,7 +26,7 @@ function headline(remaining: number, freeTierPaused: boolean) {
 }
 
 export default function PaywallModal({
-  onClose, onCheckout, onLogin, checkoutAvailable = true, remaining, freeTierPaused = false,
+  onClose, onCheckout, onLogin, checkoutAvailable = true, remaining, freeTierPaused = false, provider,
 }: {
   onClose: () => void;
   onCheckout: () => void;
@@ -35,6 +35,8 @@ export default function PaywallModal({
   /** Free scans the visitor has left today, as the server last reported. */
   remaining: number;
   freeTierPaused?: boolean;
+  /** Who takes the payment, as /api/checkout reports it. */
+  provider?: string;
 }) {
   const head = headline(remaining, freeTierPaused);
   // Amber for a wall, the brand accent for a choice.
@@ -110,7 +112,7 @@ export default function PaywallModal({
           <div style={{
             width: "6px", height: "6px", borderRadius: "50%",
             background: signal, boxShadow: `0 0 6px ${signal}`,
-          }} className={head.warning ? "animate-pulse" : undefined} />
+          }} />
           <span style={{
             fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px",
             color: head.warning ? "rgba(245,158,11,0.75)" : "rgba(184,160,232,0.8)", textTransform: "uppercase",
@@ -141,15 +143,14 @@ export default function PaywallModal({
             {head.title}
           </h2>
           <p style={{ color: "rgba(238,238,246,0.5)", fontSize: "14px", lineHeight: "1.6" }}>
-            One payment of $4.99. Unlimited X-rays. No subscription, no renewal, no expiration.
+            One payment of $4.99. Unlimited scans. No subscription, no renewal, no expiration.
           </p>
         </div>
 
         {/* Feature readout — styled like the scan engine's own data nodes */}
         <div style={{ padding: "18px 28px 4px", position: "relative", zIndex: 1 }}>
           {[
-            "Unlimited product X-rays",
-            "HD verdict cards built for sharing",
+            "Unlimited product scans",
             "Works on every device, forever",
             "Apple Pay & Google Pay accepted",
           ].map(f => (
@@ -182,6 +183,20 @@ export default function PaywallModal({
           >
             {checkoutAvailable ? "Unlock unlimited access. $4.99" : "Checkout offline"}
           </button>
+          {/* Who handles the card, said next to the button that asks for it.
+              Only when it is true: the checkout link can also be Gumroad. */}
+          {checkoutAvailable && provider === "lemonsqueezy" && (
+            <p style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+              fontSize: "12px", color: "rgba(238,238,246,0.62)", margin: "2px 0 4px",
+            }}>
+              <svg width="11" height="12" viewBox="0 0 11 12" fill="none" aria-hidden="true">
+                <rect x="1" y="5" width="9" height="6.2" rx="1.4" stroke="currentColor" strokeWidth="1.2" />
+                <path d="M3.2 5V3.6a2.3 2.3 0 0 1 4.6 0V5" stroke="currentColor" strokeWidth="1.2" />
+              </svg>
+              Secure checkout by Lemon Squeezy.
+            </p>
+          )}
           {!checkoutAvailable && (
             // Better a closed door that says so than a button that opens a
             // dead tab. Shown whenever /api/checkout says it is not safe to

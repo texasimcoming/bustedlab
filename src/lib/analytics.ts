@@ -37,6 +37,7 @@ import { Redis } from "@upstash/redis";
  *   scan_failed         the browser gave up: timeout or dropped connection
  *   card_saved          "Save to photos": for TikTok and Instagram, most
  *                       likely the way a card actually gets posted
+ *   story_saved         the 9:16 Stories export
  *   share_tapped, paywall_shown, email_captured, checkout_clicked
  */
 
@@ -54,6 +55,7 @@ export const EVENTS = [
   "result_shown",
   "scan_failed",
   "card_saved",
+  "story_saved",
   "share_tapped",
   "paywall_shown",
   "email_captured",
@@ -71,6 +73,7 @@ export const CLIENT_EVENTS: readonly EventName[] = [
   "result_shown",
   "scan_failed",
   "card_saved",
+  "story_saved",
   "share_tapped",
   "paywall_shown",
   "checkout_clicked",
@@ -222,6 +225,9 @@ export interface Funnel {
   saves: number;
   /** "Save to photos" taps per completed scan. */
   savesPerScan: number | null;
+  storySaves: number;
+  /** Stories exports per completed scan. */
+  storySavesPerScan: number | null;
   paywalls: number;
   paywallRate: number | null;
   emails: number;
@@ -265,6 +271,7 @@ export function buildFunnel(series: EventSeries[], scope: "window" | "total" = "
   const verdictTotal = busted + overpriced + fair;
   const shares = get("share_tapped");
   const saves = get("card_saved");
+  const storySaves = get("story_saved");
   const paywalls = get("paywall_shown");
   const emails = get("email_captured");
   const checkoutClicks = get("checkout_clicked");
@@ -291,6 +298,8 @@ export function buildFunnel(series: EventSeries[], scope: "window" | "total" = "
     sharesPerScan: scans > 0 ? Math.round((shares / scans) * 1000) / 1000 : null,
     saves,
     savesPerScan: scans > 0 ? Math.round((saves / scans) * 1000) / 1000 : null,
+    storySaves,
+    storySavesPerScan: scans > 0 ? Math.round((storySaves / scans) * 1000) / 1000 : null,
     paywalls,
     paywallRate: pct(paywalls, scans),
     emails,

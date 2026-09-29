@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { loadLeaderboard } from "@/lib/leaderboard-client";
+import { TOAST_FIRST_NAMES } from "@/content/toast-names";
 
 // ════════════════════════════════════════════════════════════════
 // THE EXIT CONDITION.
@@ -68,11 +69,9 @@ function toFinding(row: { title?: unknown; markup?: unknown; savings?: unknown }
 // "illustrative, not verified" register the testimonials section already
 // uses on this page: a human voice inside an otherwise cold instrument,
 // clearly framed rather than presented as a live user database.
-const FIRST = ["Maya","Jordan","Tyler","Sofia","Amir","Priya","Chris","Lena",
-  "Noah","Ines","Zara","Marcus","Layla","Devon","Chloe","Rafi","Elena","Jake",
-  "Nadia","Omar","Bianca","Kai","Yasmin","Leo","Sasha","Finn","Mira","Andre",
-  "Talia","Hugo","Camille","Ezra","Dani","Theo","Isla","Remy","Jess","Mateo",
-  "Quinn","Sage"];
+// The first names live in src/content/toast-names.ts, which keeps them clear
+// of every name in the reactions section.
+const FIRST = [...TOAST_FIRST_NAMES];
 const INITIALS = "ABCDEFGHJKLMNPRSTW";
 const CITIES = ["London","Toronto","Austin","Paris","Dubai","Sydney","New York",
   "Berlin","LA","Madrid","Amsterdam","Singapore","Miami","Stockholm","Barcelona",

@@ -16,9 +16,9 @@ import {
  * tone defaulting on: nobody has to discover a settings panel to turn it off,
  * and the off switch is visible before the first scan rather than after it.
  *
- * Rendered as a two-state signal readout rather than a speaker icon, because a
- * speaker icon is what every app on a phone uses and this is not one of those.
- * Four bars lit is audio armed; one bar struck through is muted.
+ * Four bars lit is audio armed; one bar struck through is muted. The bars
+ * alone read as a phone's signal strength, so the state is also written out:
+ * "Sound on" / "Sound off".
  */
 export default function SoundToggle() {
   const state = useSyncExternalStore(subscribeSound, getSoundState, getSoundServerState);
@@ -26,7 +26,7 @@ export default function SoundToggle() {
   if (state === "unknown" || state === "unsupported") {
     // Reserve the footprint so the nav does not reflow when the real state
     // lands after hydration, and render nothing where Web Audio is absent.
-    return <div style={{ width: "28px", height: "22px" }} aria-hidden="true" />;
+    return <div style={{ width: "80px", height: "24px" }} aria-hidden="true" />;
   }
 
   const enabled = state === "on";
@@ -39,49 +39,53 @@ export default function SoundToggle() {
       aria-label={enabled ? "Mute verdict tone" : "Unmute verdict tone"}
       aria-pressed={enabled}
       style={{
-        position: "relative",
         background: "transparent",
         border: "none",
         cursor: "pointer",
-        padding: "10px 9px",
+        padding: "10px 8px",
         margin: "-6px -4px",
         display: "flex",
-        alignItems: "flex-end",
-        gap: "1.5px",
-        height: "34px",
-        lineHeight: 0,
+        alignItems: "center",
+        gap: "6px",
+        minHeight: "36px",
         transition: "opacity 0.18s ease",
-        opacity: enabled ? 1 : 0.6,
+        opacity: enabled ? 1 : 0.75,
       }}
     >
-      {[0, 1, 2, 3].map(i => (
-        <span
-          key={i}
-          style={{
-            display: "block",
-            width: "2.5px",
-            height: `${4 + i * 2.5}px`,
-            borderRadius: "1px",
-            background: enabled || i === 0 ? color : "rgba(238,238,246,0.12)",
-            boxShadow: enabled ? `0 0 4px ${color}` : "none",
-            transition: "background 0.18s ease, box-shadow 0.18s ease",
-          }}
-        />
-      ))}
-      {!enabled && (
-        <span
-          style={{
-            position: "absolute",
-            left: "7px",
-            right: "7px",
-            top: "16px",
-            height: "1.5px",
-            background: "var(--text-3)",
-            transform: "rotate(-34deg)",
-            pointerEvents: "none",
-          }}
-        />
-      )}
+      <span style={{ position: "relative", display: "flex", alignItems: "flex-end", gap: "1.5px", height: "12px" }}>
+        {[0, 1, 2, 3].map(i => (
+          <span
+            key={i}
+            style={{
+              display: "block",
+              width: "2.5px",
+              height: `${4 + i * 2.5}px`,
+              borderRadius: "1px",
+              background: enabled || i === 0 ? color : "rgba(238,238,246,0.12)",
+              transition: "background 0.18s ease",
+            }}
+          />
+        ))}
+        {!enabled && (
+          <span
+            style={{
+              position: "absolute",
+              left: "-2px",
+              right: "-2px",
+              top: "5px",
+              height: "1.5px",
+              background: "var(--text-3)",
+              transform: "rotate(-34deg)",
+              pointerEvents: "none",
+            }}
+          />
+        )}
+      </span>
+      {/* The bars alone read as a phone's signal strength. The word says
+          what the control is. */}
+      <span style={{ fontSize: "12px", color: enabled ? "var(--text-2)" : "var(--text-3)", whiteSpace: "nowrap", lineHeight: 1 }}>
+        {enabled ? "Sound on" : "Sound off"}
+      </span>
     </button>
   );
 }

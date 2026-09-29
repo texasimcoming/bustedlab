@@ -13,12 +13,12 @@ export default function StickyBar({
     return (
       <div className="sticky-bar">
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--green)" }} className="animate-pulse" />
+          <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--green)" }} />
           <span style={{ fontSize: "13px", color: "var(--text-2)" }}>Unlimited access active</span>
         </div>
         <button onClick={onScan} className="btn-primary"
           style={{ borderRadius: "10px", padding: "10px 20px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif" }}>
-          {hasFile ? "Run X-ray" : "Scan a product"}
+          {hasFile ? "Scan it" : "Scan a product"}
         </button>
       </div>
     );
@@ -43,7 +43,7 @@ export default function StickyBar({
       {remaining > 0 ? (
         <button onClick={onScan} className="btn-primary"
           style={{ borderRadius: "10px", padding: "10px 20px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif" }}>
-          {hasFile ? "Run X-ray" : "Scan a product"}
+          {hasFile ? "Scan it" : "Scan a product"}
         </button>
       ) : (
         <button onClick={onUpgrade} className="btn-primary"
