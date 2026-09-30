@@ -457,20 +457,19 @@ export default function VerdictCard({ data, animate = true, compact = false, car
               </>
             ) : (
             <>
-            {/* Verdict stamp + markup ring, then the one number the card is
-                built around. */}
+            {/* Verdict headline + markup ring — leads the card */}
             <div style={{
                 display: "grid",
                 gridTemplateColumns: compact ? "1fr 68px" : "1fr 88px",
                 alignItems: "center",
                 gap: compact ? "12px" : "16px",
-                marginBottom: compact ? "8px" : "10px",
+                marginBottom: compact ? "16px" : "20px",
               }}>
               {/* Verdict label - grid column 1 */}
               <div>
                 <div style={{
                   fontFamily: "var(--font-display), sans-serif",
-                  fontSize: compact ? (isFinder ? "22px" : "32px") : (isFinder ? "30px" : "40px"),
+                  fontSize: compact ? (isFinder ? "22px" : "38px") : (isFinder ? "30px" : "48px"),
                   fontWeight: "800", color: cfg.accentColor,
                   letterSpacing: compact ? "1.5px" : "3px", lineHeight: "1.12",
                   paddingBottom: "2px",
@@ -479,6 +478,24 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                   transition: "opacity 0.3s ease, transform 0.3s ease",
                   whiteSpace: "nowrap",
                 }}>{cfg.label}</div>
+                {isVerdict && (
+                  <div style={{
+                    fontFamily: "var(--font-display), sans-serif",
+                    fontSize: compact ? "13px" : "15px",
+                    fontWeight: "700",
+                    color: data.verdict === "FAIR" ? "#10d9a0" : data.verdict === "HIGH_MARKUP" ? "#ef4444" : "#f59e0b",
+                    letterSpacing: "-0.3px",
+                    lineHeight: "1.35",
+                    marginTop: compact ? "4px" : "6px",
+                    opacity: numbersIn ? 1 : 0,
+                    transform: numbersIn ? "none" : "translateY(3px)",
+                    transition: "opacity 0.2s ease 0.1s, transform 0.2s ease 0.1s",
+                  }}>
+                    {data.verdict === "FAIR"
+                      ? `$${data.savings.toFixed(2)} spread`
+                      : `Save $${data.savings.toFixed(2)}`}
+                  </div>
+                )}
               </div>
 
               {/* Markup ring */}
@@ -549,35 +566,6 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                 </div>
               )}
             </div>
-
-            {/* THE NUMBER. One figure leads the card and it is the dollar gap:
-                "$64.88 above market" is a number a person feels, the
-                percentage in the ring is a statistic. Sized to survive a feed
-                thumbnail, and larger than the stamp above it. */}
-            {isVerdict && data.verdict !== "UNVERIFIED" && (() => {
-              const hero = `$${data.savings.toFixed(2)}`;
-              const size = compact
-                ? (hero.length <= 6 ? 58 : hero.length === 7 ? 50 : 42)
-                : (hero.length <= 6 ? 72 : hero.length === 7 ? 62 : 52);
-              return (
-                <div style={{
-                  display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "2px 10px",
-                  marginBottom: compact ? "12px" : "16px",
-                  opacity: numbersIn ? 1 : 0,
-                  transform: numbersIn ? "none" : "translateY(4px)",
-                  transition: "opacity 0.25s ease, transform 0.25s ease",
-                }}>
-                  <span style={{
-                    fontFamily: "var(--font-display), sans-serif", fontSize: `${size}px`, fontWeight: "800",
-                    color: cfg.accentColor, letterSpacing: "-2px", lineHeight: "1",
-                    textShadow: `0 0 ${compact ? "16px" : "26px"} ${cfg.accentGlow}`,
-                  }}>{hero}</span>
-                  <span style={{ fontSize: compact ? "13px" : "15px", fontWeight: "600", color: "rgba(238,238,246,0.72)" }}>
-                    {data.verdict === "FAIR" ? "spread" : "above market"}
-                  </span>
-                </div>
-              );
-            })()}
 
             {/* Human-voice line — computed, not static copy */}
             <div style={{

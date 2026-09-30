@@ -415,7 +415,6 @@ export default function Home() {
   const handleFile = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) return;
     if (!inputTracked.current.photo) { inputTracked.current.photo = true; track("photo_selected"); }
-    setUserIntent("verdict");
     setUploadedFile(file);
     const reader = new FileReader();
     reader.onload = (e) => setPreview(e.target?.result as string);
@@ -619,33 +618,45 @@ export default function Home() {
     }
   };
 
-  const handleReset = () => { setState("landing"); setPreview(null); setResult(null); setUploadedFile(null); setUrlInput(""); setUserIntent("verdict"); };
+  const handleReset = () => { setState("landing"); setPreview(null); setResult(null); setUploadedFile(null); setUrlInput(""); };
 
-  // What the visitor wants to know, asked once there is something to scan.
-  // The verdict is preselected; the cheapest-listing search is the other
-  // option. Purple is the only colour here, like every other control.
-  const intentChoice = (input: "photo" | "link") => (
-    <div style={{ margin: "14px 0 12px" }}>
-      <p id="intent-label" style={{ fontSize: "12px", color: "var(--text-2)", marginBottom: "8px", textAlign: "center" }}>
-        What do you want to know?
+  // What the visitor wants to know, asked up front and sitting directly above
+  // the scan button, with the verdict preselected. The same panel stays in
+  // place once a photo is picked, so the choice can still be changed before
+  // scanning. Purple is the only colour here, like every other control.
+  const intentPanel = (
+    <div className="intent-panel" style={{
+      margin: "0 0 12px", padding: "16px 12px 12px", borderRadius: "14px",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.008) 100%)",
+      border: "1px solid rgba(255,255,255,0.08)",
+    }}>
+      <p style={{ fontSize: "10.5px", color: "var(--text-2)", lineHeight: "1.55", margin: "0 0 10px", fontFamily: "var(--font-mono), ui-monospace, monospace", letterSpacing: "0.4px", textAlign: "center" }}>
+        PRICE VISIBLE = ACCURATE VERDICT.<br className="warning-break" /> NO PRICE = NO READING.
+      </p>
+      <p id="intent-label" style={{ fontSize: "12.5px", color: "var(--text-2)", marginBottom: "10px", textAlign: "center" }}>
+        What do you want to know about this product?
       </p>
       <div role="group" aria-labelledby="intent-label" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
         {([
-          ["verdict", "Am I overcharged?", input === "photo" ? "The full verdict. Needs the price in the shot." : "The full verdict."],
-          ["finder", "Where is it cheapest?", "Just the cheapest match we find."],
-        ] as const).map(([key, title, sub]) => {
+          ["verdict", "Am I overcharged?", "Get the full verdict card", "Needs the price visible"],
+          ["finder", "Where is it cheapest?", "Just the cheapest link", "No verdict, no price shown"],
+        ] as const).map(([key, title, sub, note]) => {
           const on = userIntent === key;
           return (
             <button key={key} onClick={() => setUserIntent(key)} aria-pressed={on} style={{
-              background: on ? "rgba(123,94,167,0.14)" : "rgba(255,255,255,0.02)",
-              border: `1px solid ${on ? "rgba(157,127,212,0.55)" : "rgba(255,255,255,0.08)"}`,
-              borderRadius: "11px", padding: "11px 10px", cursor: "pointer", textAlign: "center",
+              background: on ? "rgba(123,94,167,0.16)" : "rgba(255,255,255,0.02)",
+              border: `1px solid ${on ? "rgba(157,127,212,0.6)" : "rgba(255,255,255,0.09)"}`,
+              borderRadius: "11px", padding: "10px 8px 9px", cursor: "pointer", textAlign: "center", minWidth: 0,
               fontFamily: "var(--font-sans), sans-serif", transition: "background 0.18s ease, border-color 0.18s ease",
             }}>
-              <div style={{ fontSize: "13px", fontWeight: "700", color: on ? "var(--accent-bright)" : "var(--text-2)", marginBottom: "3px" }}>
+              <div style={{ fontSize: "12.5px", fontWeight: "700", color: on ? "var(--accent-bright)" : "var(--text-2)", marginBottom: "3px", textWrap: "balance" }}>
                 {on ? "\u2713 " : ""}{title}
               </div>
-              <div style={{ fontSize: "11px", color: "var(--text-3)", lineHeight: "1.35" }}>{sub}</div>
+              <div style={{ fontSize: "11.5px", color: "var(--text-2)", lineHeight: "1.3", marginBottom: "6px" }}>{sub}</div>
+              <div style={{
+                fontSize: "10.5px", lineHeight: "1.3", color: on ? "var(--accent-bright)" : "var(--text-3)",
+                borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "6px",
+              }}>{note}</div>
             </button>
           );
         })}
@@ -812,8 +823,8 @@ export default function Home() {
             One dominant thing to do on arrival: scan a photo. One button
             covers the camera and the photo library, because the phone's own
             picker offers both. The link field sits under it as the secondary
-            path. What the visitor wants to know is asked only once there is
-            something to scan, with the verdict already chosen. */}
+            path. What the visitor wants to know is asked right above it, with
+            the verdict already chosen. */}
         {preview ? (
           <>
             <div style={{ borderRadius: "14px", overflow: "hidden", marginBottom: "4px", position: "relative" }}>
@@ -835,7 +846,8 @@ export default function Home() {
               </div>
             </div>
 
-            {intentChoice("photo")}
+            <div style={{ height: "12px" }} />
+            {intentPanel}
 
             {/* Deactivated rather than relabeled when the free allowance is
                 spent - same button, same words, just disabled. */}
@@ -850,6 +862,7 @@ export default function Home() {
           </>
         ) : (
           <>
+            {intentPanel}
             <button
               className="btn-primary"
               onClick={() => fileInputRef.current?.click()}
@@ -887,7 +900,6 @@ export default function Home() {
                 Scan link
               </button>
             </div>
-            {urlInput.trim() && intentChoice("link")}
           </>
         )}
 
