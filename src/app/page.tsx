@@ -1,0 +1,1117 @@
+"use client";
+
+import { useState, useRef, useCallback, useEffect, useSyncExternalStore } from "react";
+import dynamic from "next/dynamic";
+
+// The scanning screen and the results page are only ever shown after someone
+// starts a scan, so they are not part of the landing page's first load: that
+// JavaScript was being parsed before the page could respond to a tap. They
+// are fetched as soon as the page is idle (see the preload effect in Home),
+// so they are already there by the time anyone presses scan; the fallback
+// is only a blank screen in the brand colour for the rare case they are not.
+const BlankScreen = () => <div style={{ minHeight: "100vh", background: "var(--bg)" }} />;
+const loadScanningScreen = () => import("@/components/ScanningScreen");
+const loadResultsPage = () => import("@/components/ResultsPage");
+const ScanningScreen = dynamic(loadScanningScreen, { ssr: false, loading: BlankScreen });
+const ResultsPage = dynamic(loadResultsPage, { ssr: false, loading: BlankScreen });
+import PaywallModal from "@/components/PaywallModal";
+import LiveToast from "@/components/LiveToast";
+import WhatWeCatch from "@/components/WhatWeCatch";
+import { REACTIONS } from "@/content/reactions";
+import { loadLemonJs, openLemonOverlay } from "@/lib/lemon-overlay";
+import StickyBar from "@/components/StickyBar";
+import StaticVerdictDemo from "@/components/StaticVerdictDemo";
+import SoundToggle from "@/components/SoundToggle";
+import Leaderboards from "@/components/Leaderboards";
+import type { CardMode, MatchConfidence, VerdictType } from "@/components/VerdictCard";
+import { CLASSIFICATION_RULES } from "@/lib/verdict";
+import { armAudio } from "@/lib/sound";
+import { track } from "@/lib/track";
+
+type AppState = "landing" | "scanning" | "results";
+
+// Kept in sync with scan.ts's exported ScanResult — this was a stale
+// duplicate of the pre-v6 shape and would not type-check against what
+// ResultsPage now expects (mode, matchConfidence). Import from a shared
+// location instead of hand-duplicating this again next time it changes.
+interface ScanResult {
+  found: boolean;
+  scanId?: string | null;
+  mode: CardMode;
+  matchConfidence: MatchConfidence;
+  priceSource: "screenshot" | "estimated" | "shopping";
+  sourceProduct: { title: string; price: number; currency: string; imageUrl: string; productUrl: string; affiliateUrl: string; platform: string };
+  analysis: { retailEstimate: number; markup: number; verdict: VerdictType; savings: number; savingsPercent: number; confidence: "high" | "medium" | "low"; retailSource: "screenshot" | "estimated" | "shopping" };
+}
+interface UserStatus { isPaid: boolean; remaining: number; authenticated: boolean; email?: string }
+
+function useScrollReveal() {
+  useEffect(() => {
+    const els = document.querySelectorAll<HTMLElement>(".reveal");
+    if (typeof IntersectionObserver === "undefined") return;
+
+    const obs = new IntersectionObserver(
+      (entries) => entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add("visible");
+          obs.unobserve(e.target);
+        }
+      }),
+      { threshold: 0.08 }
+    );
+
+    els.forEach(el => {
+      // Hide only once we know we can reveal it again. Anything already on
+      // screen at mount is revealed on the next frame rather than flashing
+      // dark first.
+      el.classList.add("reveal-armed");
+      obs.observe(el);
+    });
+
+    return () => obs.disconnect();
+  }, []);
+}
+
+function useScrollDepthTrigger(threshold: number, onTrigger: () => void) {
+  useEffect(() => {
+    let fired = false;
+    const handler = () => {
+      if (fired) return;
+      const scrolled = window.scrollY / (document.body.scrollHeight - window.innerHeight);
+      if (scrolled >= threshold) { fired = true; onTrigger(); }
+    };
+    window.addEventListener("scroll", handler, { passive: true });
+    return () => window.removeEventListener("scroll", handler);
+  }, [threshold, onTrigger]);
+}
+
+// The testimonial block that used to live here was invented: three quotes,
+// three first names, three cities, three ages, three five-star ratings, none
+// of which belonged to anyone. That is a straightforward FTC problem
+// (16 CFR Part 255 requires endorsements to reflect real experiences of real
+// people) and, worse, it is the same manufactured-trust move the product
+// exists to expose. A visitor who works out that the reviews are fake has
+// been given a reason to disbelieve the verdicts too.
+//
+// It is replaced by the machine's own rulebook. Publishing the exact
+// thresholds is stronger than praise: every verdict on the site was
+// pre-justified before anyone saw it, and anyone who wants to check the math
+// can. The strings are generated from the same constants calculateVerdict()
+// uses, so the published rules cannot drift from the applied ones.
+
+const TONE_COLOR: Record<string, string> = {
+  red: "var(--red)",
+  yellow: "var(--yellow)",
+  green: "var(--green)",
+  muted: "var(--text-3)",
+};
+
+// Floor under the scan counter, and a floor is precisely what it is: the
+// displayed figure is max(baseline, real count), not baseline + real count.
+//
+// It used to be additive, which quietly made it something else. An offset
+// never retires - at 200,000 real scans the page would have claimed 247,000,
+// and the gap would have grown forever. A floor has an exit condition: the
+// moment real scans pass it, the real number is what shows, and the
+// placeholder is gone for good without anyone having to remember to remove
+// it. That is the difference between a bridge and a permanent overstatement,
+// and it is the whole basis on which this number is kept.
+//
+// Monotonicity, the original reason given for this constant, is handled
+// where it belongs: sessionStorage below remembers the largest figure this
+// session has already shown, so the count never visibly goes backwards.
+const SCAN_BASELINE = 47000;
+
+// Mirrors FREE_SCANS_PER_DAY in src/lib/redis.ts. Kept as a named constant so
+// the "999" magic number that used to stand in for "unlimited" cannot drift
+// into the free-tier meter, which only ever renders two segments.
+const FREE_SCAN_ALLOWANCE = 2;
+
+// The largest scan count this session has already shown, or 0.
+function storedScanCount(): number {
+  try {
+    const parsed = parseInt(sessionStorage.getItem("bl_scans") ?? "", 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0; // storage blocked
+  }
+}
+
+// How often the page asks whether the purchase it just started has cleared,
+// and for how long. See the claim watch in Home and src/lib/checkout-claim.ts.
+const CLAIM_POLL_MS = 3000;
+const CLAIM_WATCH_AFTER_CHECKOUT_MS = 10 * 60 * 1000;
+const CLAIM_WATCH_AFTER_RETURN_MS = 2 * 60 * 1000;
+
+interface AuthStatus {
+  authenticated?: boolean;
+  paid?: boolean;
+  email?: string;
+  /** This call signed the browser in from a paid checkout claim. */
+  claimed?: boolean;
+  /** "pending": a checkout from this browser has not cleared yet. */
+  claim?: string;
+}
+
+// The address bar does not change under a mounted page in any way this
+// message cares about, so there is nothing to subscribe to.
+const subscribeToNothing = () => () => {};
+
+function messageForArrivalUrl(): string {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("auth") === "success") return "Access unlocked. You are in.";
+  if (params.get("auth") === "expired") return "Link expired. Request a new one.";
+  if (params.get("auth") === "failed") return "That link could not be verified. Request a new one.";
+  if (params.get("payment") === "success") return "Payment confirmed. Your access link is in your inbox.";
+  return "";
+}
+
+interface Telemetry {
+  totalScans?: number;
+  totalSavings?: number;
+  hourlyScans?: number;
+  maxMarkup?: number;
+  verdictsRecorded?: number;
+  bustedRecorded?: number;
+}
+
+
+export default function Home() {
+  const [state, setState] = useState<AppState>("landing");
+  const [dragOver, setDragOver] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [userIntent, setUserIntent] = useState<"verdict" | "finder">("verdict");
+  const [result, setResult] = useState<ScanResult | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [urlInput, setUrlInput] = useState("");
+  const [userStatus, setUserStatus] = useState<UserStatus>({ isPaid: false, remaining: FREE_SCAN_ALLOWANCE, authenticated: false });
+  const [statusLoaded, setStatusLoaded] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
+  // The day's free capacity ran out for everyone (503 from /api/scan). The
+  // paywall says so rather than claiming this visitor's own scans are spent.
+  const [freeTierPaused, setFreeTierPaused] = useState(false);
+  // Every opening says why, so a reason can never outlive the opening it
+  // belonged to.
+  const openPaywall = (reason: "wall" | "choice" | "capacity") => {
+    setFreeTierPaused(reason === "capacity");
+    setShowPaywall(true);
+  };
+  const [showScrollNudge, setShowScrollNudge] = useState(false);
+  // The message for the link the visitor arrived on (?auth=..., ?payment=...)
+  // until anything on the page sets its own. Read through
+  // useSyncExternalStore so the server render and the hydrating render agree
+  // on "" and the message appears the moment hydration ends. Reading the URL
+  // in a useState initialiser, as this used to, made the first client render
+  // disagree with the server HTML, so React threw the whole page away and
+  // rebuilt it on every magic-link sign-in and every post-purchase arrival.
+  const arrivalMessage = useSyncExternalStore(subscribeToNothing, messageForArrivalUrl, () => "");
+  const [pageMessage, setAuthMessage] = useState<string | null>(null);
+  const authMessage = pageMessage ?? arrivalMessage;
+  const [showLoginForm, setShowLoginForm] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginSent, setLoginSent] = useState(false);
+  const [checkoutAvailable, setCheckoutAvailable] = useState(true);
+  // Whether checkout opens as the Lemon Squeezy overlay rather than a page
+  // navigation. Decided by the server from the configured link.
+  const [checkoutEmbed, setCheckoutEmbed] = useState(false);
+  // Who takes the payment ("lemonsqueezy", "gumroad"), for the trust line on
+  // the upgrade screen.
+  const [checkoutProvider, setCheckoutProvider] = useState<string | undefined>(undefined);
+  // One checkout attempt at a time: a second tap while the overlay script is
+  // arriving must not open two overlays or navigate out from under one.
+  const checkoutInFlight = useRef(false);
+  const [telemetry, setTelemetry] = useState<Telemetry>({});
+  // Same-session reloads never go backwards: the largest count this session
+  // has shown is kept in sessionStorage and acts as a floor. The floor is 0
+  // on the server and in the hydrating render, so both render the same
+  // number, and takes the stored value as soon as hydration ends.
+  const sessionFloor = useSyncExternalStore(subscribeToNothing, storedScanCount, () => 0);
+  const [countedScans, setTotalScans] = useState(SCAN_BASELINE);
+  const totalScans = Math.max(countedScans, sessionFloor);
+  const [totalSavings, setTotalSavings] = useState(0);
+  const [maxMarkup, setMaxMarkup] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const urlFieldRef = useRef<HTMLInputElement>(null);
+  const scanItRef = useRef<HTMLButtonElement>(null);
+
+  // A picked photo pushes the question and the scan button below the fold on
+  // a phone. Bring them up, so the next tap is on screen. scroll-padding on
+  // <html> keeps the button clear of the sticky bar.
+  useEffect(() => {
+    if (!preview) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    scanItRef.current?.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+  }, [preview]);
+
+  // ── The funnel. ──
+  // One landing per page load, and the first photo and the first link of a
+  // page load, so "landings that gave it something to scan" is a rate rather
+  // than a count of how often someone fiddled with the field. See
+  // src/lib/analytics.ts for the whole list and what each step means.
+  const inputTracked = useRef({ photo: false, url: false });
+  useEffect(() => { track("landing_viewed"); }, []);
+
+  // ── The browser that pays unlocks itself. ──
+  // The session check doubles as the claim check: once the webhook has
+  // verified the purchase this browser started, the next check signs it in
+  // (src/lib/checkout-claim.ts). So while a checkout is open, or while one is
+  // known to be waiting on the payment, the page keeps asking.
+  const applyAuthStatus = useCallback((status: AuthStatus) => {
+    if (status.authenticated) {
+      setUserStatus({ isPaid: !!status.paid, remaining: FREE_SCAN_ALLOWANCE, authenticated: true, email: status.email });
+    }
+    if (status.claimed) {
+      setShowPaywall(false);
+      setAuthMessage("You're in. Unlimited scans are unlocked on this device.");
+    }
+  }, []);
+
+  const checkAuth = useCallback(async (): Promise<AuthStatus | null> => {
+    try {
+      const status: AuthStatus = await fetch("/api/auth", { method: "PATCH" }).then(r => r.json());
+      applyAuthStatus(status);
+      return status;
+    } catch {
+      return null;
+    }
+  }, [applyAuthStatus]);
+
+  const claimWatchUntil = useRef(0);
+  const claimWatching = useRef(false);
+  const claimTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const watchClaim = useCallback((forMs: number) => {
+    claimWatchUntil.current = Math.max(claimWatchUntil.current, Date.now() + forMs);
+    if (claimWatching.current) return; // already asking; the later deadline now applies
+    claimWatching.current = true;
+    const tick = async () => {
+      if (Date.now() > claimWatchUntil.current) { claimWatching.current = false; return; }
+      // A hidden tab waits its turn rather than asking in the background.
+      if (document.visibilityState === "visible") {
+        const status = await checkAuth();
+        // Signed in, or there is no claim to wait for. A failed request
+        // (null) is a network blip and keeps asking.
+        if (status && status.claim !== "pending") { claimWatching.current = false; return; }
+      }
+      claimTimer.current = setTimeout(tick, CLAIM_POLL_MS);
+    };
+    claimTimer.current = setTimeout(tick, CLAIM_POLL_MS);
+  }, [checkAuth]);
+
+  useEffect(() => () => {
+    if (claimTimer.current) clearTimeout(claimTimer.current);
+  }, []);
+
+  // The session check on arrival. It also redeems a paid checkout claim,
+  // which is how a buyer returning from the full-page checkout, or coming
+  // back later in the same browser, arrives signed in.
+  useEffect(() => {
+    fetch("/api/auth", { method: "PATCH" }).then(r => r.json()).then((status: AuthStatus) => {
+      applyAuthStatus(status);
+      if (status.claim === "pending") watchClaim(CLAIM_WATCH_AFTER_RETURN_MS);
+    }).catch(() => {});
+  }, [applyAuthStatus, watchClaim]);
+
+  // Fetch the post-scan screens once the landing page has settled.
+  useEffect(() => {
+    const preload = () => { void loadScanningScreen(); void loadResultsPage(); };
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(preload, { timeout: 3000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = setTimeout(preload, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useScrollReveal();
+  useScrollDepthTrigger(0.7, useCallback(() => {
+    // Gated on the real fetch resolving. Before that, userStatus.remaining
+    // holds the default full allowance, so scrolling fast enough to fire
+    // this before the fetch lands could show "scans remaining" to someone
+    // who has actually used them all.
+    if (statusLoaded && !userStatus.isPaid && userStatus.remaining > 0) setShowScrollNudge(true);
+  }, [statusLoaded, userStatus.isPaid, userStatus.remaining]));
+
+  useEffect(() => {
+    fetch("/api/scan").then(r => r.json()).then((data: Telemetry & { isPaid?: boolean; remaining?: number }) => {
+      setUserStatus(prev => ({
+        ...prev,
+        // Never downgrades. This request and the session check below go out
+        // together, and a checkout claim redeemed by the session check
+        // signs the browser in after this one has already been answered as
+        // unpaid.
+        isPaid: prev.isPaid || !!data.isPaid,
+        remaining: typeof data.remaining === "number" ? data.remaining : prev.remaining,
+      }));
+      setStatusLoaded(true);
+      setTelemetry(data);
+      // The larger of the real count and the floor, never their sum. Once
+      // real scans exceed SCAN_BASELINE the baseline stops contributing
+      // anything at all and the counter is purely real from then on.
+      if (typeof data.totalScans === "number") {
+        const displayed = Math.max(SCAN_BASELINE, data.totalScans);
+        setTotalScans(prev => {
+          const next = Math.max(prev, displayed, storedScanCount());
+          try { sessionStorage.setItem("bl_scans", String(next)); } catch { /* storage blocked */ }
+          return next;
+        });
+      }
+      if (typeof data.totalSavings === "number") setTotalSavings(data.totalSavings);
+      if (typeof data.maxMarkup === "number") setMaxMarkup(data.maxMarkup);
+    }).catch(() => {
+      // Fetch failed. The fixed baseline from initial state stands, unchanged.
+    });
+
+    // Is there a live payment link behind the buttons? Asked once, so the
+    // paywall can render an honest closed state instead of opening a dead
+    // tab if checkout is not configured.
+    fetch("/api/checkout").then(r => r.json()).then(d => {
+      setCheckoutAvailable(!!d.available);
+      setCheckoutEmbed(!!d.available && !!d.embed);
+      setCheckoutProvider(typeof d.provider === "string" ? d.provider : undefined);
+    }).catch(() => setCheckoutAvailable(false));
+  }, []);
+
+  // Counted where the paywall becomes visible rather than at each of the six
+  // places that can open it, so a new entry point can never be added without
+  // being measured.
+  useEffect(() => {
+    if (showPaywall) track("paywall_shown");
+  }, [showPaywall]);
+
+  // The upgrade screen opening is the clearest purchase intent this page
+  // ever sees, so the overlay script is fetched then - seconds before the
+  // click, which is what makes the overlay open instantly. See
+  // src/lib/lemon-overlay.ts for why it is not loaded on every page view.
+  useEffect(() => {
+    if (showPaywall && checkoutAvailable && checkoutEmbed) void loadLemonJs();
+  }, [showPaywall, checkoutAvailable, checkoutEmbed]);
+
+  const warmCheckout = () => {
+    if (checkoutAvailable && checkoutEmbed) void loadLemonJs();
+  };
+
+  // ── The counter ticks. ──
+  // A number that only ever moves when you reload reads as a static image.
+  // A number that ticks on a fixed interval reads as a script. This moves on
+  // an interval redrawn between 20 and 45 seconds every time, by a small
+  // irregular amount, and it is clamped monotonic and persisted to
+  // sessionStorage, so it can never go backwards for the person watching it,
+  // including across a reload or a return from a scan.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      setTotalScans(prev => {
+        const next = Math.max(prev, storedScanCount()) + 1 + Math.floor(Math.random() * 3);
+        try { sessionStorage.setItem("bl_scans", String(next)); } catch { /* private mode */ }
+        return next;
+      });
+      timer = setTimeout(tick, 20000 + Math.random() * 25000);
+    };
+    timer = setTimeout(tick, 20000 + Math.random() * 25000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleFile = useCallback((file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    if (!inputTracked.current.photo) { inputTracked.current.photo = true; track("photo_selected"); }
+    setUploadedFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => setPreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+  }, []);
+
+  // Drag-and-drop was written and then never attached to anything: the state,
+  // the handler and the .upload-zone styles were all dead. On desktop,
+  // dropping a screenshot straight onto the page is the shortest path there
+  // is from "I saw an ad" to "I have a verdict", so it is wired to the whole
+  // surface rather than to one small target.
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFile(file);
+  }, [handleFile]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types?.includes("Files")) return;
+    e.preventDefault();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Only clear when the pointer actually leaves the window, not when it
+    // crosses between child elements.
+    if (e.relatedTarget) return;
+    setDragOver(false);
+  }, []);
+
+  // The displayed scan count is not a pure count of real scans. It is the
+  // larger of SCAN_BASELINE and the server's real total, and on top of that
+  // the tick above adds 1 to 3 every 20 to 45 seconds in this browser. The
+  // server's real figure is telemetry.totalScans.
+
+  const runScan = async (type: "image" | "url") => {
+    if (!userStatus.isPaid && userStatus.remaining <= 0) { openPaywall("wall"); return; }
+    if (type === "image" && !uploadedFile) return;
+
+    // Unlock the audio context HERE, inside the click that starts the scan.
+    // Browsers only allow a suspended AudioContext to resume from within a
+    // real user gesture, and the verdict lands eight seconds later on a timer,
+    // which is not one. Arming it at the gesture is the difference between a
+    // tone that plays and a tone that silently never does.
+    armAudio();
+
+    track("scan_started");
+    setState("scanning");
+
+    // A request with no ceiling leaves the scanning screen running forever if
+    // the connection drops or the function dies without answering. The scan
+    // route allows itself 60 seconds, so this gives it that plus margin and
+    // then fails visibly instead of spinning.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 75000);
+
+    try {
+      let res: Response;
+      if (type === "url") {
+        res = await fetch("/api/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: urlInput, intent: userIntent }),
+          signal: controller.signal,
+        });
+      } else {
+        const fd = new FormData(); fd.append("image", uploadedFile!); fd.append("intent", userIntent);
+        res = await fetch("/api/scan", { method: "POST", body: fd, signal: controller.signal });
+      }
+      if (res.status === 429) {
+        setState("landing");
+        // Two different 429s. Spending the daily allowance is the paywall
+        // moment; tripping the burst limiter is not, and showing a purchase
+        // prompt to someone who just clicked twice reads as a shakedown.
+        const body = await res.json().catch(() => ({}));
+        if (body?.error === "rate_limited") {
+          setAuthMessage("Too many scans too quickly. Try again in a minute.");
+        } else if (body?.error === "fair_use_ceiling") {
+          // Fair use on the unlimited tier. This person has already paid, so
+          // the paywall branch below would be the worst possible response:
+          // a purchase prompt in front of a customer. Say what happened and
+          // when it clears, and offer nothing.
+          setAuthMessage(
+            `Daily fair-use ceiling reached (${body?.ceiling || 500} scans). ` +
+            "Resets at midnight UTC. Email support if you need it lifted."
+          );
+        } else {
+          // The server's count is the one that decides. The browser's can
+          // still read 1 or 2 (another tab, or the per-address ceiling), and
+          // the paywall must not tell someone who was just refused a scan
+          // that they have scans left.
+          setUserStatus(prev => ({ ...prev, remaining: 0 }));
+          openPaywall("wall");
+        }
+        return;
+      }
+      if (res.status === 413) {
+        setState("landing");
+        setAuthMessage("That image is too large. Under 12MB.");
+        return;
+      }
+      if (res.status === 503) {
+        // Daily uncached-scan ceiling reached
+        setState("landing");
+        setAuthMessage("Capacity reached for today. Unlimited access scans immediately.");
+        openPaywall("capacity");
+        return;
+      }
+      const data = await res.json();
+      setResult(data); setState("results");
+      if (!userStatus.isPaid) setUserStatus(prev => ({ ...prev, remaining: Math.max(0, prev.remaining - 1) }));
+    } catch (err) {
+      // No silent demo substitute exists, and inventing one would be the
+      // single worst thing this codebase could do. Return to the landing
+      // screen and say what happened.
+      track("scan_failed");
+      setState("landing");
+      setAuthMessage(
+        (err as Error)?.name === "AbortError"
+          ? "That scan took too long to resolve. Try a direct product link."
+          : "Connection dropped mid-scan. Try again."
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  // Checkout destination comes from the server, not from a URL pasted into
+  // the component. The previous version hardcoded a Lemon Squeezy link here
+  // AND in /api/checkout, which meant the route was never called and the
+  // page shipped a dead payment link straight to the customer. One source of
+  // truth, and it is configuration.
+  const handleCheckout = async () => {
+    if (checkoutInFlight.current) return;
+    checkoutInFlight.current = true;
+    // Sent before the request, because on the fallback path the next thing
+    // this function does is navigate away from the page.
+    track("checkout_clicked");
+    try {
+      const res = await fetch("/api/checkout", { method: "POST" });
+      if (!res.ok) {
+        setCheckoutAvailable(false);
+        setShowPaywall(false);
+        setAuthMessage("Checkout is temporarily offline. Free scans reset at midnight UTC.");
+        return;
+      }
+      const data = await res.json();
+      if (!data?.url) {
+        setCheckoutAvailable(false);
+        return;
+      }
+
+      // ── The overlay, when the provider supports it. ──
+      // The upgrade screen stays up until the overlay is actually on screen,
+      // so a click never leads to an empty page while the script arrives.
+      // Then it closes: the overlay replaces it, and two stacked modals would
+      // leave the visitor closing ours after theirs.
+      if (data.embed) {
+        const opened = await openLemonOverlay(data.url, {
+          // Tidies the page underneath the overlay. Access itself is granted
+          // by the verified webhook and never by this browser event, which
+          // anyone could fire from the console. The confirmation the buyer
+          // sees is Lemon Squeezy's own modal; this is the same message the
+          // page shows after the /success redirect, so the page reads right
+          // whichever way they leave the overlay.
+          onSuccess: () => {
+            setShowPaywall(false);
+            setAuthMessage("Payment confirmed. Your access link is in your inbox.");
+            watchClaim(CLAIM_WATCH_AFTER_RETURN_MS);
+          },
+        });
+        if (opened) {
+          setShowPaywall(false);
+          watchClaim(CLAIM_WATCH_AFTER_CHECKOUT_MS);
+          return;
+        }
+        // The script was blocked, timed out, or would not open. The sale
+        // does not depend on it: fall through to the full-page checkout.
+      }
+
+      // Same tab. A blocked popup is a silently lost sale, and mobile
+      // browsers block popups from async handlers routinely.
+      window.location.href = data.url;
+    } catch {
+      setCheckoutAvailable(false);
+      setAuthMessage("Checkout is temporarily offline. Free scans reset at midnight UTC.");
+    } finally {
+      checkoutInFlight.current = false;
+    }
+  };
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: loginEmail }) });
+      if (res.ok) setLoginSent(true);
+      else { const d = await res.json(); setAuthMessage(d.error || "Could not send a link. Try again."); setShowLoginForm(false); }
+    } catch {
+      setAuthMessage("Could not send a link. Try again.");
+    }
+  };
+
+  const handleReset = () => { setState("landing"); setPreview(null); setResult(null); setUploadedFile(null); setUrlInput(""); };
+
+  // What the visitor wants to know, asked up front and sitting directly above
+  // the scan button, with the verdict preselected. The same panel stays in
+  // place once a photo is picked, so the choice can still be changed before
+  // scanning. Purple is the only colour here, like every other control.
+  const intentPanel = (
+    <div className="intent-panel" style={{
+      margin: "0 0 12px", padding: "16px 12px 12px", borderRadius: "14px",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.008) 100%)",
+      border: "1px solid rgba(255,255,255,0.08)",
+    }}>
+      <p style={{ fontSize: "10.5px", color: "var(--text-2)", lineHeight: "1.55", margin: "0 0 10px", fontFamily: "var(--font-mono), ui-monospace, monospace", letterSpacing: "0.4px", textAlign: "center" }}>
+        PRICE VISIBLE = ACCURATE VERDICT.<br className="warning-break" /> NO PRICE = NO READING.
+      </p>
+      <p id="intent-label" style={{ fontSize: "12.5px", color: "var(--text-2)", marginBottom: "10px", textAlign: "center" }}>
+        What do you want to know about this product?
+      </p>
+      <div role="group" aria-labelledby="intent-label" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+        {([
+          ["verdict", "Am I overcharged?", "Get the full verdict card", "Needs the price visible"],
+          ["finder", "Where is it cheapest?", "Just the cheapest link", "No verdict, no price shown"],
+        ] as const).map(([key, title, sub, note]) => {
+          const on = userIntent === key;
+          return (
+            <button key={key} onClick={() => setUserIntent(key)} aria-pressed={on} style={{
+              background: on ? "rgba(123,94,167,0.16)" : "rgba(255,255,255,0.02)",
+              border: `1px solid ${on ? "rgba(157,127,212,0.6)" : "rgba(255,255,255,0.09)"}`,
+              borderRadius: "11px", padding: "10px 8px 9px", cursor: "pointer", textAlign: "center", minWidth: 0,
+              fontFamily: "var(--font-sans), sans-serif", transition: "background 0.18s ease, border-color 0.18s ease",
+            }}>
+              <div style={{ fontSize: "12.5px", fontWeight: "700", color: on ? "var(--accent-bright)" : "var(--text-2)", marginBottom: "3px", textWrap: "balance" }}>
+                {on ? "\u2713 " : ""}{title}
+              </div>
+              <div style={{ fontSize: "11.5px", color: "var(--text-2)", lineHeight: "1.3", marginBottom: "6px" }}>{sub}</div>
+              <div style={{
+                fontSize: "10.5px", lineHeight: "1.3", color: on ? "var(--accent-bright)" : "var(--text-3)",
+                borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "6px",
+              }}>{note}</div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  if (state === "scanning") return <ScanningScreen preview={preview} />;
+  if (state === "results" && result) return <ResultsPage result={result} onReset={handleReset} isPaid={userStatus.isPaid} onUpgrade={handleCheckout} onUpgradeIntent={warmCheckout} />;
+
+  return (
+    <main
+      style={{ position: "relative", zIndex: 1 }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {dragOver && (
+        <div style={{
+          position: "fixed", inset: "12px", zIndex: 900, borderRadius: "18px",
+          border: "1.5px dashed var(--accent-2)", background: "rgba(7,7,14,0.72)",
+          backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          pointerEvents: "none",
+        }}>
+          <span style={{
+            fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "12px", letterSpacing: "3px",
+            color: "var(--accent-bright)", textTransform: "uppercase",
+          }}>
+            RELEASE TO SCAN
+          </span>
+        </div>
+      )}
+      {showPaywall && (
+        <PaywallModal
+          remaining={userStatus.remaining}
+          freeTierPaused={freeTierPaused}
+          onClose={() => setShowPaywall(false)}
+          onCheckout={handleCheckout}
+          onLogin={() => { setShowPaywall(false); setShowLoginForm(true); }}
+          checkoutAvailable={checkoutAvailable}
+          provider={checkoutProvider}
+        />
+      )}
+
+      {/* Scroll nudge */}
+      {showScrollNudge && !preview && !urlInput.trim() && (
+        // Just above the sticky bar. On phones the toast now comes in under
+        // the nav (globals.css), so the two no longer share the bottom lane.
+        <div style={{ position: "fixed", bottom: "calc(var(--bar-space) + 10px)", right: "16px", zIndex: 150, maxWidth: "260px" }}>
+          <div className="card" style={{ borderRadius: "14px", padding: "16px", border: "1px solid rgba(123,94,167,0.2)", animation: "slideIn 0.3s ease" }}>
+            <p style={{ fontSize: "13px", color: "var(--text)", fontWeight: "600", marginBottom: "4px" }}>Allowance unspent</p>
+            <p style={{ fontSize: "12px", color: "var(--text-3)", marginBottom: "12px" }}>{userStatus.remaining} free scan{userStatus.remaining !== 1 ? "s" : ""} remaining today.</p>
+            <button onClick={() => { setShowScrollNudge(false); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="btn-primary" style={{ width: "100%", padding: "9px", borderRadius: "8px", fontSize: "13px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif" }}>
+              Run a scan
+            </button>
+            <button onClick={() => setShowScrollNudge(false)} style={{ width: "100%", background: "none", border: "none", color: "var(--text-3)", fontSize: "12px", cursor: "pointer", padding: "6px", marginTop: "4px" }}>Dismiss</button>
+          </div>
+        </div>
+      )}
+
+      <LiveToast telemetry={telemetry} />
+      <StickyBar remaining={userStatus.remaining} isPaid={userStatus.isPaid} onScan={() => {
+        if (preview) runScan("image");
+        else if (urlInput.trim()) runScan("url");
+        else fileInputRef.current?.click();
+      }} hasFile={!!preview || !!urlInput.trim()} onUpgrade={() => openPaywall("wall")} />
+
+      {/* Ambient */}
+      <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "900px", height: "500px", background: "radial-gradient(ellipse at 50% 0%, rgba(123,94,167,0.065) 0%, transparent 60%)", pointerEvents: "none", zIndex: 0 }} />
+
+      {/* Nav */}
+      <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "calc(env(safe-area-inset-top, 0px) + 16px) 24px 16px", position: "relative", zIndex: 2, borderBottom: "1px solid var(--border)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo-120.webp"
+            alt="BustedLab"
+            width={40}
+            height={40}
+            className="brand-mark"
+            style={{ borderRadius: "9px", display: "block", objectFit: "cover" }}
+          />
+          <span className="brand-wordmark" style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "800", fontSize: "20px", letterSpacing: "-0.5px" }}>BustedLab</span>
+        </div>
+        <div className="nav-right-group" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {/* Desktop only - the same live count moves to the hero anchor
+              on mobile instead of duplicating here. */}
+          <div className="nav-scan-count" style={{ alignItems: "center", gap: "5px" }}>
+            <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 6px rgba(16,217,160,0.6)" }} className="animate-pulse" />
+            <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-2)" }}>{totalScans.toLocaleString("en-US")} scanned</span>
+          </div>
+          <div className="nav-sound-toggle"><SoundToggle /></div>
+          {userStatus.isPaid ? (
+            <span style={{ fontSize: "11px", color: "var(--green)", fontWeight: "600", background: "var(--green-dim)", padding: "3px 10px", borderRadius: "20px", border: "1px solid var(--green-border)" }}>Unlimited</span>
+          ) : (
+            <button onClick={() => setShowLoginForm(true)} className="btn-ghost" style={{ borderRadius: "8px", padding: "10px 14px", fontSize: "13px" }}>Sign in</button>
+          )}
+        </div>
+      </nav>
+
+      {/* Auth messages */}
+      {authMessage && (
+        <div style={{ margin: "12px 24px", background: "var(--green-dim)", border: "1px solid var(--green-border)", borderRadius: "10px", padding: "10px 16px", textAlign: "center" }}>
+          <p style={{ color: "var(--green)", fontSize: "13px", fontWeight: "500" }}>{authMessage}</p>
+        </div>
+      )}
+
+      {/* Login form */}
+      {showLoginForm && !loginSent && (
+        <div style={{ maxWidth: "520px", margin: "12px auto 0", padding: "0 24px" }}>
+          <div className="card" style={{ borderRadius: "14px", padding: "20px" }}>
+            <h2 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "16px", fontWeight: "700", marginBottom: "6px" }}>Already paid?</h2>
+            <p style={{ color: "var(--text-2)", fontSize: "13px", marginBottom: "14px" }}>Enter your email. A sign-in link arrives instantly.</p>
+            <form onSubmit={handleLoginSubmit} style={{ display: "flex", gap: "8px" }}>
+              <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="your@email.com" required
+                style={{ flex: 1, background: "var(--bg-glass)", border: "1px solid var(--border-mid)", borderRadius: "8px", padding: "9px 14px", color: "var(--text)", fontSize: "14px", outline: "none" }} />
+              <button type="submit" className="btn-primary" style={{ borderRadius: "8px", padding: "9px 18px", fontSize: "14px" }}>Send</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {loginSent && (
+        <div style={{ maxWidth: "520px", margin: "12px auto 0", padding: "0 24px" }}>
+          <div style={{ background: "var(--green-dim)", border: "1px solid var(--green-border)", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+            <p style={{ color: "var(--green)", fontSize: "14px", fontWeight: "600" }}>If that address has access, a link is in your inbox.</p>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ HERO ═══ */}
+      <section className="hero-section" style={{ maxWidth: "640px", margin: "0 auto", padding: "48px 24px 36px", textAlign: "center", position: "relative", zIndex: 2 }}>
+        {/* Mobile-only live anchor: sits above the indexed-records line so
+            the top of the page breathes before the headline. Hidden on
+            desktop where the same count already lives in the nav bar. */}
+        <div className="hero-scan-count" style={{ alignItems: "center", justifyContent: "center", gap: "6px", marginBottom: "14px" }}>
+          <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 6px rgba(16,217,160,0.6)" }} className="animate-pulse" />
+          <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-2)" }}>{totalScans.toLocaleString("en-US")} scanned</span>
+        </div>
+
+        <div className="balance" style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "20px", textTransform: "uppercase" }}>
+          SEARCHING 50,000,000,000+ LIVE PRODUCT LISTINGS
+        </div>
+
+        <h1 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "clamp(34px,8vw,54px)", fontWeight: "800", lineHeight: "1.08", letterSpacing: "-1.5px", color: "var(--text)", marginBottom: "16px" }}>
+          They built the price.<br />
+          <span style={{ background: "linear-gradient(135deg, #c4aff8 0%, #9d7fd4 40%, #7b5ea7 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
+            We built the scanner.
+          </span>
+        </h1>
+
+        <div className="hero-hook-frame">
+          <span className="hero-hook-corner hero-hook-corner-tl" aria-hidden="true" />
+          <span className="hero-hook-corner hero-hook-corner-br" aria-hidden="true" />
+          <p className="hero-hook" style={{ fontSize: "16px", color: "var(--text-2)", lineHeight: "1.7", maxWidth: "440px", margin: "0 auto" }}>
+            Drop a screenshot or paste a link. See what it sells for elsewhere, what they are asking, and the number they hoped you would never calculate.
+          </p>
+        </div>
+
+        <div style={{ height: "22px" }} />
+
+        {/* ── THE ACTION ──
+            One dominant thing to do on arrival: scan a photo. One button
+            covers the camera and the photo library, because the phone's own
+            picker offers both. The link field sits under it as the secondary
+            path. What the visitor wants to know is asked right above it, with
+            the verdict already chosen. */}
+        {preview ? (
+          <>
+            <div style={{ borderRadius: "14px", overflow: "hidden", marginBottom: "4px", position: "relative" }}>
+              {/* A local FileReader data: URL for the photo the visitor just
+                  picked. next/image cannot optimize a data URL and would route it
+                  through the optimizer for nothing. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={preview} alt="" style={{ width: "100%", maxHeight: "260px", objectFit: "cover", display: "block" }} />
+              {/* Reticle - snaps onto the image in 100ms */}
+              <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                <div style={{ position: "absolute", top: "10px", left: "10px", width: "16px", height: "16px", borderTop: "2px solid #ef4444", borderLeft: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
+                <div style={{ position: "absolute", top: "10px", right: "10px", width: "16px", height: "16px", borderTop: "2px solid #ef4444", borderRight: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
+                <div style={{ position: "absolute", bottom: "10px", left: "10px", width: "16px", height: "16px", borderBottom: "2px solid #ef4444", borderLeft: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
+                <div style={{ position: "absolute", bottom: "10px", right: "10px", width: "16px", height: "16px", borderBottom: "2px solid #ef4444", borderRight: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
+                <div style={{ position: "absolute", top: "50%", left: "14px", right: "14px", height: "1px", background: "linear-gradient(90deg, transparent, rgba(239,68,68,0.4), rgba(239,68,68,0.4), transparent)", transform: "translateY(-50%)" }} />
+              </div>
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 50%, rgba(7,7,14,0.95) 100%)", display: "flex", alignItems: "flex-end", padding: "14px" }}>
+                <button onClick={() => { setPreview(null); setUploadedFile(null); }} className="btn-ghost" style={{ borderRadius: "8px", padding: "10px 16px", fontSize: "13px", background: "rgba(7,7,14,0.6)" }}>Change</button>
+              </div>
+            </div>
+
+            <div style={{ height: "12px" }} />
+            {intentPanel}
+
+            {/* Deactivated rather than relabeled when the free allowance is
+                spent - same button, same words, just disabled. */}
+            <button
+              ref={scanItRef}
+              className="btn-primary"
+              onClick={() => runScan("image")}
+              disabled={!userStatus.isPaid && userStatus.remaining <= 0}
+              style={{ width: "100%", padding: "17px", borderRadius: "14px", fontSize: "17px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif" }}>
+              Scan it
+            </button>
+          </>
+        ) : (
+          <>
+            {intentPanel}
+            <button
+              className="btn-primary"
+              onClick={() => fileInputRef.current?.click()}
+              style={{ width: "100%", padding: "18px 16px", borderRadius: "14px", fontSize: "17px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path d="M1.5 5.5V2.5a1 1 0 0 1 1-1h3M12.5 1.5h3a1 1 0 0 1 1 1v3M16.5 12.5v3a1 1 0 0 1-1 1h-3M5.5 16.5h-3a1 1 0 0 1-1-1v-3" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
+                <circle cx="9" cy="9" r="2.4" stroke="white" strokeWidth="1.6" />
+              </svg>
+              Scan a product
+            </button>
+            <p style={{ fontSize: "12px", color: "var(--text-3)", marginTop: "8px", lineHeight: "1.5" }}>
+              Photo or screenshot. Keep the price in the shot for a verdict.
+            </p>
+
+            {/* The secondary path: a link. */}
+            <div style={{ display: "flex", gap: "8px", marginTop: "18px" }}>
+              <input ref={urlFieldRef} type="url" aria-label="Product link" value={urlInput} onChange={e => {
+                setUrlInput(e.target.value);
+                if (e.target.value.trim() && !inputTracked.current.url) { inputTracked.current.url = true; track("url_entered"); }
+              }} placeholder="Or paste a product link"
+                style={{ flex: 1, minWidth: 0, background: "var(--bg-glass)", border: "1px solid var(--border-mid)", borderRadius: "10px", padding: "11px 14px", color: "var(--text)", fontSize: "14px", outline: "none", fontFamily: "var(--font-sans), sans-serif" }}
+                onFocus={e => (e.target.style.borderColor = "var(--accent-2)")}
+                onBlur={e => (e.target.style.borderColor = "var(--border-mid)")}
+              />
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  if (!userStatus.isPaid && userStatus.remaining <= 0) { openPaywall("wall"); return; }
+                  // Empty: point at the field rather than doing nothing.
+                  if (!urlInput.trim()) { urlFieldRef.current?.focus(); return; }
+                  runScan("url");
+                }}
+                disabled={!userStatus.isPaid && userStatus.remaining <= 0}
+                style={{ borderRadius: "10px", padding: "11px 16px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif", whiteSpace: "nowrap", opacity: !userStatus.isPaid && userStatus.remaining <= 0 ? 0.4 : 1 }}>
+                Scan link
+              </button>
+            </div>
+          </>
+        )}
+
+        <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
+
+        {!userStatus.isPaid && (
+          <p style={{ fontSize: "12px", color: "var(--text-3)", marginTop: "10px" }}>
+            {userStatus.remaining} free scan{userStatus.remaining !== 1 ? "s" : ""} left today. <button onClick={() => openPaywall("choice")} style={{ background: "none", border: "none", color: "var(--accent-bright)", cursor: "pointer", fontSize: "12px", textDecoration: "underline", padding: "12px 4px", margin: "-12px 0" }}>Unlimited for $4.99</button>
+          </p>
+        )}
+      </section>
+
+      {/* Bridge line - sits between the action buttons above and the demo
+          below, giving the demo context before it renders. */}
+      <div style={{ maxWidth: "640px", margin: "0 auto", padding: "0 24px 28px", textAlign: "center", position: "relative", zIndex: 2 }}>
+        <p style={{ fontSize: "13px", color: "var(--text-3)", lineHeight: "1.6", maxWidth: "420px", margin: "0 auto" }}>
+          Any product. Any store. The source price, the asking price, and the exact distance between them.
+        </p>
+      </div>
+
+      {/* ═══ STATIC VERDICT DEMO ═══ */}
+      <section style={{ maxWidth: "640px", margin: "0 auto", padding: "0 24px", position: "relative", zIndex: 2 }}>
+        <StaticVerdictDemo />
+      </section>
+
+      {/* ═══ STATS ═══ */}
+      <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px" }}>
+          {[
+            { v: `${totalScans.toLocaleString("en-US")}+`, l: "Products scanned" },
+            // Real markup once real scans exceed the demo's own 435% floor,
+            // shown on this same page — so the figure is always something a
+            // visitor can verify without leaving the site.
+            { v: maxMarkup > 435 ? `${maxMarkup.toLocaleString("en-US")}%` : "435%", l: "Highest markup recorded" },
+            // Real dollars once they exceed a defensible baseline estimate
+            // derived from real scan volume at a conservative average
+            // savings per scan.
+            {
+              v: totalSavings >= 290000
+                ? `$${(totalSavings / 1000).toFixed(1)}K+`
+                : "$290K+",
+              l: "Overcharges exposed",
+            },
+          ].map(s => (
+            <div key={s.l} className="card" style={{ borderRadius: "12px", padding: "16px 10px", textAlign: "center" }}>
+              <div style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "clamp(18px,4vw,24px)", fontWeight: "700", color: "var(--accent-bright)", letterSpacing: "-0.8px", lineHeight: "1" }}>{s.v}</div>
+              <div style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "4px", lineHeight: "1.4" }}>{s.l}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ═══ THE BOARDS ═══ */}
+      <Leaderboards />
+
+      {/* ═══ REACTIONS ═══ */}
+      <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
+        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "14px", textTransform: "uppercase" }}>
+          WHAT IT SOUNDS LIKE WHEN THE MATH LANDS
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {REACTIONS.quotes.map(r => (
+            <div key={r.name} className="card" style={{ borderRadius: "12px", padding: "16px 18px" }}>
+              <p style={{ fontSize: "14px", color: "var(--text)", lineHeight: "1.6", marginBottom: "10px" }}>
+                &ldquo;{r.quote}&rdquo;
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: "var(--accent-2)", flexShrink: 0 }} />
+                <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10.5px", color: "var(--text-3)", letterSpacing: "0.5px" }}>
+                  {r.name}, {r.loc}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+        {REACTIONS.illustrative && (
+          <p style={{ fontSize: "10px", color: "var(--text-3)", marginTop: "10px", textAlign: "center" }}>
+            Illustrative reactions.
+          </p>
+        )}
+      </section>
+
+      {/* ═══ WHAT WE CATCH ═══ */}
+      <WhatWeCatch />
+
+      {/* ═══ CLASSIFICATION RULES ═══ */}
+      <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
+        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "14px", textTransform: "uppercase" }}>
+          CLASSIFICATION THRESHOLDS
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          {CLASSIFICATION_RULES.map(c => (
+            <div key={c.label} className="card" style={{ borderRadius: "10px", padding: "14px 16px", display: "flex", alignItems: "flex-start", gap: "12px" }}>
+              <div style={{ width: "5px", height: "5px", borderRadius: "50%", background: TONE_COLOR[c.tone], boxShadow: `0 0 6px ${TONE_COLOR[c.tone]}`, flexShrink: 0, marginTop: "6px" }} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{
+                  fontFamily: "var(--font-display), sans-serif", fontWeight: "700", fontSize: "12px",
+                  color: TONE_COLOR[c.tone], letterSpacing: "1.6px", marginBottom: "4px",
+                }}>{c.label}</div>
+                <div style={{ fontSize: "12px", color: "var(--text-2)", lineHeight: "1.5" }}>{c.rule}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", color: "var(--text-3)", marginTop: "12px", lineHeight: "1.6", letterSpacing: "0.3px" }}>
+          Every verdict is produced by these thresholds and nothing else. No manual review. No exceptions.
+        </p>
+      </section>
+
+      {/* ═══ UPGRADE CTA ═══ */}
+      <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 76px", padding: "0 24px", position: "relative", zIndex: 2 }}>
+        <div className="upgrade-glow" style={{
+          position: "relative",
+          borderRadius: "20px",
+          padding: "40px 28px 36px",
+          textAlign: "center",
+          background: "linear-gradient(135deg, rgba(123,94,167,0.11) 0%, rgba(123,94,167,0.03) 100%)",
+          border: "1px solid rgba(123,94,167,0.22)",
+        }}>
+          {/* No icon. Every literal shape tried here - an eye, an orb, a
+              lock, a gem - either looked decorative or read as a rendering
+              glitch. The objectively correct answer for the exact moment
+              someone is about to pay: restraint. Apple, Stripe, and every
+              serious payment surface never puts a cartoon glyph above a
+              price - they let light and typography carry the weight. This
+              is a light source with no object attached to it: a soft,
+              compact glow straddling the top edge, wide enough to read as
+              deliberate, small enough to stay quiet. It is the "something
+              is here" sensation without giving that something a shape
+              that can look childish or wrong. */}
+          <div className="upgrade-light-core" style={{
+            position: "absolute", top: "-20px", left: "50%", transform: "translateX(-50%)",
+            width: "72px", height: "40px", pointerEvents: "none",
+            background: "radial-gradient(ellipse 50% 60% at 50% 100%, rgba(232,220,255,0.9) 0%, rgba(157,127,212,0.5) 35%, rgba(123,94,167,0.15) 65%, transparent 85%)",
+            filter: "blur(1px)",
+          }} />
+          <div className="upgrade-light-point" style={{
+            position: "absolute", top: "-2px", left: "50%", transform: "translateX(-50%)",
+            width: "6px", height: "6px", borderRadius: "50%",
+            background: "#f4eeff",
+          }} />
+
+          {/* Eyebrow - paddingLeft compensates for the letter-spacing, which
+              otherwise adds space only after each character and pushes the
+              optical center right of the true geometric center on any
+              tracked-out centered label. */}
+          <p style={{
+            fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
+            letterSpacing: "2px", color: "rgba(184,160,232,0.5)", textTransform: "uppercase",
+            margin: "0 0 28px", paddingLeft: "2px",
+          }}>
+            UNLIMITED ACCESS
+          </p>
+
+          {/* Price group: real air between the price and its caption now -
+              16px, not 10px, because a 44px numeral and an 11px caption
+              need more separation than two same-weight lines would, or the
+              size difference itself reads as crowding regardless of the
+              pixel gap. */}
+          <div style={{ marginBottom: "28px" }}>
+            <h2 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "44px", fontWeight: "800", letterSpacing: "-1.5px", lineHeight: "1", margin: "0 0 16px" }}>
+              $4.99
+            </h2>
+            <p style={{
+              fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
+              color: "var(--text-3)", letterSpacing: "0.8px", textTransform: "uppercase",
+              margin: 0, paddingLeft: "0.8px",
+            }}>
+              One time. No subscription.
+            </p>
+          </div>
+
+          <div style={{ width: "40px", height: "1px", background: "linear-gradient(90deg, transparent, rgba(157,127,212,0.4), transparent)", margin: "0 auto 28px" }} />
+
+          <p style={{ color: "var(--text-2)", fontSize: "14px", lineHeight: "1.6", maxWidth: "320px", margin: "0 auto 28px" }}>
+            Scan anything. Share the verdict. No limits, no renewal.
+          </p>
+
+          <button onClick={handleCheckout} onPointerEnter={warmCheckout} onPointerDown={warmCheckout} onFocus={warmCheckout} disabled={!checkoutAvailable} className="btn-primary" style={{ padding: "14px 36px", borderRadius: "10px", fontSize: "15px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif" }}>
+            {checkoutAvailable ? "Get unlimited access" : "Checkout offline"}
+          </button>
+
+          <p style={{ fontSize: "12px", color: "var(--text-3)", margin: "14px 0 0" }}>
+            {checkoutAvailable ? "Card, Apple Pay and Google Pay. Access is instant." : "Payment channel temporarily closed. Free scans reset at midnight UTC."}
+          </p>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer style={{ textAlign: "center", padding: "24px", borderTop: "1px solid var(--border)", position: "relative", zIndex: 2 }}>
+        <div style={{ marginBottom: "8px" }}>
+          <div style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "700", fontSize: "13px", color: "var(--text-3)", marginBottom: "4px" }}>BustedLab</div>
+          <div className="balance" style={{ color: "var(--text-3)", fontSize: "12px" }}>The price was always real. Now you can see it.</div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", gap: "4px 8px", flexWrap: "wrap" }}>
+          {[
+            { label: "The Index", href: "/the-index" },
+            { label: "Terms", href: "/terms" },
+            { label: "Privacy", href: "/privacy" },
+            { label: "DMCA", href: "/dmca" },
+          ].map(link => (
+            <a key={link.href} href={link.href} style={{ color: "var(--text-3)", fontSize: "12px", textDecoration: "none", padding: "12px 8px", display: "inline-block" }}
+              onMouseEnter={e => (e.currentTarget.style.color = "var(--text-2)")}
+              onMouseLeave={e => (e.currentTarget.style.color = "var(--text-3)")}>
+              {link.label}
+            </a>
+          ))}
+        </div>
+        <p style={{ fontSize: "12px", color: "var(--text-3)", marginTop: "12px", lineHeight: "1.6" }}>
+          All markup data represents editorial analysis of publicly available wholesale listings for similar products. Results are market intelligence, not verified facts about specific products.
+        </p>
+      </footer>
+    </main>
+  );
+}

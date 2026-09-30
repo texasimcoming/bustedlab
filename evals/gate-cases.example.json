@@ -1,0 +1,21 @@
+[
+  {
+    "id": "polo-ph2083-eyeglasses",
+    "photo": "evals/photos/polo-glasses.jpg",
+    "candidates": [
+      { "image": "evals/candidates/polo-ph2083.jpg",    "expect": "exact",     "note": "the same frame, catalogue shot" },
+      { "image": "evals/candidates/polo-ph2083-tort.jpg","expect": "similar",  "note": "same model, tortoiseshell instead of black" },
+      { "image": "evals/candidates/polo-ph1117.jpg",    "expect": "similar",   "note": "same brand, different model" },
+      { "image": "evals/candidates/zenni-4438821.jpg",  "expect": "different", "note": "near-identical profile, no Polo mark" }
+    ]
+  },
+  {
+    "id": "ua-tactical-range-bag",
+    "photo": "evals/photos/ua-bag.jpg",
+    "candidates": [
+      { "image": "evals/candidates/ua-tactical-range-2.jpg", "expect": "exact" },
+      { "image": "evals/candidates/ua-project-rock.jpg",     "expect": "different", "note": "same brand and logo, different silhouette" },
+      { "image": "evals/candidates/ua-undeniable-5.jpg",     "expect": "different" }
+    ]
+  }
+]

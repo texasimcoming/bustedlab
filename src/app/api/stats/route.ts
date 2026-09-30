@@ -1,0 +1,59 @@
+import { NextRequest, NextResponse } from "next/server";
+import { buildFunnel, readEvents, CLIENT_EVENTS } from "@/lib/analytics";
+import { getLedgerSize, readCspViolations } from "@/lib/redis";
+import { isOperator } from "@/lib/operator";
+
+/**
+ * The read side. Protected, because this is the business.
+ *
+ * Scan volume, verdict mix and conversion rates are the numbers a competitor
+ * would most like to have and the numbers that most clearly say how old this
+ * company is. Everything else on the site is deliberately public; this is the
+ * one endpoint that is not.
+ *
+ * Authenticated by a bearer token in ANALYTICS_TOKEN and fails closed: with no
+ * token configured there is no way in at all, rather than a default that
+ * somebody forgets to change.
+ */
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
+  if (!isOperator(req)) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const requested = Number(req.nextUrl.searchParams.get("days") || 30);
+  const days = Math.min(Math.max(Number.isFinite(requested) ? requested : 30, 1), 120);
+
+  const [series, ledgerSize, csp] = await Promise.all([
+    readEvents(days),
+    getLedgerSize().catch(() => 0),
+    readCspViolations(days).catch(() => []),
+  ]);
+
+  return NextResponse.json(
+    {
+      windowDays: days,
+      ledgerSize,
+      // What the Content-Security-Policy blocked, per day, by kind:
+      // "<enforce|report> <directive> <what was blocked> <page>". Empty is
+      // the healthy state. Anything counted here under "enforce" is
+      // something a visitor's browser refused to run or load; see
+      // src/lib/csp.ts. Kept 35 days.
+      csp,
+      window: buildFunnel(series, "window"),
+      lifetime: buildFunnel(series, "total"),
+      series: series.map(s => ({
+        event: s.event,
+        total: s.total,
+        windowTotal: s.windowTotal,
+        // Server-observed events cannot be forged from outside. The browser
+        // ones can be, within the rate limit. Anyone reading a funnel needs to
+        // know which half of it is evidence.
+        source: (CLIENT_EVENTS as readonly string[]).includes(s.event) ? "client" : "server",
+        days: s.days,
+      })),
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
+}
