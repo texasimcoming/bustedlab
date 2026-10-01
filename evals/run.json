@@ -1,0 +1,6 @@
+{
+  "run": 1,
+  "note": "First contact: preflight and diagnose on the deployed merge of PR #4 (1f4be54).",
+  "steps": ["preflight", "diagnose"],
+  "maxUsd": 0.5
+}

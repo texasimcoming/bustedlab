@@ -63,6 +63,12 @@ export const MAX_TOKENS_CEILING = 16_000;
 export const MODEL_RULES: Record<string, ModelRule> = {
   "claude-opus-5-5": { effort: "low", efforts: EFFORTS },
   "claude-sonnet-5-5": { effort: "low", efforts: EFFORTS },
+  // In the table so the evaluation route (/api/eval) can measure it under the
+  // same request shape. Same surface as the two above (no sampling, thinking
+  // always on and not disableable, no prefill, efforts low to max, default
+  // high), at $10 / $50 per million tokens, and it needs 30-day data
+  // retention: an organization without it gets a 400 invalid_request_error.
+  "claude-fable-5-1": { effort: "low", efforts: EFFORTS },
 };
 
 /** "claude-sonnet-5-5-20261001" -> "claude-sonnet-5-5". Current ids carry no date. */

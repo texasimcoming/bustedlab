@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isOperator } from "@/lib/operator";
-import { diagnoseEngine, type LayerProbe } from "@/lib/scan";
+import { diagnoseEngine, ENGINE_MODELS, type LayerProbe } from "@/lib/scan";
+import { MODEL_RULES } from "@/lib/model-rules";
+import { evaluationUsage } from "@/lib/eval-log";
 import { DIAGNOSE_SAMPLE } from "@/lib/diagnose-sample";
 import { usdRates } from "@/lib/fx";
 import { redisRoundTrip } from "@/lib/redis";
@@ -20,6 +22,10 @@ import sharp from "sharp";
  * active and out of searches. The test suite cannot see any of that, because
  * it stubs every provider; that is how a request every Opus 5 call refused
  * shipped green. Run this after every deploy and after any provider change.
+ *
+ * It also asks the Models API (free) whether every model id the engine and
+ * the rules table name is available to this key, and reports today's uses of
+ * the operator evaluation path (see eval-log.ts).
  *
  * What one run spends: three Claude calls (the gate on Opus 5.5 and on
  * Sonnet 5.5, each comparing a 320px sample with itself; the first read on
@@ -135,6 +141,45 @@ async function photoCap(): Promise<LayerProbe> {
   }
 }
 
+// The Models API says which model ids this account can call, for free. Every
+// model a role uses must be there; the other models in the rules table (the
+// ones the evaluation route can measure) are reported, and do not fail it.
+async function modelsApi(): Promise<LayerProbe> {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return { layer: "models api", pass: false, latencyMs: 0, status: 0, detail: "ANTHROPIC_API_KEY is not set" };
+  const started = Date.now();
+  const required = new Set<string>(Object.values(ENGINE_MODELS));
+  const ids = [...new Set([...required, ...Object.keys(MODEL_RULES)])];
+  const found: Record<string, { status: number; displayName?: string; maxTokens?: number }> = {};
+  await Promise.all(ids.map(async id => {
+    try {
+      const res = await fetch(`https://api.anthropic.com/v1/models/${encodeURIComponent(id)}`, {
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
+        signal: AbortSignal.timeout(8000),
+      });
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      found[id] = {
+        status: res.status,
+        ...(typeof body.display_name === "string" ? { displayName: body.display_name } : {}),
+        ...(typeof body.max_tokens === "number" ? { maxTokens: body.max_tokens } : {}),
+      };
+    } catch {
+      found[id] = { status: 0 };
+    }
+  }));
+  const missing = [...required].filter(id => found[id]?.status !== 200);
+  return {
+    layer: "models api",
+    pass: missing.length === 0,
+    latencyMs: since(started),
+    status: missing.length === 0 ? 200 : found[missing[0]]?.status ?? 0,
+    detail: missing.length === 0
+      ? ids.map(id => `${id} ${found[id]?.status === 200 ? "available" : `answered ${found[id]?.status}`}`).join(", ")
+      : `the engine uses ${missing.join(", ")}, which the Models API did not return for this key`,
+    models: found,
+  };
+}
+
 async function redis(): Promise<LayerProbe> {
   const started = Date.now();
   const ok = await redisRoundTrip();
@@ -145,8 +190,9 @@ export async function GET(req: NextRequest) {
   if (!isOperator(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const started = Date.now();
-  const [engine, account, backup, rates, store, cap, mode, spend] = await Promise.all([
+  const [engine, models, account, backup, rates, store, cap, mode, spend, evaluation] = await Promise.all([
     diagnoseEngine(DIAGNOSE_SAMPLE),
+    modelsApi(),
     serpApiAccount(),
     serper(),
     exchangeRates(),
@@ -154,8 +200,9 @@ export async function GET(req: NextRequest) {
     photoCap(),
     currentSpendMode(),
     todayModelSpend(),
+    evaluationUsage(),
   ]);
-  const layers = [...engine, account, backup, rates, store, cap];
+  const layers = [...engine, models, account, backup, rates, store, cap];
   const claudeUsd = engine.reduce((sum, p) => sum + (typeof p.costUsd === "number" ? p.costUsd : 0), 0);
   const thinking = engine.map(p => p.thinkingTokensApprox).filter((t): t is number => typeof t === "number");
 
@@ -176,6 +223,9 @@ export async function GET(req: NextRequest) {
         note: "Average thinking tokens per call in this run. Re-price scans with: npm run cost-model -- --thinking <this number>",
       },
       layers,
+      // Uses of the operator evaluation path (eval-log.ts): today's counts and
+      // the most recent entries.
+      evaluation,
     },
     { headers: { "Cache-Control": "no-store" } }
   );

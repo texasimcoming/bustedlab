@@ -63,12 +63,93 @@ export interface ScanFailure {
   layers: string[];
 }
 
-const traces = new AsyncLocalStorage<ProviderFailure[]>();
+/** One model call, as the API reported it. */
+export interface ModelCallRecord {
+  layer: FailureLayer;
+  model: string;
+  effort: string | null;
+  ms: number;
+  status: number;
+  kind: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  costUsd?: number;
+  stopReason?: string | null;
+  /** Output tokens less an estimate of the visible answer: what the model spent thinking. */
+  thinkingApprox?: number;
+}
 
-export async function runTraced<T>(fn: () => Promise<T>): Promise<{ value: T; failures: ProviderFailure[] }> {
-  const failures: ProviderFailure[] = [];
-  const value = await traces.run(failures, fn);
-  return { value, failures };
+/** One search-provider request. Counted because SerpApi bills per search. */
+export interface SearchCallRecord {
+  layer: FailureLayer;
+  provider: string;
+  engine: string;
+  ms: number;
+  status: number;
+}
+
+/** A decision point in the scan, for the evaluation trace. */
+export type TraceStep = { step: string } & Record<string, unknown>;
+
+/**
+ * Everything one scan did. The failures decide the scan (decideFailure); the
+ * rest is a record of what ran, how long it took and what it cost, which the
+ * operator evaluation path returns with the result and nothing else reads.
+ */
+export interface ScanTrace {
+  startedAt: number;
+  failures: ProviderFailure[];
+  calls: ModelCallRecord[];
+  searches: SearchCallRecord[];
+  steps: TraceStep[];
+}
+
+const traces = new AsyncLocalStorage<ScanTrace>();
+
+export async function runTraced<T>(fn: () => Promise<T>): Promise<{ value: T; failures: ProviderFailure[]; trace: ScanTrace }> {
+  const trace: ScanTrace = { startedAt: Date.now(), failures: [], calls: [], searches: [], steps: [] };
+  const value = await traces.run(trace, fn);
+  return { value, failures: trace.failures, trace };
+}
+
+export function recordModelCall(call: ModelCallRecord): void {
+  traces.getStore()?.calls.push(call);
+}
+
+export function recordSearchCall(call: SearchCallRecord): void {
+  traces.getStore()?.searches.push(call);
+}
+
+/** Notes a decision for the evaluation trace. Bounded, and never an image. */
+export function traceStep(step: string, data: Record<string, unknown> = {}): void {
+  const trace = traces.getStore();
+  if (!trace || trace.steps.length >= 60) return;
+  trace.steps.push({ step, at: Date.now() - trace.startedAt, ...data });
+}
+
+/**
+ * fetch, timed and counted against the running scan. Every search-provider
+ * request goes through this, so a scan's trace says how many paid searches
+ * it spent and where its time went.
+ */
+export async function searchFetch(
+  layer: FailureLayer,
+  provider: string,
+  engine: string,
+  input: string,
+  init?: RequestInit
+): Promise<Response> {
+  const started = Date.now();
+  try {
+    const res = await fetch(input, init);
+    recordSearchCall({ layer, provider, engine, ms: Date.now() - started, status: res.status });
+    return res;
+  } catch (err) {
+    recordSearchCall({ layer, provider, engine, ms: Date.now() - started, status: 0 });
+    throw err;
+  }
 }
 
 // Nothing secret or bulky reaches a log line: API keys are redacted by value
@@ -103,12 +184,12 @@ export function logProviderFailure(failure: Omit<ProviderFailure, "severity"> & 
 
 /** Records a failure against the running scan. Logged by the caller. */
 export function recordProviderFailure(failure: ProviderFailure): void {
-  traces.getStore()?.push({ ...failure, detail: scrub(failure.detail || "") });
+  traces.getStore()?.failures.push({ ...failure, detail: scrub(failure.detail || "") });
 }
 
 /** Whether this scan has already recorded a failure in `layer`. */
 export function hasFailed(layer: FailureLayer, severity?: Severity): boolean {
-  return (traces.getStore() || []).some(f => f.layer === layer && (!severity || f.severity === severity));
+  return (traces.getStore()?.failures || []).some(f => f.layer === layer && (!severity || f.severity === severity));
 }
 
 /**
@@ -126,7 +207,7 @@ export async function firstAnswer<T>(
   layer: FailureLayer,
   providers: { configured: boolean; run: () => Promise<T | null> }[]
 ): Promise<{ value: T | null; index: number }> {
-  const store = traces.getStore();
+  const store = traces.getStore()?.failures;
   const start = store?.length ?? 0;
   let answered = false;
   const settle = () => {
@@ -176,4 +257,30 @@ export async function errorBody(res: Response): Promise<string> {
   } catch {
     return "";
   }
+}
+
+/**
+ * The trace as the evaluation path returns it: every call and decision, plus
+ * the totals an evaluation reports (time per layer, model spend, paid
+ * searches by provider, thinking per call). Failure details are already
+ * scrubbed; nothing here holds an image or a key.
+ */
+export function summarizeTrace(trace: ScanTrace) {
+  const msByLayer: Record<string, number> = {};
+  for (const c of trace.calls) msByLayer[`model:${c.layer}`] = (msByLayer[`model:${c.layer}`] || 0) + c.ms;
+  for (const s of trace.searches) msByLayer[`search:${s.layer}`] = (msByLayer[`search:${s.layer}`] || 0) + s.ms;
+  const searchesByProvider: Record<string, number> = {};
+  for (const s of trace.searches) searchesByProvider[s.provider] = (searchesByProvider[s.provider] || 0) + 1;
+  const thinking = trace.calls.map(c => c.thinkingApprox).filter((t): t is number => typeof t === "number");
+  return {
+    totalMs: Date.now() - trace.startedAt,
+    claudeUsd: Math.round(trace.calls.reduce((sum, c) => sum + (c.costUsd || 0), 0) * 1_000_000) / 1_000_000,
+    searchesByProvider,
+    msByLayer,
+    thinkingPerCall: thinking.length ? Math.round(thinking.reduce((a, b) => a + b, 0) / thinking.length) : null,
+    calls: trace.calls,
+    searches: trace.searches,
+    failures: trace.failures,
+    steps: trace.steps,
+  };
 }
