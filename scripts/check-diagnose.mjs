@@ -12,6 +12,8 @@ const KEYS = { ANTHROPIC_API_KEY: "sk-ant-diagnose-check", SERPAPI_KEY: "serpapi
 const route = await importSrc("app/api/diagnose/route.ts");
 
 const sent = [];
+const modelLookups = [];
+let fableMissing = false;
 const harnessFetch = globalThis.fetch;
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
 globalThis.fetch = async (input, init = {}) => {
@@ -36,6 +38,13 @@ globalThis.fetch = async (input, init = {}) => {
   }
   if (url === "https://google.serper.dev/search") return json({ organic: [{ title: "Lamp" }], credits: 1 });
   if (url.includes("currency-api")) return json({ date: "2026-10-01", usd: { eur: 0.9, gbp: 0.75, mad: 9.5, cad: 1.37 } });
+  if (url.startsWith("https://api.anthropic.com/v1/models/")) {
+    modelLookups.push(url);
+    const id = decodeURIComponent(url.split("/").pop());
+    return id === "claude-fable-5-1" && fableMissing
+      ? json({ type: "error", error: { type: "not_found_error", message: "model not found" } }, 404)
+      : json({ id, type: "model", display_name: id, max_tokens: 128000 });
+  }
   return harnessFetch(input, init);
 };
 
@@ -74,7 +83,21 @@ check("exchange rates probed", layer("exchange rates")?.pass === true, JSON.stri
 check("the 1568px photo cap is proven where it runs", layer("photo cap")?.pass === true && /725x1568/.test(layer("photo cap")?.detail || ""), JSON.stringify(layer("photo cap")));
 check("Blob without a token fails loudly, with the reason", layer("blob")?.pass === false && /BLOB_READ_WRITE_TOKEN/.test(layer("blob")?.detail || ""));
 check("overall pass is false while any layer fails, and names it", res.json?.pass === false && res.json?.failing?.includes("blob"), JSON.stringify(res.json?.failing));
+const models = layer("models api");
+check("the Models API is asked about every model the engine and the rules table name, free of charge",
+  models?.pass === true && ["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"].every(id => modelLookups.some(u => u.endsWith(id))) && sent.length === 3,
+  JSON.stringify(models));
+check("today's uses of the evaluation path are reported", typeof res.json?.evaluation?.today?.scans === "number" && Array.isArray(res.json?.evaluation?.recent),
+  JSON.stringify(res.json?.evaluation));
 check("no key, no account email and no image in the answer",
   !Object.values(KEYS).some(k => res.text.includes(k)) && !res.text.includes("owner@example.com") && !res.text.includes("/9j/"));
+
+section("A MODEL ONLY THE EVALUATION ROUTE USES IS MISSING");
+fableMissing = true;
+{
+  const again = await call(route.GET, "/api/diagnose", { headers: { authorization: `Bearer ${TOKEN}` } });
+  const probe = (again.json?.layers || []).find(l => l.layer === "models api");
+  check("the models layer still passes: no role uses it", probe?.pass === true && probe?.models?.["claude-fable-5-1"]?.status === 404, JSON.stringify(probe));
+}
 
 finish("diagnose");

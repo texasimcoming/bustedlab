@@ -190,7 +190,8 @@ import {
 import { buildClaudeRequest, readClaudeReply, parseReplyJson, parseEffort, type Effort } from "@/lib/model-rules";
 import {
   runTraced, decideFailure, hasFailed, firstAnswer, reportProviderFailure, recordProviderFailure, logProviderFailure, errorBody,
-  type FailureLayer, type ScanFailure, type Severity,
+  recordModelCall, searchFetch, traceStep,
+  type FailureLayer, type ScanFailure, type Severity, type ScanTrace,
 } from "@/lib/scan-trace";
 import { normalizeCurrency, parsePrice, toUsd } from "@/lib/fx";
 import { capForModel } from "@/lib/image-cap";
@@ -309,9 +310,34 @@ async function callClaude(
   timeoutMs: number,
   options: { effort?: Effort | null } = {}
 ): Promise<ClaudeOutcome> {
+  const started = Date.now();
+  const request = buildClaudeRequest(model, payload, options);
+  const sentEffort = (request.output_config as { effort?: string } | undefined)?.effort ?? null;
+  // Filled in once the API answers; read when the call is recorded.
+  const meter: { usage?: Record<string, number> } = {};
+  // Every call is recorded against the running scan, whatever its outcome:
+  // what it cost, how long it took, how much of its output was thinking.
+  const settled = (outcome: ClaudeOutcome): ClaudeOutcome => {
+    const answerTokens = Math.ceil((outcome.text || "").length / 4);
+    const usage = meter.usage;
+    recordModelCall({
+      layer, model, effort: sentEffort, ms: Date.now() - started, status: outcome.status, kind: outcome.kind,
+      inputTokens: usage?.input_tokens, outputTokens: usage?.output_tokens,
+      cacheReadTokens: usage?.cache_read_input_tokens, cacheWriteTokens: usage?.cache_creation_input_tokens,
+      costUsd: outcome.costUsd, stopReason: outcome.stopReason ?? null,
+      thinkingApprox: typeof usage?.output_tokens === "number" ? Math.max(0, usage.output_tokens - answerTokens) : undefined,
+    });
+    return outcome;
+  };
   const fail = (kind: ClaudeFailureKind, status: number, detail: string): ClaudeOutcome => {
     logProviderFailure({ layer, provider: "anthropic", model, status, kind, detail });
-    return { ok: false, model, text: null, status, kind, truncated: false, detail };
+    return settled({ ok: false, model, text: null, status, kind, truncated: false, detail });
+  };
+  // A call that was billed (it answered 200) and still failed: the cost and
+  // stop reason belong on the record.
+  const failPriced = (kind: ClaudeFailureKind, status: number, detail: string, extra: Partial<ClaudeOutcome>): ClaudeOutcome => {
+    logProviderFailure({ layer, provider: "anthropic", model, status, kind, detail });
+    return settled({ ok: false, model, text: null, status, kind, truncated: false, detail, ...extra });
   };
   if (!process.env.ANTHROPIC_API_KEY) return fail("unconfigured", 0, "ANTHROPIC_API_KEY is not set");
   let res: Response;
@@ -323,7 +349,7 @@ async function callClaude(
         "x-api-key": process.env.ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
       },
-      body: JSON.stringify(buildClaudeRequest(model, payload, options)),
+      body: JSON.stringify(request),
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
@@ -349,17 +375,18 @@ async function callClaude(
     return fail("unparseable", res.status, "response body was not JSON");
   }
   const usage = data?.usage as Record<string, number> | undefined;
+  meter.usage = usage;
   const costUsd = priceUsage(model, usage);
   await recordModelSpend(costUsd);
   const outputTokens = typeof usage?.output_tokens === "number" ? usage.output_tokens : undefined;
   const reply = readClaudeReply(data);
   const extra = { costUsd, stopReason: reply.stopReason, outputTokens };
-  if (reply.refusal) return { ...fail("refusal", res.status, `stop_reason=refusal category=${reply.refusal}`), ...extra };
+  if (reply.refusal) return failPriced("refusal", res.status, `stop_reason=refusal category=${reply.refusal}`, extra);
   // No text at all and a max_tokens stop: thinking used the whole budget.
   // That is its own kind, so the gate hands the wave to the next model
   // instead of repeating a request that would stop in the same place.
   if (!reply.text) {
-    return { ...fail(reply.truncated ? "truncated" : "empty", res.status, `no text block; stop_reason=${reply.stopReason}`), ...extra };
+    return failPriced(reply.truncated ? "truncated" : "empty", res.status, `no text block; stop_reason=${reply.stopReason}`, extra);
   }
   if (reply.truncated) {
     // Not a failure yet: the gate can salvage the verdicts written before
@@ -367,7 +394,7 @@ async function callClaude(
     // model-rules.ts was not enough for this call.
     logProviderFailure({ layer, provider: "anthropic", model, status: res.status, kind: "truncated", detail: "stop_reason=max_tokens", recovered: true });
   }
-  return { ok: true, model, text: reply.text, status: res.status, kind: "ok", truncated: reply.truncated, detail: "", ...extra };
+  return settled({ ok: true, model, text: reply.text, status: res.status, kind: "ok", truncated: reply.truncated, detail: "", ...extra });
 }
 
 /** Records a model failure the caller could not recover from. callClaude already logged it. */
@@ -706,17 +733,34 @@ CRITICAL: productName must include the defining material/type descriptor wheneve
   };
 }
 
+const EMPTY_READ: VisionExtraction = {
+  productName: "", brand: "", visiblePrice: null,
+  currency: "", quantity: "", category: "other", platform: "unknown",
+  storeName: "", visibleUrl: "", priceConfidence: "none", imageQuality: "poor",
+};
+
 async function extractFromImage(
   imageBase64: string,
   mimeType: string,
   mode: SpendMode = "full",
   intent?: "verdict" | "finder"
 ): Promise<VisionExtraction> {
-  const defaults: VisionExtraction = {
-    productName: "", brand: "", visiblePrice: null,
-    currency: "", quantity: "", category: "other", platform: "unknown",
-    storeName: "", visibleUrl: "", priceConfidence: "none", imageQuality: "poor",
-  };
+  const read = await readFromImage(imageBase64, mimeType, mode, intent);
+  traceStep("extraction", {
+    brand: read.brand, productName: read.productName, visiblePrice: read.visiblePrice, currency: read.currency,
+    quantity: read.quantity, category: read.category, storeName: read.storeName, visibleUrl: read.visibleUrl,
+    imageQuality: read.imageQuality,
+  });
+  return read;
+}
+
+async function readFromImage(
+  imageBase64: string,
+  mimeType: string,
+  mode: SpendMode,
+  intent?: "verdict" | "finder"
+): Promise<VisionExtraction> {
+  const defaults = EMPTY_READ;
 
   const body = extractionPayload(imageBase64, mimeType);
 
@@ -840,6 +884,8 @@ interface BatchOutcome {
   results: VerificationResult[];
   /** False when the call produced no usable verdict, so it is worth a retry. */
   ok: boolean;
+  /** How many candidate images loaded and were sent to the model. */
+  loaded?: number;
   /** The model call behind a failed batch, for the fallback decision. */
   call?: ClaudeOutcome;
 }
@@ -883,7 +929,8 @@ async function verifyVisualMatchBatch(
   reference: { data: string; mimeType: string },
   candidateImageUrls: string[],
   model: string,
-  layer: FailureLayer = "gate"
+  layer: FailureLayer = "gate",
+  effort: Effort | null = gateEffort()
 ): Promise<BatchOutcome> {
   const unavailable = (): VerificationResult => ({ match: "different", reasoning: "verification unavailable" });
   const results: VerificationResult[] = candidateImageUrls.map(unavailable);
@@ -897,10 +944,11 @@ async function verifyVisualMatchBatch(
   images.forEach((image, index) => { if (image) present.push({ index, image }); });
   // No candidate image loaded at all. Nothing was judged, but nothing can
   // be judged either, so a retry would not help: not a failed call.
-  if (present.length === 0) return { results, ok: true };
+  if (present.length === 0) return { results, ok: true, loaded: 0 };
+  const loaded = present.length;
 
-  const call = await callClaude(layer, model, gatePayload(reference, present.map(p => p.image)), GATE_TIMEOUT_MS, { effort: gateEffort() });
-  if (!call.ok) return { results, ok: false, call };
+  const call = await callClaude(layer, model, gatePayload(reference, present.map(p => p.image)), GATE_TIMEOUT_MS, { effort });
+  if (!call.ok) return { results, ok: false, call, loaded };
 
   const parsed = parseReplyJson(call.text);
   let list: unknown[] = Array.isArray(parsed)
@@ -912,7 +960,7 @@ async function verifyVisualMatchBatch(
   if (list.length === 0) list = salvageVerdictObjects(call.text || "");
   if (list.length === 0) {
     logProviderFailure({ layer, provider: "anthropic", model, status: call.status, kind: "unparseable", detail: call.text || "" });
-    return { results, ok: false, call: { ...call, ok: false, kind: call.truncated ? "truncated" : "unparseable", detail: (call.text || "").slice(0, 300) } };
+    return { results, ok: false, loaded, call: { ...call, ok: false, kind: call.truncated ? "truncated" : "unparseable", detail: (call.text || "").slice(0, 300) } };
   }
 
   // Read the candidate number the model echoed back rather than trusting
@@ -931,7 +979,7 @@ async function verifyVisualMatchBatch(
     judged++;
   });
 
-  return { results, ok: judged > 0, call };
+  return { results, ok: judged > 0, call, loaded };
 }
 
 async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
@@ -1012,7 +1060,7 @@ async function searchLensViaSerpApi(imageUrl: string): Promise<ShoppingMatch | n
       country: "us",
     });
 
-    const res = await fetch(`https://serpapi.com/search.json?${params}`, {
+    const res = await searchFetch("lens", "serpapi", "google_lens", `https://serpapi.com/search.json?${params}`, {
       signal: AbortSignal.timeout(14000),
     });
     if (!res.ok) return searchFailed("lens", "serpapi", res, null, "identity");
@@ -1101,7 +1149,7 @@ async function searchLensViaSerper(imageUrl: string): Promise<ShoppingMatch | nu
   if (!process.env.SERPER_API_KEY) return null;
 
   try {
-    const res = await fetch("https://google.serper.dev/lens", {
+    const res = await searchFetch("lens", "serper", "lens", "https://google.serper.dev/lens", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1190,7 +1238,7 @@ function simplifyQuery(text: string, maxWords = 4): string {
 async function searchShoppingViaSerper(query: string): Promise<ShoppingMatch | null> {
   if (!process.env.SERPER_API_KEY) return null;
   try {
-    const res = await fetch("https://google.serper.dev/shopping", {
+    const res = await searchFetch("shopping", "serper", "shopping", "https://google.serper.dev/shopping", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-API-KEY": process.env.SERPER_API_KEY },
       body: JSON.stringify({ q: query, gl: "us", hl: "en", num: 10 }),
@@ -1233,7 +1281,7 @@ async function searchShoppingViaSerpApi(query: string): Promise<ShoppingMatch | 
       engine: "google_shopping", q: query, api_key: process.env.SERPAPI_KEY,
       num: "10", gl: "us", hl: "en",
     });
-    const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(12000) });
+    const res = await searchFetch("shopping", "serpapi", "google_shopping", `https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(12000) });
     if (!res.ok) return searchFailed("shopping", "serpapi", res, null, "identity");
     const data = await res.json();
     const failure = serpApiError(data);
@@ -1368,7 +1416,7 @@ async function searchDirectRetailer(provider: RetailerProvider, query: string): 
     else baseParams.query = query;
 
     const params = new URLSearchParams(baseParams);
-    const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(12000) });
+    const res = await searchFetch("retailer", "serpapi", provider.engine, `https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(12000) });
     if (!res.ok) return searchFailed("retailer", "serpapi", res, null, "advisory");
     const data = await res.json();
     const failure = serpApiError(data);
@@ -1523,7 +1571,7 @@ async function resolveSerpApiMerchantLink(productId: string): Promise<string | n
       api_key: process.env.SERPAPI_KEY,
       gl: "us", hl: "en",
     });
-    const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(8000) });
+    const res = await searchFetch("link", "serpapi", "google_product", `https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return searchFailed("link", "serpapi", res, null, "advisory");
     const data = await res.json();
     const failure = serpApiError(data);
@@ -1585,7 +1633,7 @@ function normalizeUrlCandidate(raw: string): string | null {
 async function searchOrganicViaSerper(query: string): Promise<string[]> {
   if (!process.env.SERPER_API_KEY) return [];
   try {
-    const res = await fetch("https://google.serper.dev/search", {
+    const res = await searchFetch("shopping", "serper", "search", "https://google.serper.dev/search", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-API-KEY": process.env.SERPER_API_KEY },
       body: JSON.stringify({ q: query, gl: "us", hl: "en", num: 5 }),
@@ -1607,7 +1655,7 @@ async function searchOrganicViaSerpApi(query: string): Promise<string[]> {
     const params = new URLSearchParams({
       engine: "google", q: query, api_key: process.env.SERPAPI_KEY, num: "5", gl: "us", hl: "en",
     });
-    const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(10000) });
+    const res = await searchFetch("shopping", "serpapi", "google", `https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) { await searchFailed("shopping", "serpapi", res, null, "identity"); return []; }
     const data = await res.json();
     const failure = serpApiError(data);
@@ -1801,6 +1849,8 @@ interface GateOptions {
   window?: number;
   /** "degraded" moves the gate to Sonnet 5.5 alone and caps what it may claim. */
   mode?: SpendMode;
+  /** What this gate pass is deciding, for the evaluation trace. */
+  purpose?: string;
 }
 
 /**
@@ -1912,8 +1962,26 @@ async function judgeCandidates(
     const slice = candidates.slice(i, i + VERIFY_BATCH_MAX);
     const { outcome, judge } = await judgeSlice(slice.map(c => c.imageUrl));
     slice.forEach((candidate, j) => checked.push({ candidate, result: outcome.results[j], judge }));
+    traceStep("gate", {
+      purpose: options.purpose || "identify",
+      judge: judge || null,
+      loaded: outcome.loaded ?? null,
+      candidates: slice.map((c, j) => ({
+        ...traceCandidate(c),
+        match: outcome.results[j]?.match,
+        why: String(outcome.results[j]?.reasoning || "").slice(0, 160),
+      })),
+    });
   }
   return checked;
+}
+
+/** A candidate as the evaluation trace shows it: enough to judge it, and to replay it. */
+function traceCandidate(c: ShoppingCandidate): Record<string, unknown> {
+  return {
+    rank: c.rank, title: c.title.slice(0, 120), source: c.source.slice(0, 60), price: c.price,
+    link: c.productUrl.slice(0, 200), image: c.imageUrl.slice(0, 300),
+  };
 }
 
 /**
@@ -1940,6 +2008,15 @@ async function judgeCandidates(
  * it with a second, now-accurate search (priceVerifiedIdentity).
  */
 function settleVerdict(checked: Checked[], ordered: ShoppingCandidate[], options: GateOptions): Verified {
+  const verified = settleVerdictOf(checked, ordered, options);
+  traceStep("settled", {
+    purpose: options.purpose || "identify", confidence: verified.confidence,
+    ...(verified.best ? traceCandidate(verified.best) : {}),
+  });
+  return verified;
+}
+
+function settleVerdictOf(checked: Checked[], ordered: ShoppingCandidate[], options: GateOptions): Verified {
   const pick = (tier: "exact" | "similar", rule: "cheapest" | "best-ranked"): Checked | null => {
     // `checked` is in ranked order, so index 0 of a tier is its best-ranked
     // member.
@@ -2078,7 +2155,7 @@ async function priceVerifiedIdentity(
 
   // Identity is already settled; this pool exists only to attach a price to
   // it, so the narrow window applies.
-  const verified = await verifyCandidates(found.match, reference, { ...gate, window: VERIFY_WINDOW_PRICING });
+  const verified = await verifyCandidates(found.match, reference, { ...gate, window: VERIFY_WINDOW_PRICING, purpose: "pricing" });
   if (rankConfidence(verified.confidence) < rankConfidence(confidence)) return null;
   if (verified.best.price <= 0) return null;
 
@@ -2419,8 +2496,15 @@ async function extractPageProductData(html: string, priceSeverity: Severity = "i
 //
 // If omitted, defaults to "us" (no shipping note shown).
 // ════════════════════════════════════════════════════════════════
-export async function scanProduct(imageBase64: string, mimeType: string, country?: string, intent?: "verdict" | "finder"): Promise<ScanResult> {
-  return settleScan(() => scanImage(imageBase64, mimeType, country, intent));
+/** For the operator evaluation path: receives the scan's full trace when it settles. */
+export interface ScanHooks {
+  onTrace?: (trace: ScanTrace) => void;
+}
+
+export async function scanProduct(
+  imageBase64: string, mimeType: string, country?: string, intent?: "verdict" | "finder", hooks: ScanHooks = {}
+): Promise<ScanResult> {
+  return settleScan(() => scanImage(imageBase64, mimeType, country, intent), hooks);
 }
 
 /**
@@ -2430,7 +2514,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
  * which failures can be outweighed and which cannot). An exception anywhere
  * in the engine is the same state, never a "no match".
  */
-async function settleScan(run: () => Promise<ScanResult>): Promise<ScanResult> {
+async function settleScan(run: () => Promise<ScanResult>, hooks: ScanHooks = {}): Promise<ScanResult> {
   let traced: Awaited<ReturnType<typeof runTraced<ScanResult>>>;
   try {
     traced = await runTraced(run);
@@ -2439,6 +2523,7 @@ async function settleScan(run: () => Promise<ScanResult>): Promise<ScanResult> {
     return { ...getUnresolvedResult(), failure: { reason: "engine", layers: ["engine"] } };
   }
   const { value: result, failures } = traced;
+  hooks.onTrace?.(traced.trace);
   const verified = result.found && result.mode !== "UNRESOLVED" && result.matchConfidence !== "unverified";
   const failure = decideFailure(failures, verified);
   return failure ? { ...getUnresolvedResult(), failure } : result;
@@ -2484,6 +2569,10 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
     // The temporary public copy exists only for the duration of the Lens
     // call. It goes as soon as that call is done.
     await discardLensUpload(lensImageUrl);
+    traceStep("lens", {
+      engine: lens.engine || null, candidates: shopping?.candidates.length ?? 0,
+      top: (shopping?.candidates || []).slice(0, 12).map(traceCandidate),
+    });
   }
 
   // ── Has someone already identified this product? ──
@@ -2496,6 +2585,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   if (shopping) {
     fingerprint = lensFingerprint(shopping.candidates.map(c => c.productUrl));
     const reused = await reuseIdentification(shopping, fingerprint, reference, gate);
+    traceStep("reuse", { hit: !!reused });
     if (reused) {
       shopping = reused;
       confidence = "exact";
@@ -2521,6 +2611,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   let discoveredPage: PageProductData | null = null;
   if (!shopping && (vision.storeName || vision.visibleUrl)) {
     discoveredPage = await discoverAndFetchProductPage(vision);
+    traceStep("discovery", { found: !!discoveredPage, title: discoveredPage?.title?.slice(0, 120) || null });
 
     if (discoveredPage) {
       if (discoveredPage.imageUrl) {
@@ -2567,6 +2658,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   if (!shopping && vision.storeName) {
     const storeQuery = `${vision.storeName} ${vision.brand} ${vision.productName} ${vision.quantity}`.trim();
     const found = await searchShoppingWithFallbacks([storeQuery, `${vision.brand} ${vision.productName} ${vision.quantity}`.trim()]);
+    traceStep("store_search", { query: storeQuery.slice(0, 120), found: found?.match.candidates.length ?? 0 });
     if (found) {
       shopping = found.match;
       engineUsed = `store_${found.engineUsed}`;
@@ -2582,6 +2674,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
     const genericQuery = `${base} ${vision.quantity}`.trim();
     if (base) {
       const found = await searchShoppingWithFallbacks([genericQuery, base, vision.productName]);
+      traceStep("generic_search", { query: genericQuery.slice(0, 120), found: found?.match.candidates.length ?? 0 });
       if (found) {
         shopping = found.match;
         engineUsed = `generic_${found.engineUsed}`;
@@ -2600,6 +2693,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   //    separately too. ──
   if (shopping && !servedFromIdentityCache && confidence !== "unverified" && shopping.lowestPrice <= 0) {
     const priced = await priceVerifiedIdentity(shopping, confidence, reference, gate);
+    traceStep("pricing", { adopted: !!priced });
     if (priced) {
       shopping = priced.match;
       engineUsed = `${engineUsed}+priced_${priced.engineUsed}`;
@@ -2659,9 +2753,13 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
     // the rebrand step left in place.
     const unbrandedPool = unbrandedFound && unbrandedFound.match.lowestPrice > 0 ? unbrandedFound.match : null;
     const retailerPool = retailerFound && retailerFound.match.lowestPrice > 0 ? retailerFound.match : null;
+    traceStep("alternatives", {
+      retailerQuery: retailerQuery.slice(0, 120), unbranded: unbrandedPool?.candidates.length ?? 0,
+      retailer: retailerPool?.candidates.length ?? 0, retailerSource: retailerFound?.source ?? null,
+    });
     if ((unbrandedPool || retailerPool) && budget.allows(VERIFY_WAVE_COST_MS)) {
       const [unbrandedVerified, retailerVerified] = await verifyPools(
-        [unbrandedPool, retailerPool], reference, { ...gate, window: VERIFY_WINDOW_PRICING }
+        [unbrandedPool, retailerPool], reference, { ...gate, window: VERIFY_WINDOW_PRICING, purpose: "rebrand+retailer" }
       );
       if (unbrandedFound && unbrandedPool && unbrandedVerified &&
           shouldReplace(confidence, shopping.lowestPrice, unbrandedVerified.confidence, unbrandedVerified.best.price)) {
@@ -2689,6 +2787,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   //    produced in this situation. Only reachable now that unpriced
   //    candidates survive to the gate at all. ──
   const hasSourcePrice = !!shopping && shopping.lowestPrice > 0;
+  traceStep("identified", { engineUsed, confidence, title: shopping?.title.slice(0, 120) || null, priced: hasSourcePrice });
   if (shopping && !hasSourcePrice) return getUnresolvedResult();
 
   // ── Publish the identification for the next person to scan this product.
@@ -2839,8 +2938,10 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
 // targets the US index regardless of the requester's location (see file
 // header).
 // ════════════════════════════════════════════════════════════════
-export async function scanProductUrl(url: string, country?: string, intent?: "verdict" | "finder"): Promise<ScanResult> {
-  return settleScan(() => scanUrl(url, country, intent));
+export async function scanProductUrl(
+  url: string, country?: string, intent?: "verdict" | "finder", hooks: ScanHooks = {}
+): Promise<ScanResult> {
+  return settleScan(() => scanUrl(url, country, intent), hooks);
 }
 
 async function scanUrl(url: string, country?: string, intent?: "verdict" | "finder"): Promise<ScanResult> {
@@ -3199,4 +3300,56 @@ export async function diagnoseEngine(sample: { data: string; mimeType: string })
 
   const [claudeProbes, lensProbes] = await Promise.all([claude, lensAndBlob]);
   return [...claudeProbes, ...lensProbes];
+}
+
+// ════════════════════════════════════════════════════════════════
+// REPLAYS, for the operator evaluation route (/api/eval). One extraction or
+// one gate call on a named model and effort, built and read exactly as a
+// scan builds and reads it, so models can be compared on the same photo and
+// the same candidates without repeating any search. The route decides who
+// may call these; see eval-log.ts.
+// ════════════════════════════════════════════════════════════════
+export interface ReplayCall {
+  ok: boolean;
+  kind: string;
+  status: number;
+  detail: string;
+  call: ScanTrace["calls"][number] | null;
+}
+
+export async function replayExtraction(
+  image: { data: string; mimeType: string },
+  model: string,
+  effort: Effort | null
+): Promise<ReplayCall & { read: VisionExtraction | null }> {
+  const capped = await capForModel(image);
+  const { value, trace } = await runTraced(async () => {
+    const outcome = await callClaude("extraction", model, extractionPayload(capped.data, capped.mimeType), EXTRACT_TIMEOUT_MS, { effort });
+    const parsed = outcome.ok ? parseReplyJson(outcome.text) : null;
+    const read = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? cleanExtraction({ ...EMPTY_READ, ...(parsed as Partial<VisionExtraction>) })
+      : null;
+    return { outcome, read };
+  });
+  const { outcome, read } = value;
+  return {
+    ok: outcome.ok && !!read, kind: read || !outcome.ok ? outcome.kind : "unparseable", status: outcome.status,
+    detail: outcome.detail, call: trace.calls[0] ?? null, read,
+  };
+}
+
+export async function replayGate(
+  reference: { data: string; mimeType: string },
+  candidateImageUrls: string[],
+  model: string,
+  effort: Effort | null
+): Promise<ReplayCall & { verdicts: VerificationResult[]; loaded: number }> {
+  const capped = await capForModel(reference);
+  const { value, trace } = await runTraced(() =>
+    verifyVisualMatchBatch(capped, candidateImageUrls.slice(0, VERIFY_BATCH_MAX), model, "gate", effort)
+  );
+  return {
+    ok: value.ok, kind: value.call?.kind || (value.ok ? "ok" : "no-images"), status: value.call?.status ?? 0,
+    detail: value.call?.detail || "", call: trace.calls[0] ?? null, verdicts: value.results, loaded: value.loaded ?? 0,
+  };
 }

@@ -493,6 +493,21 @@ if (rules) {
     check(`${model}: no thinking field (adaptive, always on), no sampling, effort low`,
       !("thinking" in body) && !["temperature", "top_p", "top_k"].some(k => k in body) && body.output_config?.effort === "low", JSON.stringify({ ...body, messages: undefined }));
   }
+  // Every model the rules table can build a request for, including the ones
+  // only the evaluation route (/api/eval) calls, at every effort level.
+  const tableProblems = [];
+  for (const model of Object.keys(rules.MODEL_RULES)) {
+    if (!DOCUMENTED[model]) { tableProblems.push(`${model}: not covered by the documented rules`); continue; }
+    for (const effort of EFFORT_ORDER) {
+      const body = rules.buildClaudeRequest(model, { max_tokens: 610, messages: [{ role: "user", content: "x" }] }, { effort });
+      for (const p of documentedViolations(body)) tableProblems.push(`${model}@${effort}: ${p}`);
+      if (body.output_config?.effort !== effort) tableProblems.push(`${model}@${effort}: sent ${body.output_config?.effort}`);
+      if ("thinking" in body || ["temperature", "top_p", "top_k"].some(k => k in body)) tableProblems.push(`${model}@${effort}: sampling or thinking field sent`);
+    }
+  }
+  check("every model in the rules table, at every effort level, gets a request the documented rules accept",
+    tableProblems.length === 0, tableProblems.join("; "));
+
   // The batched gate's output limit, for every batch size the engine sends
   // (one to eight candidates): thinking room of at least 15,000 tokens above
   // the JSON answer's own budget, and never more than 16,000 in total.

@@ -64,10 +64,13 @@ export type SpendMode = "full" | "degraded";
 const PRICING: Record<string, { input: number; output: number; cacheRead: number }> = {
   "claude-opus-5-5": { input: 4.0, output: 20.0, cacheRead: 0.05 },
   "claude-sonnet-5-5": { input: 2.0, output: 10.0, cacheRead: 0.1 },
+  // Measured by the evaluation route; cache reads are 0.025x on Fable 5.1.
+  "claude-fable-5-1": { input: 10.0, output: 50.0, cacheRead: 0.025 },
 };
-// What a model missing from the table is priced at: above both models in
-// use, so an unpriced model can only make the budget trip early, never late.
-const UNKNOWN_MODEL_RATE = { input: 5.0, output: 25.0, cacheRead: 0.1 };
+// What a model missing from the table is priced at: the most expensive rate
+// on the list, so an unpriced model can only make the budget trip early,
+// never late.
+const UNKNOWN_MODEL_RATE = { input: 10.0, output: 50.0, cacheRead: 0.1 };
 const CACHE_WRITE_MULTIPLIER = 1.25;
 
 export interface ClaudeUsage {

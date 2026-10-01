@@ -33,6 +33,8 @@ import {
 } from "@/lib/redis";
 import { after } from "next/server";
 import { recordEvents, recordScanFailure, type EventName, type FailureReason } from "@/lib/analytics";
+import { isEvaluationRequest, logEvaluationUse } from "@/lib/eval-log";
+import { summarizeTrace, type ScanTrace } from "@/lib/scan-trace";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import crypto from "crypto";
@@ -247,10 +249,12 @@ export async function GET(req: NextRequest) {
 // ════════════════════════════════════════════════════════════════
 const INCOMPLETE_MESSAGE = "That scan could not be completed on our side. It did not use a free scan. Try again.";
 
-async function incompleteScan(reason: FailureReason, layers: string[], issueBrowserId: boolean): Promise<NextResponse> {
+async function incompleteScan(
+  reason: FailureReason, layers: string[], issueBrowserId: boolean, extra: Record<string, unknown> = {}
+): Promise<NextResponse> {
   await recordScanFailure(reason, layers);
   const response = NextResponse.json(
-    { error: "scan_incomplete", reason, message: INCOMPLETE_MESSAGE },
+    { error: "scan_incomplete", reason, message: INCOMPLETE_MESSAGE, ...extra },
     { status: 502, headers: { "Cache-Control": "no-store" } }
   );
   if (issueBrowserId) {
@@ -265,11 +269,26 @@ async function incompleteScan(reason: FailureReason, layers: string[], issueBrow
   return response;
 }
 
+// ════════════════════════════════════════════════════════════════
+// THE OPERATOR EVALUATION PATH. A scan sent with the operator token and
+// `x-bustedlab-eval: 1` is the same scan with two differences: the FREE
+// allowance (per browser and per address) is neither checked nor counted,
+// because a labelled evaluation is forty scans from one machine; and the
+// response carries the scan's full trace (every model call with its tokens
+// and cost, every paid search, every gate decision, time per layer).
+// The burst limit, the global daily cap on uncached free scans and the
+// counter behind it, and the model spend governor all apply exactly as they
+// do to anyone else. Every use is logged; see eval-log.ts. A browser never
+// sends the token, so this never changes what a visitor gets.
+// ════════════════════════════════════════════════════════════════
+
 // POST — run scan
 export async function POST(req: NextRequest) {
+  const started = Date.now();
   const ip = getClientIp(req);
   const { email, isPaid } = await resolveAccess(req);
   const browserId = await getBrowserId(req);
+  const evaluation = isEvaluationRequest(req);
 
   if (!(await withinBurstLimit(ip, browserId))) {
     return NextResponse.json(
@@ -278,7 +297,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!isPaid) {
+  if (evaluation) {
+    // No free-allowance check: see THE OPERATOR EVALUATION PATH above.
+  } else if (!isPaid) {
     try {
       const remaining = await freeScansRemaining(ip, browserId);
       if (remaining <= 0) {
@@ -305,6 +326,9 @@ export async function POST(req: NextRequest) {
 
     // ── Resolve the input and its cache fingerprint ──
     let runScan: () => Promise<ScanResult>;
+    let trace: ScanTrace | null = null;
+    const hooks = evaluation ? { onTrace: (t: ScanTrace) => { trace = t; } } : {};
+    let scannedIntent: string | undefined;
 
     if (contentType.includes("application/json")) {
       const { url, intent } = await req.json();
@@ -313,7 +337,8 @@ export async function POST(req: NextRequest) {
       }
       const parsedIntent: "verdict" | "finder" | undefined = intent === "finder" ? "finder" : intent === "verdict" ? "verdict" : undefined;
       cacheKey = fingerprintUrl(url) + (parsedIntent ? `:${parsedIntent}` : "");
-      runScan = () => scanProductUrl(url, country, parsedIntent);
+      scannedIntent = parsedIntent;
+      runScan = () => scanProductUrl(url, country, parsedIntent, hooks);
     } else {
       const formData = await req.formData();
       const imageFile = formData.get("image") as File | null;
@@ -327,7 +352,8 @@ export async function POST(req: NextRequest) {
       cacheKey = fingerprintImage(bytes) + (parsedIntent ? `:${parsedIntent}` : "");
       const base64 = bytes.toString("base64");
       const mimeType = imageFile.type || "image/jpeg";
-      runScan = () => scanProduct(base64, mimeType, country, parsedIntent);
+      scannedIntent = parsedIntent;
+      runScan = () => scanProduct(base64, mimeType, country, parsedIntent, hooks);
     }
 
     // ── Cache read. This is the layer that makes a viral moment survivable:
@@ -363,6 +389,16 @@ export async function POST(req: NextRequest) {
       }
       result = await runScan();
       if (result.failure) {
+        if (evaluation) {
+          const summary = trace ? summarizeTrace(trace) : null;
+          await logEvaluationUse("scan", {
+            intent: scannedIntent || null, outcome: "incomplete", reason: result.failure.reason,
+            ms: Date.now() - started, claudeUsd: summary?.claudeUsd ?? null, searches: summary?.searchesByProvider ?? null,
+          });
+          return incompleteScan(result.failure.reason, result.failure.layers, !browserId, {
+            evaluation: { failure: result.failure, trace: summary },
+          });
+        }
         return incompleteScan(result.failure.reason, result.failure.layers, !browserId);
       }
     }
@@ -420,8 +456,12 @@ export async function POST(req: NextRequest) {
       // A cache hit still consumes a free scan: otherwise the same product
       // could be rescanned forever for free.
       if (!isPaid) {
-        await incrementScanCount(ip).catch(() => {});
-        if (browserId) await incrementScanCount(`browser:${browserId}`).catch(() => {});
+        // The free allowance is the one thing an evaluation scan does not
+        // touch. The global cap's counter still counts it.
+        if (!evaluation) {
+          await incrementScanCount(ip).catch(() => {});
+          if (browserId) await incrementScanCount(`browser:${browserId}`).catch(() => {});
+        }
         if (!servedFromCache) await incrementGlobalScans().catch(() => {});
       } else if (email) {
         // Every scan counts against fair use, including cache hits. A
@@ -472,7 +512,19 @@ export async function POST(req: NextRequest) {
       await recordEvents(events);
     });
 
-    const response = NextResponse.json({ ...result, scanId });
+    const summary = evaluation && trace ? summarizeTrace(trace) : null;
+    if (evaluation) {
+      await logEvaluationUse("scan", {
+        intent: scannedIntent || null, outcome: result.mode, cached: servedFromCache, engineUsed: result.engineUsed,
+        matchConfidence: result.matchConfidence, ms: Date.now() - started,
+        claudeUsd: summary?.claudeUsd ?? 0, searches: summary?.searchesByProvider ?? {},
+      });
+    }
+    const response = NextResponse.json({
+      ...result,
+      scanId,
+      ...(evaluation ? { evaluation: { cached: servedFromCache, ms: Date.now() - started, trace: summary } } : {}),
+    });
     if (!browserId) {
       response.cookies.set("bl_bid", newBrowserId(), {
         maxAge: 60 * 60 * 24 * 30,
