@@ -1,0 +1,195 @@
+{
+  "about": "The labelled production evaluation set. Each case names where its photo comes from (resolved and downloaded on the GitHub runner, never committed), what the photo shows, and how a result is judged. identity.all are words every correct match must carry (in its title or link); identity.any needs at least one. findable=false means the exact listing probably does not exist online: only an honest lookalike or no-match is acceptable. Screenshots are composed on the runner from a real listing's own photo and its real asking price.",
+  "cases": [
+    {
+      "id": "yellowstone-cowboy-hat",
+      "kind": "branded souvenir/apparel, printed logo",
+      "source": [
+        { "shopify": "https://yellowstonetvshop.com/products/yellowstone-fur-single-hat" },
+        { "shopify": "https://yellowstonetvshop.com/products/yellowstone-stockman-hat" }
+      ],
+      "findable": true,
+      "brand": "Yellowstone",
+      "identity": { "all": ["yellowstone"], "any": ["hat"] },
+      "note": "Yellowstone x Bailey western hat with the Yellowstone logo on the band."
+    },
+    {
+      "id": "flowlife-flowgun-air",
+      "kind": "small-brand electronics",
+      "source": [
+        { "page": "https://www.flowlife.com/en-GB/product/flowgun-air" },
+        { "shopify": "https://www.ongoal.com/products/flowlife-flowgun-pro-2-0-massage-gun" }
+      ],
+      "findable": true,
+      "brand": "Flowlife",
+      "identity": { "any": ["flowgun", "flowlife"] }
+    },
+    {
+      "id": "airpods-pro-2",
+      "kind": "mainstream branded",
+      "source": [{ "commons": "AirPods Pro 2.jpg" }, { "commons": "AirPods Pro (2nd generation).jpg" }],
+      "findable": true,
+      "brand": "Apple",
+      "identity": { "all": ["airpods"], "any": ["pro"] }
+    },
+    {
+      "id": "switch-oled",
+      "kind": "mainstream branded",
+      "source": [{ "commons": "Nintendo Switch OLED Model.jpg" }, { "commons": "Nintendo Switch - OLED.JPG" }],
+      "findable": true,
+      "brand": "Nintendo",
+      "identity": { "all": ["switch"], "any": ["oled"] }
+    },
+    {
+      "id": "kitchenaid-mixer",
+      "kind": "mainstream branded",
+      "source": [{ "commons": "White KitchenAid mixer (KSM150PSWH).jpg" }, { "commons": "KitchenAid Stand Mixer.jpg" }],
+      "findable": true,
+      "brand": "KitchenAid",
+      "identity": { "all": ["kitchenaid"], "any": ["mixer"] }
+    },
+    {
+      "id": "crocs-clog",
+      "kind": "mainstream branded",
+      "source": [{ "commons": "Crocs.JPG" }],
+      "findable": true,
+      "brand": "Crocs",
+      "identity": { "any": ["crocs"] }
+    },
+    {
+      "id": "owala-freesip",
+      "kind": "mainstream branded",
+      "source": [
+        { "shopify": "https://highcountryoutfitters.com/products/freesip-stainless-steel-24-oz" },
+        { "shopify": "https://theparkwholesale.com/products/owala-freesip-24-oz-bottle" }
+      ],
+      "findable": true,
+      "brand": "Owala",
+      "identity": { "all": ["owala"], "any": ["freesip", "free sip"] }
+    },
+    {
+      "id": "rayban-wayfarer",
+      "kind": "mainstream branded",
+      "source": [{ "commons": "RayBanWayfarer.jpg" }, { "commons": "Ray Ban Original Wayfarer.jpg" }],
+      "findable": true,
+      "brand": "Ray-Ban",
+      "identity": { "any": ["wayfarer"] }
+    },
+    {
+      "id": "led-fidget-spinner",
+      "kind": "unbranded generic",
+      "source": [{ "commons": "LED Fidget Spinner.jpg" }],
+      "findable": true,
+      "brand": "",
+      "identity": { "any": ["spinner"] }
+    },
+    {
+      "id": "jade-roller-gua-sha",
+      "kind": "unbranded generic",
+      "source": [{ "commons": "Jade roller & Gua Sha (Dirk van den Broek), Hillegersberg, Rotterdam (2023) 02.jpg" }],
+      "findable": true,
+      "brand": "",
+      "identity": { "any": ["jade", "gua sha", "guasha", "face roller", "facial roller"] }
+    },
+    {
+      "id": "kitchen-spatula",
+      "kind": "unbranded generic",
+      "source": [{ "commons": "Kitchen-spatula.jpg" }],
+      "findable": true,
+      "brand": "",
+      "identity": { "any": ["spatula", "turner", "flipper"] }
+    },
+    {
+      "id": "silicone-pastry-brush",
+      "kind": "unbranded generic",
+      "source": [{ "commons": "Kitchen-Silicone-Brush.jpg" }],
+      "findable": true,
+      "brand": "",
+      "identity": { "any": ["brush"] }
+    },
+    {
+      "id": "car-phone-holder",
+      "kind": "unbranded generic",
+      "source": [
+        { "commons": "Car universal holder for smartphones and phablets, Oude Pekela (2018) 01.jpg" },
+        { "commons": "Car universal holder for smartphones and phablets, Oude Pekela (2018) 02.jpg" }
+      ],
+      "findable": true,
+      "brand": "",
+      "identity": { "any": ["holder", "mount", "phone stand", "cradle"] }
+    },
+    {
+      "id": "raku-pitcher",
+      "kind": "unfindable: handmade one-off",
+      "source": [{ "commons": "Colorful Handmade Raku Pottery Pitcher.jpg" }],
+      "mirror": true,
+      "findable": false,
+      "brand": "",
+      "identity": { "any": ["pitcher", "jug", "raku"] },
+      "note": "Mirrored and cropped so the published photo itself is not an exact-image hit; a real person's photo of their own pot would not be online either."
+    },
+    {
+      "id": "knitted-hat",
+      "kind": "unfindable: handmade one-off",
+      "source": [{ "commons": "Knitting.jpg" }],
+      "mirror": true,
+      "findable": false,
+      "brand": "",
+      "identity": { "any": ["hat", "beanie", "knit"] }
+    },
+    {
+      "id": "carved-spoon",
+      "kind": "unfindable: handmade one-off",
+      "source": [{ "commons": "Spoon by Morriperkele.jpg" }],
+      "mirror": true,
+      "findable": false,
+      "brand": "",
+      "identity": { "any": ["spoon"] }
+    },
+    {
+      "id": "bukidnon-wooden-spoons",
+      "kind": "unfindable: regional craft",
+      "source": [{ "commons": "Giant decorative wooden spoons and forks from Bukidnon, Philippines.jpg" }],
+      "mirror": true,
+      "findable": false,
+      "brand": "",
+      "identity": { "any": ["spoon", "fork"] }
+    },
+    {
+      "id": "stanley-quencher-eur",
+      "kind": "screenshot, euro price",
+      "source": [{ "shopify": "https://eu.stanley1913.com/fr/products/quencher-h2-0-flowstate-tumbler-1-18-l", "currency": "EUR" }],
+      "screenshot": { "locale": "fr", "shop": "eu.stanley1913.com" },
+      "findable": true,
+      "brand": "Stanley",
+      "identity": { "all": ["stanley"], "any": ["quencher", "tumbler"] },
+      "expectCurrency": "EUR"
+    },
+    {
+      "id": "flowgun-go-eur",
+      "kind": "screenshot, euro price",
+      "source": [
+        { "page": "https://www.flowlife.com/eu/product/flowgun-go-green/" },
+        { "shopify": "https://www.ongoal.com/products/flowlife-flowgun-go-massage-gun", "currency": "SEK" }
+      ],
+      "screenshot": { "locale": "de", "shop": "flowlife.com" },
+      "findable": true,
+      "brand": "Flowlife",
+      "identity": { "any": ["flowgun", "flowlife"] },
+      "expectCurrency": "EUR"
+    },
+    {
+      "id": "sunset-lamp-mad",
+      "kind": "screenshot, dirham price, unbranded generic",
+      "source": [
+        { "page": "https://www.marjanemall.ma/p/lampe-de-projection-de-coucher-de-soleil-aaamv72769" },
+        { "page": "https://www.marjanemall.ma/p/lampe-de-coucher-de-soleil-sunset-lamp-projection-aaamv72782" }
+      ],
+      "screenshot": { "locale": "ma", "shop": "marjanemall.ma" },
+      "findable": true,
+      "brand": "",
+      "identity": { "any": ["sunset", "projection", "projector"] },
+      "expectCurrency": "MAD"
+    }
+  ]
+}
