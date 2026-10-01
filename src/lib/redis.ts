@@ -556,6 +556,13 @@ export interface ScanRecord {
    * measurement of the price.
    */
   cached: boolean;
+  /**
+   * The asking price as the seller showed it, when it was not in US dollars.
+   * retailPrice above is always the USD conversion; this is what the page
+   * prints beside it. Absent on dollar scans and on records from before
+   * currency conversion existed.
+   */
+  retailOriginal?: { amount: number; currency: string; rate: number; asOf: string };
 }
 
 export interface ProductAggregate {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildFunnel, readEvents, CLIENT_EVENTS } from "@/lib/analytics";
+import { buildFunnel, readEvents, readScanFailures, CLIENT_EVENTS } from "@/lib/analytics";
 import { getLedgerSize, readCspViolations } from "@/lib/redis";
 import { isOperator } from "@/lib/operator";
 
@@ -25,10 +25,11 @@ export async function GET(req: NextRequest) {
   const requested = Number(req.nextUrl.searchParams.get("days") || 30);
   const days = Math.min(Math.max(Number.isFinite(requested) ? requested : 30, 1), 120);
 
-  const [series, ledgerSize, csp] = await Promise.all([
+  const [series, ledgerSize, csp, failures] = await Promise.all([
     readEvents(days),
     getLedgerSize().catch(() => 0),
     readCspViolations(days).catch(() => []),
+    readScanFailures(days),
   ]);
 
   return NextResponse.json(
@@ -41,6 +42,12 @@ export async function GET(req: NextRequest) {
       // something a visitor's browser refused to run or load; see
       // src/lib/csp.ts. Kept 35 days.
       csp,
+      // Scans the server could not complete because a provider failed, by
+      // the layer that failed, plus the last fifty with the failing
+      // layer:provider:model:status. A non-zero "gate" or "extraction" is a
+      // Claude API problem; "lens" or "shopping" a search provider one. The
+      // browser-side scan_failed (timeouts) is in the funnel, not here.
+      failures,
       window: buildFunnel(series, "window"),
       lifetime: buildFunnel(series, "total"),
       series: series.map(s => ({

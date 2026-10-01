@@ -231,3 +231,25 @@ export function shareCaption(input: {
   }
   return `Ran this through BustedLab. Closest listing found: $${input.wholesalePrice.toFixed(2)}.`;
 }
+
+/**
+ * An asking price in the currency the seller showed it in, for the line that
+ * sits beside its US-dollar conversion: "€49.99", "£8.50", "MAD 299.00".
+ */
+export function formatOriginalPrice(original: { amount: number; currency: string }): string {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: original.currency, currencyDisplay: "symbol" }).format(original.amount);
+  } catch {
+    return `${original.amount.toFixed(2)} ${original.currency}`;
+  }
+}
+
+/** The plain-words note under a card whose asking price was converted. */
+export function conversionNote(original: { amount: number; currency: string; asOf: string }): string {
+  const day = new Date(`${original.asOf}T00:00:00Z`);
+  const when = Number.isNaN(day.getTime())
+    ? original.asOf
+    : day.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  return `Asking price shown as ${formatOriginalPrice(original)}, converted to US dollars at the ${when} rate. Prices on this card are in USD.`;
+}
+

@@ -49,11 +49,16 @@ import { Redis } from "@upstash/redis";
 export type SpendMode = "full" | "degraded";
 
 // USD per million tokens, from the published price list. Cache writes cost
-// 1.25x input (5-minute TTL) and cache reads 0.1x.
+// 1.25x input (5-minute TTL) and cache reads 0.1x. Keyed by model id without
+// a date suffix. Every model the engine can reach is listed, including the
+// gate's fallback, so a fallback is billed at its own rate.
 // https://platform.claude.com/docs/en/about-claude/pricing
 const PRICING: Record<string, { input: number; output: number }> = {
   "claude-opus-5": { input: 5.0, output: 25.0 },
-  "claude-haiku-4-5-20251001": { input: 1.0, output: 5.0 },
+  "claude-sonnet-5": { input: 2.0, output: 10.0 },
+  "claude-haiku-4-5": { input: 1.0, output: 5.0 },
+  "claude-opus-5-5": { input: 4.0, output: 20.0 },
+  "claude-sonnet-5-5": { input: 2.0, output: 10.0 },
 };
 const CACHE_WRITE_MULTIPLIER = 1.25;
 const CACHE_READ_MULTIPLIER = 0.1;
@@ -73,7 +78,7 @@ export interface ClaudeUsage {
  */
 export function priceUsage(model: string, usage: ClaudeUsage | undefined): number {
   if (!usage) return 0;
-  const rate = PRICING[model] || { input: 5.0, output: 25.0 };
+  const rate = PRICING[model.replace(/-\d{8}$/, "")] || { input: 5.0, output: 25.0 };
   const input = usage.input_tokens || 0;
   const output = usage.output_tokens || 0;
   const write = usage.cache_creation_input_tokens || 0;

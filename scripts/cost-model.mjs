@@ -31,8 +31,19 @@
 // https://platform.claude.com/docs/en/about-claude/pricing
 const MODELS = {
   opus: { id: "claude-opus-5", input: 5.0, output: 25.0, cacheMinimum: 512 },
+  // The gate's fallback when Opus 5 refuses or keeps failing a request.
+  sonnet: { id: "claude-sonnet-5", input: 2.0, output: 10.0, cacheMinimum: 1024 },
   haiku: { id: "claude-haiku-4-5", input: 1.0, output: 5.0, cacheMinimum: 4096 },
 };
+
+// ── Thinking. Opus 5 and Sonnet 5 think by default when a request does not
+//    say otherwise, and thinking tokens are billed as output at the output
+//    rate. The engine sends thinking: {type: "disabled"} to both (see
+//    src/lib/model-rules.ts and scripts/check-model-contract.mjs), so every
+//    figure below carries zero thinking tokens. THINKING_SENSITIVITY prices
+//    what each call would add if that ever stopped being true. ─────────────
+const THINKING_TOKENS = 0;
+const THINKING_SENSITIVITY = 500;
 const CACHE_WRITE_MULTIPLIER = 1.25; // 5-minute TTL
 const CACHE_READ_MULTIPLIER = 0.1;
 
@@ -52,7 +63,11 @@ const T = {
   // "a few words naming the feature that decided it", not a sentence.
   gateOutputPerCandidate: 25,
   gateOutputOverhead: 20,
+  // The one-line system instruction Opus 5 and Sonnet 5 carry with thinking
+  // off ("Do not include internal or system XML tags in your response.").
+  systemNote: 15,
 };
+const carriesSystemNote = (tier) => tier === "opus" || tier === "sonnet";
 
 function price(tier, { input = 0, cacheWrite = 0, cacheRead = 0, output = 0 }) {
   const m = MODELS[tier];
@@ -69,7 +84,10 @@ const photoCaches = (tier) => T.referenceImage >= MODELS[tier].cacheMinimum;
 
 /** The vision extraction: one photo, one prompt, one small JSON answer. */
 const extract = (tier) =>
-  price(tier, { input: T.referenceImage + T.extractPrompt, output: T.extractOutput });
+  price(tier, {
+    input: T.referenceImage + T.extractPrompt + (carriesSystemNote(tier) ? T.systemNote : 0),
+    output: T.extractOutput + (carriesSystemNote(tier) ? THINKING_TOKENS : 0),
+  });
 
 /**
  * One gate call covering `candidates` candidates. `warm` says whether the
@@ -78,15 +96,18 @@ const extract = (tier) =>
  */
 function gateCall(tier, candidates, cacheState) {
   const rest = T.gatePromptBase + candidates * (T.candidateThumbnail + T.gateLabelPerCandidate);
-  const output = T.gateOutputOverhead + candidates * T.gateOutputPerCandidate;
+  const output = T.gateOutputOverhead + candidates * T.gateOutputPerCandidate + (carriesSystemNote(tier) ? THINKING_TOKENS : 0);
+  // The system note sits ahead of the photo, so it is part of the cached
+  // prefix: written once with the photo, then read back with it.
+  const note = carriesSystemNote(tier) ? T.systemNote : 0;
   if (!photoCaches(tier)) {
-    return price(tier, { input: T.referenceImage + rest, output });
+    return price(tier, { input: T.referenceImage + note + rest, output });
   }
   if (cacheState[tier]) {
-    return price(tier, { cacheRead: T.referenceImage, input: rest, output });
+    return price(tier, { cacheRead: T.referenceImage + note, input: rest, output });
   }
   cacheState[tier] = true;
-  return price(tier, { cacheWrite: T.referenceImage, input: rest, output });
+  return price(tier, { cacheWrite: T.referenceImage + note, input: rest, output });
 }
 
 /** The pre-fix shape, for comparison: one candidate per call. */
@@ -122,6 +143,13 @@ const SEQUENCES = {
     extractTier: "haiku",
     calls: [["haiku", 6], ["haiku", 2]],
   },
+  fallback: {
+    label: "Opus 5 refuses the request shape (400): Sonnet 5 judges instead",
+    extractTier: "haiku",
+    // A 400 is not billed, so the failed Opus attempts cost nothing; the
+    // same waves then run on Sonnet 5.
+    calls: [["sonnet", 6], ["sonnet", 2], ["sonnet", 1], ["sonnet", 1]],
+  },
 };
 
 // ── Configurations, for the comparison the decision needs ────────────────
@@ -144,7 +172,7 @@ const CONFIGS = {
     },
   },
   "opus-batched": {
-    label: "This pass: Haiku extract, batched Opus gate, identity cache",
+    label: "Current: Haiku extract, batched Opus 5 gate, thinking off, identity cache",
     run(seq) {
       const cacheState = {};
       let total = extract(seq.extractTier);
@@ -179,13 +207,24 @@ for (const [name, seq] of Object.entries(SEQUENCES)) {
   console.log(`  ${seq.calls.length} gate call(s), ${candidates} candidates judged`);
   results[name] = {};
   for (const [configName, config] of Object.entries(CONFIGS)) {
-    if (name === "spike" && configName !== "opus-batched") continue;
-    if (name === "degraded" && configName !== "opus-batched") continue;
+    if (["spike", "degraded", "fallback"].includes(name) && configName !== "opus-batched") continue;
     const cost = config.run(seq);
     results[name][configName] = cost;
     console.log(`    ${pad(configName, 16)} ${pad(money(cost), 11)} ${config.label}`);
   }
 }
+
+// ── Full cost of one scan: model spend plus search spend. Search is the
+//    larger half on a cold scan and is not governed by the model budget.
+//    PER_SEARCH and the search counts are defined further down. ───────────
+console.log("\n\nTHINKING");
+console.log("-".repeat(78));
+console.log(`  Thinking tokens per Opus 5 / Sonnet 5 call in the figures above: ${THINKING_TOKENS} (thinking disabled).`);
+const opusThinking = (THINKING_SENSITIVITY * MODELS.opus.output) / 1_000_000;
+const typicalOpusCalls = SEQUENCES.typical.calls.filter(([tier]) => tier === "opus").length;
+console.log(`  Had it stayed on: every ${THINKING_SENSITIVITY} thinking tokens on an Opus 5 call add $${opusThinking.toFixed(4)},`);
+console.log(`  and a typical scan makes ${typicalOpusCalls} gate calls: $${(opusThinking * typicalOpusCalls).toFixed(4)} per scan per ${THINKING_SENSITIVITY} tokens,`);
+console.log(`  on top of a $${results.typical["opus-batched"].toFixed(4)} scan.`);
 
 console.log("\n\nA VIRAL DAY: 10,000 SCANS, OVERWHELMINGLY FREE TIER");
 console.log("-".repeat(78));
@@ -227,6 +266,21 @@ const MAX_SCANS_PER_DAY = Math.min(FAIR_USE_CEILING, BURST_ONLY_SCANS_PER_DAY);
 const PER_SEARCH = 0.0075;
 const SEARCHES_COLD = 5;
 const SEARCHES_DEGRADED = 2.5;
+
+console.log("\n\nFULL COST PER SCAN: MODEL PLUS SEARCH");
+console.log("-".repeat(78));
+console.log(`  Search priced at $${PER_SEARCH} per call: ${SEARCHES_COLD} calls on a cold scan (${SEARCHES_COLD + 2} on a hard one), ${SEARCHES_DEGRADED} degraded, 1 on an identity-cache hit.`);
+for (const [label, model, searches] of [
+  ["cold, typical", results.typical["opus-batched"], SEARCHES_COLD],
+  ["cold, hard", results.hard["opus-batched"], SEARCHES_COLD + 2],
+  ["cold, Sonnet 5 fallback", results.fallback["opus-batched"], SEARCHES_COLD],
+  ["degraded", results.degraded["opus-batched"], SEARCHES_DEGRADED],
+  ["identity-cache hit", results.spike["opus-batched"], 1],
+]) {
+  const search = searches * PER_SEARCH;
+  console.log(`  ${pad(label, 26)} model ${money(model)}  + search ${money(search)}  = ${money(model + search)}`);
+}
+console.log("  An identity-cache hit still runs the Lens search that finds the match; a 24-hour result-cache hit runs nothing.");
 
 console.log("\n\nONE ABUSED PAID SESSION, ONE DAY");
 console.log("-".repeat(78));

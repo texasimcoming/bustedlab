@@ -98,6 +98,12 @@ function runRedisCommand(args) {
       store.set(key, { value: String(next), expiresAt: entry?.expiresAt ?? null });
       return next;
     }
+    case "INCRBYFLOAT": {
+      const entry = live(key);
+      const next = (Number(entry?.value) || 0) + Number(rest[0]);
+      store.set(key, { value: String(next), expiresAt: entry?.expiresAt ?? null });
+      return String(next);
+    }
     case "TTL": {
       const entry = live(key);
       if (!entry) return -2;
@@ -179,6 +185,28 @@ function runRedisCommand(args) {
         sorted = from > to ? [] : sorted.slice(from, to + 1);
       }
       return flags.includes("WITHSCORES") ? sorted.flatMap(([m, s]) => [m, String(s)]) : sorted.map(([m]) => m);
+    }
+    case "LPUSH": {
+      const entry = live(key) ?? { value: [], expiresAt: null };
+      for (const v of rest) entry.value.unshift(String(v));
+      store.set(key, entry);
+      return entry.value.length;
+    }
+    case "LTRIM": {
+      const entry = live(key);
+      if (!entry) return "OK";
+      const n = entry.value.length;
+      const from = Number(rest[0]) < 0 ? n + Number(rest[0]) : Number(rest[0]);
+      const to = Number(rest[1]) < 0 ? n + Number(rest[1]) : Number(rest[1]);
+      entry.value = entry.value.slice(Math.max(0, from), to + 1);
+      return "OK";
+    }
+    case "LRANGE": {
+      const list = live(key)?.value ?? [];
+      const n = list.length;
+      const from = Number(rest[0]) < 0 ? n + Number(rest[0]) : Number(rest[0]);
+      const to = Number(rest[1]) < 0 ? n + Number(rest[1]) : Number(rest[1]);
+      return list.slice(Math.max(0, from), to + 1);
     }
     default:
       throw new Error(`emulated Upstash: unsupported command ${cmd}`);

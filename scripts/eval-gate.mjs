@@ -60,6 +60,10 @@
 import { readFileSync, existsSync, writeFileSync, statSync } from "node:fs";
 import { resolve, dirname, extname } from "node:path";
 import { buildBatchPrompt, coerceVerdict, salvageVerdictObjects } from "../src/lib/gate-prompt.ts";
+// The engine's own request builder and reply reader, so this measures each
+// model under the request the engine actually sends (no temperature on Opus 5
+// or Sonnet 5, thinking off, and so on) and reads replies the same way.
+import { buildClaudeRequest, readClaudeReply, parseReplyJson } from "../src/lib/model-rules.ts";
 
 const REPO = resolve(dirname(new URL(import.meta.url).pathname), "..");
 
@@ -201,26 +205,23 @@ async function judge(model, photo, candidates) {
       "x-api-key": process.env.ANTHROPIC_API_KEY,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({
-      model,
+    body: JSON.stringify(buildClaudeRequest(model, {
       max_tokens: 250 + candidates.length * 90,
-      temperature: 0,
       messages: [{ role: "user", content }],
-    }),
+    })),
   });
 
   if (!res.ok) {
     return { verdicts: candidates.map(() => null), usage: null, error: `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}` };
   }
   const data = await res.json();
-  const text = data.content?.[0]?.text || "";
-  let list;
-  try {
-    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-    list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.verdicts) ? parsed.verdicts : [];
-  } catch {
-    list = [];
+  const reply = readClaudeReply(data);
+  if (reply.refusal) {
+    return { verdicts: candidates.map(() => null), usage: data.usage, error: `refused (${reply.refusal})` };
   }
+  const text = reply.text || "";
+  const parsed = parseReplyJson(text);
+  let list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.verdicts) ? parsed.verdicts : [];
   if (list.length === 0) list = salvageVerdictObjects(text);
 
   const verdicts = candidates.map(() => null);

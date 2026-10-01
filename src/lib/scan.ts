@@ -75,10 +75,11 @@
  * scanProduct()/scanProductUrl(), but it now does exactly one thing: builds
  * an honest `shippingNote` disclosure ("Ships internationally — check
  * delivery time to your region") on the result when the requester isn't in
- * the US, rather than silently filtering what gets found. It does NOT
- * convert currency — amounts stay in USD, since faking a currency label on
- * an unconverted number would be a wrong number wearing a formatting
- * costume, not an improvement.
+ * the US, rather than silently filtering what gets found. Amounts are
+ * compared and shown in USD, the listings' currency: an asking price read in
+ * any other currency is converted at a cached daily rate first (fx.ts), and
+ * the card shows the original beside it. Comparing the raw numbers, which
+ * is what happened before, made every non-dollar verdict wrong.
  *
  * Image-upload pipeline:
  * Layer 1: Claude Haiku Vision → product identity, visible price, visible
@@ -146,13 +147,14 @@
  *     product, so a viral spike pays for identification once rather than
  *     ten thousand times. See reuseIdentification().
  *
- * Against roughly $0.009 of model spend for the pre-v10 Haiku-only engine:
- * about $0.035 for a cold typical scan, about $0.09 for a cold hard scan
- * where nothing confirms in the first wave and every fallback fires, and
- * under $0.01 for a scan of a product already identified in the last hour -
- * which is most scans during the traffic this product exists to create.
- * Search calls (Lens/Shopping/retailer/link resolution) remain ~$0.004-0.01
- * and are skipped entirely on a reused identification.
+ * Model spend, from `npm run cost-model` with thinking off on Opus 5: about
+ * $0.044 for a cold typical scan, about $0.069 for a cold hard scan where
+ * nothing confirms in the first wave and every fallback fires, about $0.020
+ * when Sonnet 5 stands in for the gate, and about $0.006 for a scan of a
+ * product already identified in the last hour - which is most scans during
+ * the traffic this product exists to create. Search calls (Lens, Shopping,
+ * retailer, link resolution) add roughly as much again on a cold scan, and
+ * all but the Lens search are skipped on a reused identification.
  *
  * Spend is measured from the usage the API reports, counted against a daily
  * budget, and when that budget is gone the engine degrades instead of either
@@ -183,6 +185,12 @@ import {
   lensFingerprint, lookupIdentity, storeIdentity, normalizeListingUrl,
   type CachedIdentity, type Fingerprint,
 } from "@/lib/identity-cache";
+import { buildClaudeRequest, readClaudeReply, parseReplyJson } from "@/lib/model-rules";
+import {
+  runTraced, decideFailure, hasFailed, firstAnswer, reportProviderFailure, recordProviderFailure, logProviderFailure, errorBody,
+  type FailureLayer, type ScanFailure, type Severity,
+} from "@/lib/scan-trace";
+import { normalizeCurrency, parsePrice, toUsd } from "@/lib/fx";
 
 // ════════════════════════════════════════════════════════════════
 // MODELS, AND WHY THE EXPENSIVE ONE IS STILL ON THE GATE.
@@ -221,69 +229,189 @@ import {
 // transcription task, its output only ranks candidates and builds queries
 // rather than deciding identity, and it escalates to the strong model by
 // itself when the read comes back structurally suspect (see
-// extractFromImage). Everything stays pinned at temperature 0 so the same
-// photo always resolves the same way.
+// extractFromImage).
+//
+// What each request carries per model (sampling, thinking, effort) is not
+// decided here: it comes from the one table in model-rules.ts, checked
+// against Anthropic's documented rules by scripts/check-model-contract.mjs.
+// Opus 5 and Sonnet 5 run with thinking off, which is what the cost model
+// prices; Haiku keeps temperature 0.
 const EXTRACT_MODEL = "claude-haiku-4-5-20251001";
 const EXTRACT_ESCALATION_MODEL = "claude-opus-5";
 const GATE_MODEL = "claude-opus-5";
-// Used only when the spend governor has degraded the engine. See
+// Next in line when the gate model refuses the request, keeps failing, or
+// declines it. A full-strength gate: it may still say "exact".
+const GATE_MODEL_FALLBACK = "claude-sonnet-5";
+// The degraded gate: used when the spend governor has degraded the engine,
+// and last in the fallback chain. Its best label is "likely". See
 // model-budget.ts, and DEGRADED CONFIDENCE in verifyCandidates.
 const GATE_MODEL_DEGRADED = "claude-haiku-4-5-20251001";
 // Text-only extractions: reading a price off page text, writing a search
 // query. Wrong output costs a retry, not a wrong product.
 const TEXT_MODEL = "claude-haiku-4-5-20251001";
 
+/** Every model the engine can call, by role. Read by /api/diagnose. */
+export const ENGINE_MODELS = {
+  extract: EXTRACT_MODEL,
+  extractEscalation: EXTRACT_ESCALATION_MODEL,
+  gate: GATE_MODEL,
+  gateFallback: GATE_MODEL_FALLBACK,
+  gateDegraded: GATE_MODEL_DEGRADED,
+  text: TEXT_MODEL,
+} as const;
+
 // ════════════════════════════════════════════════════════════════
 // The one entry point to the model. Centralised so that every call is
-// measured: the cost is taken from the `usage` the API itself reports, not
-// estimated, and added to the day's total before the call returns. The
-// spend is awaited rather than fired and forgotten because a floating
-// promise on a serverless runtime can be killed when the response goes
-// out, and a budget that loses writes is not a budget.
+// built from the same rules table, read the same way, and measured: the cost
+// is taken from the `usage` the API itself reports, not estimated, and added
+// to the day's total before the call returns. The spend is awaited rather
+// than fired and forgotten because a floating promise on a serverless
+// runtime can be killed when the response goes out, and a budget that loses
+// writes is not a budget.
 //
 // API backpressure (429 from a rate limit, 402 from billing, 529 from an
-// overloaded API) trips the breaker rather than being retried, so the next
-// scan takes the cheap path instead of hammering a limit that is already
-// saying no.
+// overloaded API) trips the breaker, so the next scan takes the cheap path
+// instead of hammering a limit that is already saying no.
+//
+// Every failure is logged here, loudly, with the layer, the model, the HTTP
+// status and the start of the error body. It used to return null without a
+// word, which is how a 400 on every gate call shipped and read as "nothing
+// verified". What the failure MEANS for the scan is decided by the caller,
+// which knows whether another model can still answer.
 // ════════════════════════════════════════════════════════════════
+type ClaudeFailureKind =
+  | "unconfigured" | "backpressure" | "client" | "server" | "timeout" | "network"
+  | "refusal" | "truncated" | "empty" | "unparseable";
+
+interface ClaudeOutcome {
+  ok: boolean;
+  model: string;
+  text: string | null;
+  status: number;
+  kind: ClaudeFailureKind | "ok";
+  /** Stopped at max_tokens. Text is kept, because a partial answer can be salvaged. */
+  truncated: boolean;
+  detail: string;
+  /** What the call cost, from the usage the API reported. */
+  costUsd?: number;
+  stopReason?: string | null;
+}
+
+const BACKPRESSURE = new Set([402, 429, 529]);
+
+function failureKindForStatus(status: number): ClaudeFailureKind {
+  if (BACKPRESSURE.has(status)) return "backpressure";
+  return status >= 500 ? "server" : "client";
+}
+
 async function callClaude(
+  layer: FailureLayer,
   model: string,
   payload: Record<string, unknown>,
   timeoutMs: number
-): Promise<Record<string, unknown> | null> {
-  if (!process.env.ANTHROPIC_API_KEY) return null;
+): Promise<ClaudeOutcome> {
+  const fail = (kind: ClaudeFailureKind, status: number, detail: string): ClaudeOutcome => {
+    logProviderFailure({ layer, provider: "anthropic", model, status, kind, detail });
+    return { ok: false, model, text: null, status, kind, truncated: false, detail };
+  };
+  if (!process.env.ANTHROPIC_API_KEY) return fail("unconfigured", 0, "ANTHROPIC_API_KEY is not set");
+  let res: Response;
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": process.env.ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
       },
-      body: JSON.stringify({ model, temperature: 0, ...payload }),
+      body: JSON.stringify(buildClaudeRequest(model, payload)),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) {
-      await reportModelFailure(res.status);
-      return null;
-    }
-    const data = await res.json();
-    await recordModelSpend(priceUsage(model, data?.usage));
-    return data;
-  } catch {
-    return null;
+  } catch (err) {
+    const name = (err as Error)?.name || "";
+    return fail(name === "TimeoutError" || name === "AbortError" ? "timeout" : "network", 0, String((err as Error)?.message || err));
   }
+  if (!res.ok) {
+    await reportModelFailure(res.status);
+    return fail(failureKindForStatus(res.status), res.status, await errorBody(res));
+  }
+  let data: Record<string, unknown> | null = null;
+  try {
+    data = await res.json();
+  } catch {
+    return fail("unparseable", res.status, "response body was not JSON");
+  }
+  const costUsd = priceUsage(model, data?.usage as Record<string, number> | undefined);
+  await recordModelSpend(costUsd);
+  const reply = readClaudeReply(data);
+  if (reply.refusal) return { ...fail("refusal", res.status, `stop_reason=refusal category=${reply.refusal}`), costUsd, stopReason: reply.stopReason };
+  if (!reply.text) return { ...fail("empty", res.status, `no text block; stop_reason=${reply.stopReason}`), costUsd, stopReason: reply.stopReason };
+  if (reply.truncated) {
+    // Not a failure yet: the gate can salvage the verdicts written before
+    // the cut. Said out loud anyway, because it means max_tokens is too low.
+    logProviderFailure({ layer, provider: "anthropic", model, status: res.status, kind: "truncated", detail: "stop_reason=max_tokens", recovered: true });
+  }
+  return { ok: true, model, text: reply.text, status: res.status, kind: "ok", truncated: reply.truncated, detail: "", costUsd, stopReason: reply.stopReason };
 }
 
-function parseModelJson(data: Record<string, unknown> | null): unknown {
-  const content = (data?.content as { text?: string }[] | undefined) || [];
-  const text = content[0]?.text;
-  if (!text) return null;
-  try {
-    return JSON.parse(text.replace(/```json|```/g, "").trim());
-  } catch {
-    return null;
+/** Records a model failure the caller could not recover from. callClaude already logged it. */
+function reportClaudeFailure(layer: FailureLayer, outcome: ClaudeOutcome, severity: Severity): void {
+  recordProviderFailure({
+    layer, provider: "anthropic", model: outcome.model, status: outcome.status,
+    kind: outcome.kind, detail: outcome.detail, severity,
+  });
+}
+
+/**
+ * The search layers' equivalent of callClaude's failure path: logged with
+ * the layer, provider and status, recorded against the scan, and returned
+ * as the same null "no result" the caller already handles. The difference
+ * is that the scan now knows the null was an error and not an answer.
+ */
+async function searchFailed(
+  layer: FailureLayer,
+  provider: string,
+  res: Response | null,
+  err: unknown,
+  severity: Severity
+): Promise<null> {
+  const status = res?.status ?? 0;
+  const name = (err as Error)?.name || "";
+  const kind = res
+    ? (status === 429 ? "backpressure" : status >= 500 ? "server" : "client")
+    : (name === "TimeoutError" || name === "AbortError" ? "timeout" : "network");
+  const detail = res ? await errorBody(res) : String((err as Error)?.message || err || "");
+  reportProviderFailure({ layer, provider, status, kind, detail, severity });
+  return null;
+}
+
+/**
+ * SerpApi answers some failures with HTTP 200 and an `error` field. "No
+ * results" is a real answer; anything else (an exhausted plan, a bad
+ * parameter) is a failure.
+ */
+function serpApiError(data: unknown): string | null {
+  const error = (data as { error?: unknown } | null)?.error;
+  if (typeof error !== "string" || !error) return null;
+  return /hasn.t returned any results|no results/i.test(error) ? null : error;
+}
+
+/**
+ * Listing prices in US dollars. The index is the US one, but a Lens match
+ * can still come from a merchant pricing in euros or pounds, and comparing
+ * that number as if it were dollars is the raw-number bug fixed in fx.ts. A
+ * price that cannot be converted is dropped rather than guessed, which leaves
+ * the record as an unpriced identification that the pricing search can still
+ * attach a real price to.
+ */
+async function pricesInUsd(candidates: ShoppingCandidate[]): Promise<ShoppingCandidate[]> {
+  const out: ShoppingCandidate[] = [];
+  for (const c of candidates) {
+    if (!c.currency || c.currency === "USD" || c.price <= 0) { out.push(c); continue; }
+    const converted = await toUsd(c.price, c.currency);
+    out.push({ ...c, price: converted && converted.usd > 0.5 ? converted.usd : 0, currency: "USD" });
   }
+  return out;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -360,7 +488,48 @@ export interface ScanResult {
     savings: number;
     savingsPercent: number;
     confidence: "high" | "medium" | "low";
+    // The asking price as the seller showed it, when that was not in US
+    // dollars. Every amount above is in USD (the listings are), so the card
+    // shows this beside the converted figure rather than a raw number in
+    // the wrong currency.
+    retailOriginal?: RetailOriginal;
   };
+  // Present only when the scan could NOT be completed because a provider
+  // failed (see scan-trace.ts). The route answers it as "try again", never as
+  // "no match", and never charges a free scan for it.
+  failure?: ScanFailure;
+}
+
+export interface RetailOriginal {
+  amount: number;
+  currency: string;
+  /** Units of `currency` per 1 USD. */
+  rate: number;
+  /** The day the rate is for. */
+  asOf: string;
+}
+
+/**
+ * An observed asking price in USD. A price whose currency has no rate today
+ * is not converted by guesswork: it is treated as not observed, which keeps
+ * the scan from printing a markup it cannot compute (no verdict, the
+ * cheapest listing still shown).
+ */
+async function observedPriceInUsd(
+  amount: number,
+  currency: string
+): Promise<{ usd: number; original?: RetailOriginal } | null> {
+  const code = normalizeCurrency(currency) || "USD";
+  if (code === "USD") return { usd: amount };
+  const converted = await toUsd(amount, code);
+  if (!converted) {
+    reportProviderFailure({
+      layer: "fx", provider: "exchange-api", status: 0, kind: "no-rate",
+      detail: `no USD rate for ${code}; asking price treated as unknown`, severity: "advisory",
+    });
+    return null;
+  }
+  return { usd: converted.usd, original: { amount, currency: code, rate: converted.rate, asOf: converted.asOf } };
 }
 
 interface VisionExtraction {
@@ -390,6 +559,9 @@ interface ShoppingCandidate {
   source: string;
   title: string;
   productId?: string; // SerpApi product_id, when present — enables merchant-link resolution
+  // ISO currency of `price` as the listing stated it. Converted to USD by
+  // pricesInUsd before anything compares it; absent means USD.
+  currency?: string;
   // Position in the ENGINE's own ordering, 0 being its best match. Google
   // Lens returns visual matches best-match-first, and that ordering is the
   // identification signal — it is the part of the response that says "this
@@ -471,20 +643,9 @@ export function buildShippingNote(sourceUrl: string, country: string): string | 
 // ════════════════════════════════════════════════════════════════
 // LAYER 1: Claude Haiku Vision — extraction
 // ════════════════════════════════════════════════════════════════
-async function extractFromImage(
-  imageBase64: string,
-  mimeType: string,
-  mode: SpendMode = "full"
-): Promise<VisionExtraction> {
-  const defaults: VisionExtraction = {
-    productName: "", brand: "", visiblePrice: null,
-    currency: "USD", quantity: "", category: "other", platform: "unknown",
-    storeName: "", visibleUrl: "", priceConfidence: "none", imageQuality: "poor",
-  };
-
-  if (!process.env.ANTHROPIC_API_KEY) return defaults;
-
-  const body = {
+/** The extraction request, as sent. Also what /api/diagnose sends. */
+function extractionPayload(imageBase64: string, mimeType: string): Record<string, unknown> {
+  return {
     max_tokens: 350,
     messages: [{
       role: "user",
@@ -497,7 +658,7 @@ async function extractFromImage(
   "productName": "exact product name, generic type if brand unknown",
   "brand": "brand or empty",
   "visiblePrice": null or number (ONLY if a price is clearly visible on screen),
-  "currency": "USD",
+  "currency": "ISO 4217 code of the visible price's currency, from its symbol, code or the screen's country cues (e.g. USD, EUR, GBP, MAD). A bare $ with no other cue is USD. Empty string if no price is visible",
   "quantity": "pack/bundle size if stated anywhere, e.g. '3-pack', '1 unit', '2-in-1'. Empty string if not specified. Comparing a 3-pack retail price against a single-unit wholesale listing produces a false markup, so this matters as much as the product name.",
   "category": "beauty|fitness|tech|fashion|home|pet|skincare|accessories|food|other",
   "platform": "tiktok|instagram|amazon|shopify|facebook|aliexpress|website|unknown",
@@ -515,20 +676,84 @@ CRITICAL: productName must include the defining material/type descriptor wheneve
       ],
     }],
   };
+}
 
-  const first = parseModelJson(await callClaude(EXTRACT_MODEL, body, 20000)) as Partial<VisionExtraction> | null;
-  const read: VisionExtraction = { ...defaults, ...(first || {}) };
-  if (mode === "degraded" || !readFailed(read)) return read;
+async function extractFromImage(
+  imageBase64: string,
+  mimeType: string,
+  mode: SpendMode = "full",
+  intent?: "verdict" | "finder"
+): Promise<VisionExtraction> {
+  const defaults: VisionExtraction = {
+    productName: "", brand: "", visiblePrice: null,
+    currency: "", quantity: "", category: "other", platform: "unknown",
+    storeName: "", visibleUrl: "", priceConfidence: "none", imageQuality: "poor",
+  };
 
-  // Escalation. The brand and the product words this pass returns are what
-  // order candidates for the gate, and a missed brand is how a listing that
-  // actually carries the logo on the photo fails to reach the front of the
-  // queue. When the read comes back weak on an image the model itself called
-  // good, the one call is worth spending on the strong model - it is a
-  // single call per scan, and only on the scans where the cheap read
-  // visibly underperformed.
-  const second = parseModelJson(await callClaude(EXTRACT_ESCALATION_MODEL, body, 25000)) as Partial<VisionExtraction> | null;
-  return second ? { ...defaults, ...second } : read;
+  const body = extractionPayload(imageBase64, mimeType);
+
+  // A read that never arrived is not a photo with nothing on it. For a
+  // verdict, the asking price comes from this read and nowhere else, so if
+  // neither model could produce one the scan cannot be completed honestly.
+  // For "where is it cheapest" the photo alone still identifies the product,
+  // so it only matters when nothing else identified it either.
+  const severity: Severity = intent === "finder" ? "identity" : "critical";
+  const readOf = (outcome: ClaudeOutcome): Partial<VisionExtraction> | null => {
+    if (!outcome.ok) return null;
+    const parsed = parseReplyJson(outcome.text);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Partial<VisionExtraction>;
+    logProviderFailure({
+      layer: "extraction", provider: "anthropic", model: outcome.model, status: outcome.status,
+      kind: "unparseable", detail: outcome.text || "",
+    });
+    return null;
+  };
+
+  const first = await callClaude("extraction", EXTRACT_MODEL, body, 20000);
+  const firstRead = readOf(first);
+  if (firstRead) {
+    const read = cleanExtraction({ ...defaults, ...firstRead });
+    if (mode === "degraded" || !readFailed(read)) return read;
+    // Escalation. The brand and the product words this pass returns are what
+    // order candidates for the gate, and a missed brand is how a listing that
+    // actually carries the logo on the photo fails to reach the front of the
+    // queue. When the read comes back weak on an image the model itself called
+    // good, the one call is worth spending on the strong model - it is a
+    // single call per scan, and only on the scans where the cheap read
+    // visibly underperformed. If the escalation itself fails, the weak read
+    // is still a real read, so it stands (the failure is already logged).
+    const second = readOf(await callClaude("extraction", EXTRACT_ESCALATION_MODEL, body, 25000));
+    return second ? cleanExtraction({ ...defaults, ...second }) : read;
+  }
+
+  // The cheap read failed outright: an error, a refusal, or an answer that
+  // was not JSON. The strong model gets the same request, in either spend
+  // mode, because without a read the scan has no asking price at all.
+  const retry = await callClaude("extraction", EXTRACT_ESCALATION_MODEL, body, 25000);
+  const retryRead = readOf(retry);
+  if (retryRead) return cleanExtraction({ ...defaults, ...retryRead });
+  reportClaudeFailure("extraction", retry.ok ? { ...retry, ok: false, kind: "unparseable" } : retry, severity);
+  return defaults;
+}
+
+/**
+ * Types as the rest of the engine assumes them. A model can return a price as
+ * a string or a currency as a symbol, and both used to flow through as-is.
+ */
+function cleanExtraction(read: VisionExtraction): VisionExtraction {
+  const price = typeof read.visiblePrice === "number" ? read.visiblePrice
+    : typeof read.visiblePrice === "string" ? parsePrice(read.visiblePrice).amount
+    : 0;
+  return {
+    ...read,
+    productName: String(read.productName || ""),
+    brand: String(read.brand || ""),
+    visiblePrice: price > 0 ? price : null,
+    currency: normalizeCurrency(read.currency),
+    quantity: String(read.quantity || ""),
+    storeName: String(read.storeName || ""),
+    visibleUrl: String(read.visibleUrl || ""),
+  };
 }
 
 /**
@@ -585,27 +810,15 @@ interface BatchOutcome {
   results: VerificationResult[];
   /** False when the call produced no usable verdict, so it is worth a retry. */
   ok: boolean;
+  /** The model call behind a failed batch, for the fallback decision. */
+  call?: ClaudeOutcome;
 }
 
-async function verifyVisualMatchBatch(
+/** The gate request for one wave, as sent. Also what /api/diagnose sends. */
+function gatePayload(
   reference: { data: string; mimeType: string },
-  candidateImageUrls: string[],
-  model: string
-): Promise<BatchOutcome> {
-  const unavailable = (): VerificationResult => ({ match: "different", reasoning: "verification unavailable" });
-  const results: VerificationResult[] = candidateImageUrls.map(unavailable);
-  let judged = 0;
-  if (!process.env.ANTHROPIC_API_KEY || candidateImageUrls.length === 0) return { results, ok: false };
-
-  const images = await Promise.all(
-    candidateImageUrls.map(url => (url ? fetchImageAsBase64(url) : Promise.resolve(null)))
-  );
-  const present: { index: number; image: { data: string; mimeType: string } }[] = [];
-  images.forEach((image, index) => { if (image) present.push({ index, image }); });
-  // No candidate image loaded at all. Nothing was judged, but nothing can
-  // be judged either, so a retry would not help: not a failed call.
-  if (present.length === 0) return { results, ok: true };
-
+  candidates: { data: string; mimeType: string }[]
+): Record<string, unknown> {
   const content: Record<string, unknown>[] = [
     { type: "text", text: "IMAGE A (the photo being scanned):" },
     {
@@ -621,38 +834,58 @@ async function verifyVisualMatchBatch(
       cache_control: { type: "ephemeral" },
     },
   ];
-  present.forEach((_, slot) => {
+  candidates.forEach((image, slot) => {
     content.push({ type: "text", text: `CANDIDATE ${slot + 1}:` });
     content.push({
       type: "image",
-      source: {
-        type: "base64",
-        media_type: present[slot].image.mimeType,
-        data: present[slot].image.data,
-      },
+      source: { type: "base64", media_type: image.mimeType, data: image.data },
     });
   });
-  content.push({ type: "text", text: buildBatchPrompt(present.length) });
+  content.push({ type: "text", text: buildBatchPrompt(candidates.length) });
 
-  const data = await callClaude(model, {
+  return {
     // Generous on purpose: see salvageVerdictObjects. A wave truncated
     // mid-answer is a far more expensive failure than an unused ceiling.
-    max_tokens: 250 + present.length * 90,
+    max_tokens: 250 + candidates.length * 90,
     messages: [{ role: "user", content }],
-  }, 30000);
+  };
+}
 
-  const parsed = parseModelJson(data);
+async function verifyVisualMatchBatch(
+  reference: { data: string; mimeType: string },
+  candidateImageUrls: string[],
+  model: string,
+  layer: FailureLayer = "gate"
+): Promise<BatchOutcome> {
+  const unavailable = (): VerificationResult => ({ match: "different", reasoning: "verification unavailable" });
+  const results: VerificationResult[] = candidateImageUrls.map(unavailable);
+  let judged = 0;
+  if (candidateImageUrls.length === 0) return { results, ok: false };
+
+  const images = await Promise.all(
+    candidateImageUrls.map(url => (url ? fetchImageAsBase64(url) : Promise.resolve(null)))
+  );
+  const present: { index: number; image: { data: string; mimeType: string } }[] = [];
+  images.forEach((image, index) => { if (image) present.push({ index, image }); });
+  // No candidate image loaded at all. Nothing was judged, but nothing can
+  // be judged either, so a retry would not help: not a failed call.
+  if (present.length === 0) return { results, ok: true };
+
+  const call = await callClaude(layer, model, gatePayload(reference, present.map(p => p.image)), 30000);
+  if (!call.ok) return { results, ok: false, call };
+
+  const parsed = parseReplyJson(call.text);
   let list: unknown[] = Array.isArray(parsed)
     ? parsed
     : Array.isArray((parsed as { verdicts?: unknown[] } | null)?.verdicts)
       ? (parsed as { verdicts: unknown[] }).verdicts
       : [];
 
+  if (list.length === 0) list = salvageVerdictObjects(call.text || "");
   if (list.length === 0) {
-    const rawText = ((data?.content as { text?: string }[] | undefined) || [])[0]?.text || "";
-    list = salvageVerdictObjects(rawText);
+    logProviderFailure({ layer, provider: "anthropic", model, status: call.status, kind: "unparseable", detail: call.text || "" });
+    return { results, ok: false, call: { ...call, ok: false, kind: "unparseable", detail: (call.text || "").slice(0, 300) } };
   }
-  if (list.length === 0) return { results, ok: false };
 
   // Read the candidate number the model echoed back rather than trusting
   // position, and fall back to position when it omitted one. A verdict that
@@ -670,7 +903,7 @@ async function verifyVisualMatchBatch(
     judged++;
   });
 
-  return { results, ok: judged > 0 };
+  return { results, ok: judged > 0, call };
 }
 
 async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
@@ -705,8 +938,8 @@ async function uploadForLensSearch(imageBase64: string, mimeType: string): Promi
       addRandomSuffix: false,
     });
     return blob.url;
-  } catch {
-    return null;
+  } catch (err) {
+    return searchFailed("upload", "vercel-blob", null, err, "identity");
   }
 }
 
@@ -730,6 +963,15 @@ async function discardLensUpload(url: string | null): Promise<void> {
 // country degrades search depth without making the verdict more accurate —
 // the markup is real regardless of which country's index found the floor
 // price. Locality is handled separately via the shippingNote disclosure.
+/** Lens through SerpApi, then Serper. See firstAnswer for how failures count. */
+async function searchLens(imageUrl: string): Promise<{ match: ShoppingMatch | null; engine: "serpapi" | "serper" | "" }> {
+  const { value, index } = await firstAnswer("lens", [
+    { configured: !!process.env.SERPAPI_KEY, run: () => searchLensViaSerpApi(imageUrl) },
+    { configured: !!process.env.SERPER_API_KEY, run: () => searchLensViaSerper(imageUrl) },
+  ]);
+  return { match: value, engine: index === 0 ? "serpapi" : index === 1 ? "serper" : "" };
+}
+
 async function searchLensViaSerpApi(imageUrl: string): Promise<ShoppingMatch | null> {
   if (!process.env.SERPAPI_KEY) return null;
 
@@ -745,8 +987,10 @@ async function searchLensViaSerpApi(imageUrl: string): Promise<ShoppingMatch | n
     const res = await fetch(`https://serpapi.com/search.json?${params}`, {
       signal: AbortSignal.timeout(14000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return searchFailed("lens", "serpapi", res, null, "identity");
     const data = await res.json();
+    const failure = serpApiError(data);
+    if (failure) return searchFailed("lens", "serpapi", null, new Error(failure), "identity");
 
     // ── THE IDENTIFICATION FIX ──
     // Lens answers "what is this object". It only sometimes also answers
@@ -796,10 +1040,11 @@ async function searchLensViaSerpApi(imageUrl: string): Promise<ShoppingMatch | n
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
 
-      const price = m.price as { extracted_value?: number } | undefined;
+      const price = m.price as { extracted_value?: number; currency?: string; value?: string } | undefined;
       const extracted = typeof price?.extracted_value === "number" ? price.extracted_value : 0;
       candidates.push({
         price: extracted > 0.5 ? extracted : 0,
+        currency: normalizeCurrency(price?.currency) || parsePrice(price?.value).currency || undefined,
         title: String(m.title || ""),
         imageUrl,
         productUrl,
@@ -812,9 +1057,9 @@ async function searchLensViaSerpApi(imageUrl: string): Promise<ShoppingMatch | n
       if (candidates.length >= 40) break;
     }
 
-    return buildShoppingMatch(candidates);
-  } catch {
-    return null;
+    return buildShoppingMatch(await pricesInUsd(candidates));
+  } catch (err) {
+    return searchFailed("lens", "serpapi", null, err, "identity");
   }
 }
 
@@ -837,7 +1082,7 @@ async function searchLensViaSerper(imageUrl: string): Promise<ShoppingMatch | nu
       body: JSON.stringify({ url: imageUrl, gl: "us", hl: "en" }),
       signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return searchFailed("lens", "serper", res, null, "identity");
     const data = await res.json();
 
     // Same two fixes as the SerpApi path above: an unpriced visual match
@@ -850,10 +1095,12 @@ async function searchLensViaSerper(imageUrl: string): Promise<ShoppingMatch | nu
     for (const m of raw) {
       const imageUrl = String(m.imageUrl || m.thumbnail || "");
       if (!imageUrl) continue;
-      const priceRaw = m.price ?? m.extractedPrice;
-      const parsedPrice = parseFloat(String(priceRaw ?? "").replace(/[^0-9.]/g, "")) || 0;
+      const listed = typeof m.extractedPrice === "number"
+        ? { amount: m.extractedPrice as number, currency: parsePrice(m.price).currency }
+        : parsePrice(m.price);
       candidates.push({
-        price: parsedPrice > 0.5 ? parsedPrice : 0,
+        price: listed.amount > 0.5 ? listed.amount : 0,
+        currency: listed.currency || undefined,
         title: String(m.title || ""),
         imageUrl,
         productUrl: String(m.link || m.url || ""),
@@ -863,9 +1110,9 @@ async function searchLensViaSerper(imageUrl: string): Promise<ShoppingMatch | nu
       if (candidates.length >= 40) break;
     }
 
-    return buildShoppingMatch(candidates);
-  } catch {
-    return null;
+    return buildShoppingMatch(await pricesInUsd(candidates));
+  } catch (err) {
+    return searchFailed("lens", "serper", null, err, "identity");
   }
 }
 
@@ -921,7 +1168,7 @@ async function searchShoppingViaSerper(query: string): Promise<ShoppingMatch | n
       body: JSON.stringify({ q: query, gl: "us", hl: "en", num: 10 }),
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return searchFailed("shopping", "serper", res, null, "identity");
     const data = await res.json();
 
     // A text shopping search is a PRICE source, so a row with no price
@@ -935,7 +1182,8 @@ async function searchShoppingViaSerper(query: string): Promise<ShoppingMatch | n
     // identification, in verifyCandidates, rather than before it.
     const priced = ((data.shopping || []) as Record<string, unknown>[])
       .map((r) => ({
-        price: parseFloat(String(r.price || "0").replace(/[^0-9.]/g, "")) || 0,
+        price: parsePrice(r.price).amount,
+        currency: parsePrice(r.price).currency || undefined,
         title: String(r.title || ""),
         imageUrl: String(r.imageUrl || r.thumbnailUrl || ""),
         productUrl: String(r.link || ""),
@@ -944,9 +1192,9 @@ async function searchShoppingViaSerper(query: string): Promise<ShoppingMatch | n
       .filter((r) => r.price > 0.5 && r.imageUrl);
     const results: ShoppingCandidate[] = priced.map((r, i) => ({ ...r, rank: i }));
 
-    return buildShoppingMatch(filterRelevantCandidates(results, query));
-  } catch {
-    return null;
+    return buildShoppingMatch(filterRelevantCandidates(await pricesInUsd(results), query));
+  } catch (err) {
+    return searchFailed("shopping", "serper", null, err, "identity");
   }
 }
 
@@ -958,8 +1206,10 @@ async function searchShoppingViaSerpApi(query: string): Promise<ShoppingMatch | 
       num: "10", gl: "us", hl: "en",
     });
     const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(12000) });
-    if (!res.ok) return null;
+    if (!res.ok) return searchFailed("shopping", "serpapi", res, null, "identity");
     const data = await res.json();
+    const failure = serpApiError(data);
+    if (failure) return searchFailed("shopping", "serpapi", null, new Error(failure), "identity");
 
     // Relevance order preserved, price sort removed — same reasoning as
     // the Serper shopping path above.
@@ -967,6 +1217,7 @@ async function searchShoppingViaSerpApi(query: string): Promise<ShoppingMatch | 
       .filter((r) => typeof r.extracted_price === "number" && (r.extracted_price as number) > 0.5 && r.thumbnail)
       .map((r, i) => ({
         price: r.extracted_price as number,
+        currency: parsePrice(r.price).currency || undefined,
         title: String(r.title || ""),
         imageUrl: String(r.thumbnail || ""),
         productUrl: String(r.product_link || r.link || ""),
@@ -975,9 +1226,9 @@ async function searchShoppingViaSerpApi(query: string): Promise<ShoppingMatch | 
         rank: i,
       }));
 
-    return buildShoppingMatch(filterRelevantCandidates(results, query));
-  } catch {
-    return null;
+    return buildShoppingMatch(filterRelevantCandidates(await pricesInUsd(results), query));
+  } catch (err) {
+    return searchFailed("shopping", "serpapi", null, err, "identity");
   }
 }
 
@@ -1090,8 +1341,10 @@ async function searchDirectRetailer(provider: RetailerProvider, query: string): 
 
     const params = new URLSearchParams(baseParams);
     const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(12000) });
-    if (!res.ok) return null;
+    if (!res.ok) return searchFailed("retailer", "serpapi", res, null, "advisory");
     const data = await res.json();
+    const failure = serpApiError(data);
+    if (failure) return searchFailed("retailer", "serpapi", null, new Error(failure), "advisory");
 
     // The retailer's own relevance ranking is a better first guess at
     // WHICH product this is than its price is, so that order is kept and
@@ -1100,8 +1353,8 @@ async function searchDirectRetailer(provider: RetailerProvider, query: string): 
       .map((r, i) => ({ ...r, source: provider.name, rank: i }));
 
     return buildShoppingMatch(filterRelevantCandidates(results, query));
-  } catch {
-    return null;
+  } catch (err) {
+    return searchFailed("retailer", "serpapi", null, err, "advisory");
   }
 }
 
@@ -1137,10 +1390,11 @@ async function searchShoppingWithFallbacks(
     if (!q || q.length < 3 || seen.has(q.toLowerCase())) continue;
     seen.add(q.toLowerCase());
 
-    let match = await searchShoppingViaSerper(q);
-    if (match) return { match, engineUsed: "serper" };
-    match = await searchShoppingViaSerpApi(q);
-    if (match) return { match, engineUsed: "serpapi" };
+    const { value: match, index } = await firstAnswer("shopping", [
+      { configured: !!process.env.SERPER_API_KEY, run: () => searchShoppingViaSerper(q) },
+      { configured: !!process.env.SERPAPI_KEY, run: () => searchShoppingViaSerpApi(q) },
+    ]);
+    if (match) return { match, engineUsed: index === 0 ? "serper" : "serpapi" };
   }
   return null;
 }
@@ -1242,13 +1496,15 @@ async function resolveSerpApiMerchantLink(productId: string): Promise<string | n
       gl: "us", hl: "en",
     });
     const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
+    if (!res.ok) return searchFailed("link", "serpapi", res, null, "advisory");
     const data = await res.json();
+    const failure = serpApiError(data);
+    if (failure) return searchFailed("link", "serpapi", null, new Error(failure), "advisory");
     const sellers: Record<string, unknown>[] = data.sellers_results?.online_sellers || [];
     const direct = sellers.find(s => typeof s.link === "string" && !isGoogleDomain(String(s.link)));
     return direct ? String(direct.link) : null;
-  } catch {
-    return null;
+  } catch (err) {
+    return searchFailed("link", "serpapi", null, err, "advisory");
   }
 }
 
@@ -1307,11 +1563,12 @@ async function searchOrganicViaSerper(query: string): Promise<string[]> {
       body: JSON.stringify({ q: query, gl: "us", hl: "en", num: 5 }),
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return [];
+    if (!res.ok) { await searchFailed("shopping", "serper", res, null, "identity"); return []; }
     const data = await res.json();
     const organic: Record<string, unknown>[] = data.organic || [];
     return organic.map(r => String(r.link || "")).filter(Boolean);
-  } catch {
+  } catch (err) {
+    await searchFailed("shopping", "serper", null, err, "identity");
     return [];
   }
 }
@@ -1323,11 +1580,14 @@ async function searchOrganicViaSerpApi(query: string): Promise<string[]> {
       engine: "google", q: query, api_key: process.env.SERPAPI_KEY, num: "5", gl: "us", hl: "en",
     });
     const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return [];
+    if (!res.ok) { await searchFailed("shopping", "serpapi", res, null, "identity"); return []; }
     const data = await res.json();
+    const failure = serpApiError(data);
+    if (failure) { await searchFailed("shopping", "serpapi", null, new Error(failure), "identity"); return []; }
     const organic: Record<string, unknown>[] = data.organic_results || [];
     return organic.map(r => String(r.link || "")).filter(Boolean);
-  } catch {
+  } catch (err) {
+    await searchFailed("shopping", "serpapi", null, err, "identity");
     return [];
   }
 }
@@ -1339,8 +1599,11 @@ async function findStoreProductUrl(storeName: string, brand: string, productName
     ? `site:${bareStoreName.replace(/^https?:\/\//i, "").replace(/^www\./i, "")} ${productName}`
     : `${bareStoreName} ${brand} ${productName}`.trim();
 
-  let links = await searchOrganicViaSerper(query);
-  if (links.length === 0) links = await searchOrganicViaSerpApi(query);
+  const { value: found } = await firstAnswer("shopping", [
+    { configured: !!process.env.SERPER_API_KEY, run: async () => { const l = await searchOrganicViaSerper(query); return l.length ? l : null; } },
+    { configured: !!process.env.SERPAPI_KEY, run: async () => { const l = await searchOrganicViaSerpApi(query); return l.length ? l : null; } },
+  ]);
+  const links = found || [];
 
   const candidate = links.find(l => !isExcludedSearchDomain(l));
   return candidate || null;
@@ -1560,26 +1823,63 @@ async function verifyCandidates(
 ): Promise<{ best: ShoppingCandidate; confidence: "exact" | "likely" | "unverified" }> {
   const window = options.window ?? VERIFY_WINDOW;
   const degraded = options.mode === "degraded";
-  const model = degraded ? GATE_MODEL_DEGRADED : GATE_MODEL;
+  // Who judges, in order. The strong gate first; when it cannot answer, the
+  // next full-strength model; the cheap model last, as the degraded gate,
+  // whose verdicts are capped below (DEGRADED CONFIDENCE). In degraded spend
+  // mode the cheap model is the whole chain: the budget is gone, and the
+  // strong models are what spent it.
+  const chain = degraded ? [GATE_MODEL_DEGRADED] : [GATE_MODEL, GATE_MODEL_FALLBACK, GATE_MODEL_DEGRADED];
+  const timeAllows = () => !options.budget || options.budget.allows(VERIFY_WAVE_COST_MS);
 
   const ordered = rankForVerification(match.candidates, options.hints).slice(0, window);
   if (ordered.length === 0) return { best: match.candidates[0], confidence: "unverified" };
 
-  const checked: { candidate: ShoppingCandidate; result: VerificationResult }[] = [];
+  // NEVER SILENTLY SKIP VERIFICATION. A wave no model could judge used to
+  // come back as six "different" verdicts, which is how a 400 on every gate
+  // call became a confident-looking "closest match". Now each wave walks the
+  // chain until a model answers:
+  //   - a 5xx, or a 200 whose answer could not be read, is retried once on
+  //     the same model, since the same request can succeed a second time;
+  //   - a 4xx is not retried there (the same request gets the same 400),
+  //     and neither is backpressure (the limit is still there) or a refusal
+  //     (another model has different classifiers): the next model gets it;
+  //   - a timeout moves on rather than spending a second 30 seconds.
+  // A wave that no model could judge is recorded against the scan, and the
+  // scan reports that it could not be completed unless the product was
+  // still verified some other way. See scan-trace.ts.
+  const checked: { candidate: ShoppingCandidate; result: VerificationResult; judge: string }[] = [];
+  const judgeSlice = async (urls: string[]): Promise<{ outcome: BatchOutcome; judge: string }> => {
+    let last: BatchOutcome = { results: urls.map(() => ({ match: "different", reasoning: "verification unavailable" })), ok: false };
+    // Once every model in the chain has failed on this scan, the next wave
+    // would only repeat the same failing calls and spend the clock doing it.
+    // The failure is already recorded; this wave is simply not judged.
+    if (hasFailed("gate")) return { outcome: last, judge: "" };
+    for (let m = 0; m < chain.length; m++) {
+      if (m > 0 && !timeAllows()) break;
+      const model = chain[m];
+      last = await verifyVisualMatchBatch(reference, urls, model);
+      if (last.ok) return { outcome: last, judge: model };
+      const kind = last.call?.kind;
+      const sameModelAgain = kind === "server" || kind === "unparseable" || kind === "empty" || kind === "truncated" || kind === undefined || kind === "ok";
+      if (sameModelAgain && timeAllows()) {
+        last = await verifyVisualMatchBatch(reference, urls, model);
+        if (last.ok) return { outcome: last, judge: model };
+      }
+    }
+    const failed = last.call;
+    reportProviderFailure({
+      layer: "gate", provider: "anthropic", model: failed?.model || chain[chain.length - 1],
+      status: failed?.status ?? 0, kind: failed?.kind || "unjudged",
+      detail: `no model in [${chain.join(", ")}] could judge ${urls.length} candidate(s): ${failed?.detail || "no answer"}`,
+      severity: "identity",
+    });
+    return { outcome: last, judge: "" };
+  };
   const runWave = async (wave: ShoppingCandidate[]) => {
     for (let i = 0; i < wave.length; i += VERIFY_BATCH_MAX) {
       const slice = wave.slice(i, i + VERIFY_BATCH_MAX);
-      const urls = slice.map(c => c.imageUrl);
-      let outcome = await verifyVisualMatchBatch(reference, urls, model);
-      // One retry when the call produced no verdict at all. A timeout or a
-      // malformed answer is not a judgement, and treating it as one loses a
-      // whole wave of candidates to an accident. Retried once, on the same
-      // model - a cheaper model here would be a different judge, not a
-      // second opinion.
-      if (!outcome.ok && (!options.budget || options.budget.allows(VERIFY_WAVE_COST_MS))) {
-        outcome = await verifyVisualMatchBatch(reference, urls, model);
-      }
-      slice.forEach((candidate, j) => checked.push({ candidate, result: outcome.results[j] }));
+      const { outcome, judge } = await judgeSlice(slice.map(c => c.imageUrl));
+      slice.forEach((candidate, j) => checked.push({ candidate, result: outcome.results[j], judge }));
     }
   };
 
@@ -1615,15 +1915,16 @@ async function verifyCandidates(
   // In both tiers, when the chosen record has no price at all — normal for
   // Lens, where the best match is often a brand's own page — the caller
   // prices it with a second, now-accurate search (priceVerifiedIdentity).
-  const pick = (tier: "exact" | "similar", rule: "cheapest" | "best-ranked"): ShoppingCandidate | null => {
+  const pick = (tier: "exact" | "similar", rule: "cheapest" | "best-ranked"): { candidate: ShoppingCandidate; judge: string } | null => {
     // `checked` is in ranked order (wave one, then wave two), so index 0 of
     // a tier is its best-ranked member.
-    const inTier = checked.filter(c => c.result.match === tier).map(c => c.candidate);
+    const inTier = checked.filter(c => c.result.match === tier);
     if (inTier.length === 0) return null;
-    const priced = inTier.filter(c => c.price > 0);
-    if (rule === "best-ranked") return priced[0] || inTier[0];
-    if (priced.length === 0) return inTier[0];
-    return priced.reduce((best, c) => (c.price < best.price ? c : best), priced[0]);
+    const priced = inTier.filter(c => c.candidate.price > 0);
+    const chosen = rule === "best-ranked" || priced.length === 0
+      ? (priced[0] || inTier[0])
+      : priced.reduce((best, c) => (c.candidate.price < best.candidate.price ? c : best), priced[0]);
+    return { candidate: chosen.candidate, judge: chosen.judge };
   };
 
   // DEGRADED CONFIDENCE. When the spend governor has taken the gate down to
@@ -1637,11 +1938,16 @@ async function verifyCandidates(
   // accusation. That is the honest shape of "we are running cheap right
   // now", and it is why degrading is survivable: the product keeps
   // answering, it just stops making its strongest claim.
+  //
+  // The same cap applies when the cheap model judged a wave because both
+  // stronger models in the fallback chain failed: what matters is which
+  // judge produced the verdict, not why it was the one asked.
   const settle = (
-    candidate: ShoppingCandidate,
+    picked: { candidate: ShoppingCandidate; judge: string },
     confidence: "exact" | "likely"
   ): { best: ShoppingCandidate; confidence: "exact" | "likely" | "unverified" } => {
-    if (!degraded) return { best: candidate, confidence };
+    const { candidate } = picked;
+    if (!degraded && picked.judge !== GATE_MODEL_DEGRADED) return { best: candidate, confidence };
     if (brandConsistent(candidate, options.hints)) return { best: candidate, confidence: "likely" };
     return { best: candidate, confidence: "unverified" };
   };
@@ -1946,17 +2252,16 @@ function stripHtmlForText(html: string, maxLength = 6000): string {
   return text.slice(0, maxLength);
 }
 
-async function extractProductViaClaudeText(html: string): Promise<Partial<PageProductData>> {
-  if (!process.env.ANTHROPIC_API_KEY) return {};
+async function extractProductViaClaudeText(html: string, severity: Severity): Promise<Partial<PageProductData>> {
   const text = stripHtmlForText(html);
   if (text.length < 50) return {};
 
-  const data = await callClaude(TEXT_MODEL, {
+  const call = await callClaude("text", TEXT_MODEL, {
     max_tokens: 200,
     messages: [{
       role: "user",
       content: `Extract the product name and price from this product page text. Return ONLY JSON:
-{"title": "product name or empty string", "price": null or number, "currency": "USD"}
+{"title": "product name or empty string", "price": null or number, "currency": "ISO 4217 code of that price, e.g. USD, EUR, GBP, MAD"}
 CRITICAL: price must be the main one-time purchase price of this exact product as currently displayed by default. Never a per-installment amount ("4 payments of $X"), a subscription/subscribe-and-save price, a shipping cost, or a price for a different variant/bundle than the one shown by default. If several prices appear and it's unclear which is the main displayed price, return null rather than guessing.
 CRITICAL: title must include defining material/type descriptors, not a bare generic category word. Use "jade roller" not "roller".
 
@@ -1965,23 +2270,26 @@ ${text}`,
     }],
   }, 12000);
 
-  const parsed = parseModelJson(data) as { title?: unknown; price?: unknown; currency?: unknown } | null;
-  if (!parsed) return {};
+  const parsed = (call.ok ? parseReplyJson(call.text) : null) as { title?: unknown; price?: unknown; currency?: unknown } | null;
+  if (!parsed || typeof parsed !== "object") {
+    // This read is the only source of the asking price on a page with no
+    // structured data, so for a verdict it decides whether there can be one.
+    reportClaudeFailure("text", call.ok ? { ...call, ok: false, kind: "unparseable", detail: call.text || "" } : call, severity);
+    return {};
+  }
   return {
     title: typeof parsed.title === "string" && parsed.title ? parsed.title : undefined,
     price: typeof parsed.price === "number" ? parsed.price : null,
-    currency: typeof parsed.currency === "string" ? parsed.currency : undefined,
+    currency: normalizeCurrency(parsed.currency) || undefined,
   };
 }
 
 async function buildEnrichedSearchQuery(title: string, description: string, rawText: string): Promise<string> {
   const fallback = title;
-  if (!process.env.ANTHROPIC_API_KEY) return fallback;
-
   const context = [title, description, rawText].filter(Boolean).join("\n\n").slice(0, 8000);
   if (context.length < 20) return fallback;
 
-  const data = await callClaude(TEXT_MODEL, {
+  const call = await callClaude("query", TEXT_MODEL, {
     max_tokens: 120,
     messages: [{
       role: "user",
@@ -1998,24 +2306,28 @@ ${context}`,
     }],
   }, 12000);
 
-  const content = (data?.content as { text?: string }[] | undefined) || [];
-  const query = String(content[0]?.text || "").trim().replace(/^["']|["']$/g, "");
+  // The page title is a usable query on its own, so a failure here costs
+  // precision, not the scan. Logged by callClaude; nothing else to do.
+  const query = String(call.text || "").trim().replace(/^["']|["']$/g, "");
   return query.length >= 3 ? query : fallback;
 }
 
-async function extractPageProductData(html: string): Promise<PageProductData> {
+// `priceSeverity` says how much a failed price read matters to the caller: on
+// a pasted link asking for a verdict, the page is the only source of the
+// asking price; during store discovery from a photo, it is a fallback.
+async function extractPageProductData(html: string, priceSeverity: Severity = "identity"): Promise<PageProductData> {
   const jsonLd = extractJsonLdProduct(html);
   const microdata = extractMicrodataPrice(html);
   const meta = extractMetaProduct(html);
 
   let title = jsonLd.title || meta.title || "";
   let price = jsonLd.price ?? microdata.price ?? meta.price ?? null;
-  let currency = jsonLd.currency || microdata.currency || meta.currency || "USD";
+  let currency = normalizeCurrency(jsonLd.currency || microdata.currency || meta.currency) || "USD";
   const imageUrl = jsonLd.imageUrl || meta.imageUrl || "";
   const description = jsonLd.description || meta.description || "";
 
   if (!price) {
-    const viaClaude = await extractProductViaClaudeText(html);
+    const viaClaude = await extractProductViaClaudeText(html, priceSeverity);
     title = title || viaClaude.title || "";
     price = price ?? viaClaude.price ?? null;
     currency = currency !== "USD" ? currency : (viaClaude.currency || currency);
@@ -2042,6 +2354,31 @@ async function extractPageProductData(html: string): Promise<PageProductData> {
 // If omitted, defaults to "us" (no shipping note shown).
 // ════════════════════════════════════════════════════════════════
 export async function scanProduct(imageBase64: string, mimeType: string, country?: string, intent?: "verdict" | "finder"): Promise<ScanResult> {
+  return settleScan(() => scanImage(imageBase64, mimeType, country, intent));
+}
+
+/**
+ * Runs one scan with its failures recorded, then decides whether the result
+ * stands. A result reached after a provider error is replaced by "could not
+ * be completed" unless the product was still verified (scan-trace.ts says
+ * which failures can be outweighed and which cannot). An exception anywhere
+ * in the engine is the same state, never a "no match".
+ */
+async function settleScan(run: () => Promise<ScanResult>): Promise<ScanResult> {
+  let traced: Awaited<ReturnType<typeof runTraced<ScanResult>>>;
+  try {
+    traced = await runTraced(run);
+  } catch (err) {
+    logProviderFailure({ layer: "engine", provider: "engine", status: 0, kind: "exception", detail: String((err as Error)?.stack || err) });
+    return { ...getUnresolvedResult(), failure: { reason: "engine", layers: ["engine"] } };
+  }
+  const { value: result, failures } = traced;
+  const verified = result.found && result.mode !== "UNRESOLVED" && result.matchConfidence !== "unverified";
+  const failure = decideFailure(failures, verified);
+  return failure ? { ...getUnresolvedResult(), failure } : result;
+}
+
+async function scanImage(imageBase64: string, mimeType: string, country?: string, intent?: "verdict" | "finder"): Promise<ScanResult> {
   const requesterCountry = sanitizeCountry(country);
   const budget = createBudget();
   // Read once, applied for the whole scan. "degraded" means the day's model
@@ -2049,7 +2386,11 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
   // model, caps what it is allowed to claim, and the enhancement layers are
   // skipped. See model-budget.ts.
   const spendMode = await currentSpendMode();
-  const vision = await extractFromImage(imageBase64, mimeType, spendMode);
+  const vision = await extractFromImage(imageBase64, mimeType, spendMode, intent);
+  // No read at all, on a scan that needs one: the result is already decided
+  // (could not be completed), so nothing else is worth paying for. During a
+  // model outage this keeps a failing scan from spending a Lens search.
+  if (hasFailed("extraction", "critical")) return getUnresolvedResult();
   // What the vision pass read off the photo. Used to ORDER candidates for
   // the identification gate and to build fallback queries — never to
   // filter a candidate out. See rankForVerification.
@@ -2068,12 +2409,9 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
   // ── Try Lens first: match on pixels, not words ──
   const lensImageUrl = await uploadForLensSearch(imageBase64, mimeType);
   if (lensImageUrl) {
-    shopping = await searchLensViaSerpApi(lensImageUrl);
-    if (shopping) engineUsed = "lens_serpapi";
-    if (!shopping) {
-      shopping = await searchLensViaSerper(lensImageUrl);
-      if (shopping) engineUsed = "lens_serper";
-    }
+    const lens = await searchLens(lensImageUrl);
+    shopping = lens.match;
+    if (shopping) engineUsed = `lens_${lens.engine}`;
     // The temporary public copy exists only for the duration of the Lens
     // call. It goes as soon as that call is done.
     await discardLensUpload(lensImageUrl);
@@ -2121,12 +2459,9 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
         if (pageImage) {
           const lensUrl = await uploadForLensSearch(pageImage.data, pageImage.mimeType);
           if (lensUrl) {
-            shopping = await searchLensViaSerpApi(lensUrl);
-            if (shopping) engineUsed = "store_page_lens_serpapi";
-            if (!shopping) {
-              shopping = await searchLensViaSerper(lensUrl);
-              if (shopping) engineUsed = "store_page_lens_serper";
-            }
+            const lens = await searchLens(lensUrl);
+            shopping = lens.match;
+            if (shopping) engineUsed = `store_page_lens_${lens.engine}`;
             await discardLensUpload(lensUrl);
           }
           if (shopping) {
@@ -2310,14 +2645,21 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
   }
 
   // ── Determine retail price ──
+  //    Observed prices are converted to USD before anything compares them:
+  //    the listings are in dollars, and a 299 dirham asking price is not a
+  //    $299 one. See fx.ts.
   let retailPrice: number;
   let retailSource: "screenshot" | "estimated";
-  if (vision.visiblePrice && vision.visiblePrice > 0) {
-    retailPrice = vision.visiblePrice;
+  let retailOriginal: RetailOriginal | undefined;
+  const observed = vision.visiblePrice && vision.visiblePrice > 0
+    ? await observedPriceInUsd(vision.visiblePrice, vision.currency)
+    : discoveredPage?.price && discoveredPage.price > 0
+      ? await observedPriceInUsd(discoveredPage.price, discoveredPage.currency)
+      : null;
+  if (observed && observed.usd > 0) {
+    retailPrice = observed.usd;
     retailSource = "screenshot";
-  } else if (discoveredPage?.price && discoveredPage.price > 0) {
-    retailPrice = discoveredPage.price;
-    retailSource = "screenshot";
+    retailOriginal = observed.original;
   } else if (shopping && shopping.highestPrice > 0) {
     retailPrice = shopping.highestPrice;
     retailSource = "estimated";
@@ -2396,7 +2738,9 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
     sourceProduct: {
       title: cleanTitle(shopping?.title || discoveredPage?.title || vision.productName) || "Similar product found",
       price: parseFloat(wholesalePrice.toFixed(2)),
-      currency: vision.currency || "USD",
+      // The listing's price, which is in USD. This used to be the currency
+      // read off the screenshot, which labelled a dollar figure as euros.
+      currency: "USD",
       imageUrl: proxyImage(shopping?.imageUrl || ""),
       productUrl: resolvedUrl,
       affiliateUrl: resolvedUrl,
@@ -2411,6 +2755,7 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
       savings,
       savingsPercent,
       confidence: finalConfidence,
+      ...(retailOriginal && retailSource === "screenshot" ? { retailOriginal } : {}),
     },
   };
 }
@@ -2425,6 +2770,10 @@ export async function scanProduct(imageBase64: string, mimeType: string, country
 // header).
 // ════════════════════════════════════════════════════════════════
 export async function scanProductUrl(url: string, country?: string, intent?: "verdict" | "finder"): Promise<ScanResult> {
+  return settleScan(() => scanUrl(url, country, intent));
+}
+
+async function scanUrl(url: string, country?: string, intent?: "verdict" | "finder"): Promise<ScanResult> {
   const requesterCountry = sanitizeCountry(country);
   const budget = createBudget();
   const spendMode = await currentSpendMode();
@@ -2440,7 +2789,7 @@ export async function scanProductUrl(url: string, country?: string, intent?: "ve
     // ── Step 1: fetch the real page and extract real product data ──
     const html = await fetchProductPageHtml(url);
     const pageData: PageProductData = html
-      ? await extractPageProductData(html)
+      ? await extractPageProductData(html, intent === "finder" ? "identity" : "critical")
       : { title: "", price: null, currency: "USD", imageUrl: "", description: "", searchQuery: "" };
 
     let baseQuery = pageData.searchQuery || pageData.title;
@@ -2467,12 +2816,9 @@ export async function scanProductUrl(url: string, country?: string, intent?: "ve
     if (pageImage) {
       const lensImageUrl = await uploadForLensSearch(pageImage.data, pageImage.mimeType);
       if (lensImageUrl) {
-        shopping = await searchLensViaSerpApi(lensImageUrl);
-        if (shopping) engineUsed = "url_lens_serpapi";
-        if (!shopping) {
-          shopping = await searchLensViaSerper(lensImageUrl);
-          if (shopping) engineUsed = "url_lens_serper";
-        }
+        const lens = await searchLens(lensImageUrl);
+        shopping = lens.match;
+        if (shopping) engineUsed = `url_lens_${lens.engine}`;
         await discardLensUpload(lensImageUrl);
       }
     }
@@ -2547,9 +2893,14 @@ export async function scanProductUrl(url: string, country?: string, intent?: "ve
     //    as trustworthy as a visible price in a screenshot. ──
     let retailPrice: number;
     let retailSource: "screenshot" | "estimated";
-    if (pageData.price && pageData.price > 0) {
-      retailPrice = pageData.price;
+    let retailOriginal: RetailOriginal | undefined;
+    const observed = pageData.price && pageData.price > 0
+      ? await observedPriceInUsd(pageData.price, pageData.currency)
+      : null;
+    if (observed && observed.usd > 0) {
+      retailPrice = observed.usd;
       retailSource = "screenshot";
+      retailOriginal = observed.original;
     } else if (shopping.highestPrice > 0) {
       retailPrice = shopping.highestPrice;
       retailSource = "estimated";
@@ -2590,7 +2941,7 @@ export async function scanProductUrl(url: string, country?: string, intent?: "ve
       sourceProduct: {
         title: cleanTitle(pageData.title || shopping.title),
         price: parseFloat(wholesalePrice.toFixed(2)),
-        currency: pageData.currency || "USD",
+        currency: "USD",
         imageUrl: proxyImage(shopping.imageUrl || pageData.imageUrl || ""),
         productUrl: resolvedUrl,
         affiliateUrl: resolvedUrl,
@@ -2605,9 +2956,16 @@ export async function scanProductUrl(url: string, country?: string, intent?: "ve
         savings,
         savingsPercent,
         confidence: mode === "VERDICT" ? (confidence === "exact" ? "high" : "medium") : "low",
+        ...(retailOriginal && retailSource === "screenshot" ? { retailOriginal } : {}),
       },
     };
-  } catch {
+  } catch (err) {
+    // An exception is the engine failing, not the page having nothing on
+    // it. It used to come back as "no match"; now it is said out loud.
+    reportProviderFailure({
+      layer: "engine", provider: "engine", status: 0, kind: "exception",
+      detail: String((err as Error)?.stack || err), severity: "critical",
+    });
     return getUnresolvedResult();
   }
 }
@@ -2634,4 +2992,127 @@ export function getUnresolvedResult(): ScanResult {
       verdict: "UNVERIFIED", savings: 0, savingsPercent: 0, confidence: "low",
     },
   };
+}
+
+// ════════════════════════════════════════════════════════════════
+// DIAGNOSE. What /api/diagnose runs: one real call to each Claude model the
+// engine uses, built by the same builder with the same payload a scan sends
+// (the gate shape for the two gate models, the extraction shape for the
+// cheap model), and one real Lens search on a sample photo through the same
+// Blob upload and delete a scan does. The test suite cannot do this: it
+// stubs every provider, which is exactly how a request every provider would
+// have refused shipped green.
+// ════════════════════════════════════════════════════════════════
+export interface LayerProbe {
+  layer: string;
+  pass: boolean;
+  latencyMs: number;
+  status: number;
+  detail: string;
+  [extra: string]: unknown;
+}
+
+const roundUsd = (n: number) => Math.round(n * 1_000_000) / 1_000_000;
+
+export async function diagnoseEngine(sample: { data: string; mimeType: string }): Promise<LayerProbe[]> {
+  const isExtraction = (text: string | null) => {
+    const parsed = parseReplyJson(text);
+    return !!parsed && typeof parsed === "object" && !Array.isArray(parsed) && "productName" in (parsed as object);
+  };
+  const isVerdict = (text: string | null) => {
+    const parsed = parseReplyJson(text);
+    const list = Array.isArray(parsed) ? parsed : salvageVerdictObjects(text || "");
+    return list.some(entry => coerceVerdict(entry) !== null);
+  };
+  // The photo compared with itself: a working gate answers "exact".
+  const gate = gatePayload(sample, [sample]);
+  const extraction = extractionPayload(sample.data, sample.mimeType);
+  const probes: [string, FailureLayer, string, Record<string, unknown>, (t: string | null) => boolean][] = [
+    ["gate", "gate", GATE_MODEL, gate, isVerdict],
+    ["gate fallback", "gate", GATE_MODEL_FALLBACK, gate, isVerdict],
+    ["extraction, degraded gate, text", "extraction", EXTRACT_MODEL, extraction, isExtraction],
+  ];
+
+  const claude = Promise.all(probes.map(async ([role, layer, model, payload, accept]): Promise<LayerProbe> => {
+    const started = Date.now();
+    const call = await callClaude(layer, model, payload, 30000);
+    const parsed = call.ok && accept(call.text);
+    const { messages, ...shape } = buildClaudeRequest(model, payload);
+    void messages;
+    return {
+      layer: `claude ${model} (${role})`,
+      pass: parsed,
+      latencyMs: Date.now() - started,
+      status: call.status,
+      detail: parsed ? "answered and parsed"
+        : call.ok ? `answered but the reply did not parse: ${(call.text || "").slice(0, 200)}`
+        : `${call.kind}: ${call.detail.slice(0, 300)}`,
+      stopReason: call.stopReason ?? null,
+      costUsd: roundUsd(call.costUsd || 0),
+      reply: call.ok ? (call.text || "").slice(0, 200) : null,
+      request: shape,
+    };
+  }));
+
+  const lensAndBlob = (async (): Promise<LayerProbe[]> => {
+    const out: LayerProbe[] = [];
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      return [{ layer: "blob", pass: false, latencyMs: 0, status: 0, detail: "BLOB_READ_WRITE_TOKEN is not set: Lens cannot run at all" }];
+    }
+    const started = Date.now();
+    const upload = await runTraced(() => uploadForLensSearch(sample.data, sample.mimeType));
+    const url = upload.value;
+    if (!url) {
+      const f = upload.failures[0];
+      return [{ layer: "blob", pass: false, latencyMs: Date.now() - started, status: f?.status ?? 0, detail: `upload failed: ${f?.detail || "unknown"}` }];
+    }
+    let readable = 0;
+    try {
+      readable = (await fetch(url, { signal: AbortSignal.timeout(6000) })).status;
+    } catch { /* reported below */ }
+    const uploadMs = Date.now() - started;
+
+    const engine = process.env.SERPAPI_KEY ? "serpapi" : process.env.SERPER_API_KEY ? "serper" : "";
+    if (!engine) {
+      out.push({ layer: "lens", pass: false, latencyMs: 0, status: 0, detail: "neither SERPAPI_KEY nor SERPER_API_KEY is set" });
+    } else {
+      const lensStarted = Date.now();
+      const lens = await runTraced(() => (engine === "serpapi" ? searchLensViaSerpApi(url) : searchLensViaSerper(url)));
+      const failure = lens.failures[0];
+      const matches = lens.value?.candidates.length ?? 0;
+      out.push({
+        layer: `lens ${engine}`,
+        pass: !failure,
+        latencyMs: Date.now() - lensStarted,
+        status: failure?.status ?? 200,
+        detail: failure ? `${failure.kind}: ${failure.detail}`
+          : matches ? `${matches} visual matches; first: ${lens.value?.candidates[0]?.title?.slice(0, 80) || "(untitled)"}`
+          : "the call succeeded but returned no visual matches",
+        matches,
+      });
+    }
+
+    const deleteStarted = Date.now();
+    let deleted = true;
+    let deleteError = "";
+    try {
+      await del(url);
+    } catch (err) {
+      deleted = false;
+      deleteError = String((err as Error)?.message || err).slice(0, 200);
+    }
+    out.unshift({
+      layer: "blob",
+      pass: readable === 200 && deleted,
+      latencyMs: uploadMs + (Date.now() - deleteStarted),
+      status: readable,
+      detail: readable !== 200 ? `uploaded, but the public URL answered ${readable || "nothing"}: Lens could not read it`
+        : deleted ? "uploaded, publicly readable, deleted"
+        : `uploaded and readable, but delete failed (the daily cleanup cron will remove it): ${deleteError}`,
+    });
+    return out;
+  })();
+
+  const [claudeProbes, lensProbes] = await Promise.all([claude, lensAndBlob]);
+  return [...claudeProbes, ...lensProbes];
 }

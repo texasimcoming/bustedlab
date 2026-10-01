@@ -16,6 +16,28 @@ that the base URL is right, and that the scanner's keys and the privacy
 salt are set. It reports whether each thing is set and working, never a
 value. Run it after every configuration change.
 
+Then check that every provider actually WORKS, with real calls:
+
+    curl -s -H "Authorization: Bearer $ANALYTICS_TOKEN" https://<domain>/api/diagnose
+
+Preflight says the keys are set; this says they are accepted. It makes one
+real call to each Claude model the engine uses (Opus 5 and Sonnet 5 with the
+gate's request, Haiku 4.5 with the extraction request), reads the SerpApi
+account's remaining searches, runs one Serper search, does a Blob upload,
+read and delete, runs one real Lens search on a bundled sample photo, and
+fetches the day's exchange rates. Each layer reports pass or fail, latency,
+HTTP status and the provider's error text. `"pass": true` is the bar; any
+name under `failing` is a layer that would make scans fail. One run costs
+about one cent of Claude usage (measured and returned as `cost.claudeUsd`),
+one SerpApi search and one Serper credit. Run it after every deploy and
+after any change at Anthropic, SerpApi, Serper or Vercel.
+
+When a provider fails during real traffic, the scan answers "could not be
+completed, try again" (it uses no free scan and is not cached) and the
+failure is counted by layer under `failures` in `/api/stats`, with the last
+fifty listed as layer:provider:model:status. The function log has one line
+per failed call starting `[scan] provider call failed`.
+
 ## 1. Deploy
 
 Import the repository into Vercel and deploy. Default settings are correct.
@@ -25,7 +47,9 @@ The app builds and serves with no environment variables set.
 
 Set in Vercel project settings, then redeploy:
 
-- `ANTHROPIC_API_KEY`
+- `ANTHROPIC_API_KEY`, in a workspace with access to `claude-opus-5`,
+  `claude-sonnet-5` and `claude-haiku-4-5`. Opus 5 has its own rate-limit
+  bucket, separate from the Opus 4.x pool; check its limits before a push.
 - `SERPER_API_KEY` (primary search)
 - `SERPAPI_KEY` (backup search and merchant-link resolution)
 - `BLOB_READ_WRITE_TOKEN` (create a Blob store in the project first)
@@ -36,8 +60,9 @@ Set in Vercel project settings, then redeploy:
 - `CRON_SECRET` (the cleanup cron rejects every request without it)
 
 Confirm `maxDuration = 60` in `src/app/api/scan/route.ts` is within the plan's
-function limit. Hobby caps lower, and a scan that exceeds it returns
-`UNRESOLVED` for reasons that look like an engine fault but are not.
+function limit. Hobby caps lower, and a scan that exceeds it is cut off by
+the platform and fails in the browser as a timeout, which looks like an
+engine fault but is not.
 
 ## 3. Turn on payments
 

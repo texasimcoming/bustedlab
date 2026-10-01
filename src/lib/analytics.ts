@@ -34,7 +34,11 @@ import { Redis } from "@upstash/redis";
  *   scan_completed      the server finished it (server-side), split into
  *                       verdict_* / result_finder / result_unresolved
  *   result_shown        the result screen rendered in the browser
- *   scan_failed         the browser gave up: timeout or dropped connection
+ *   scan_failed         the scan did not complete. Either the browser gave
+ *                       up (timeout, dropped connection), or the server could
+ *                       not complete it because a provider failed; the server
+ *                       counts those itself, with a reason (FAILURE_REASONS),
+ *                       and the browser does not count them again
  *   card_saved          "Save to photos": for TikTok and Instagram, most
  *                       likely the way a card actually gets posted
  *   story_saved         the 9:16 Stories export
@@ -143,6 +147,86 @@ export async function recordEvents(events: EventName[], date = new Date()): Prom
 
 export async function recordEvent(event: EventName, date = new Date()): Promise<void> {
   return recordEvents([event], date);
+}
+
+/**
+ * Why a scan could not be completed: the layer whose provider failed. A
+ * fixed list, so a reason is a counter and never free text from an error.
+ * Mirrors FailureLayer in scan-trace.ts.
+ */
+export const FAILURE_REASONS = [
+  "extraction", "gate", "lens", "shopping", "upload", "text", "query", "retailer", "link", "fx", "engine",
+] as const;
+export type FailureReason = (typeof FAILURE_REASONS)[number];
+
+const failureKeys = {
+  day: (reason: FailureReason, day: string) => `stat:scan_failed:reason:${reason}:${day}`,
+  total: (reason: FailureReason) => `stat:scan_failed:reason:${reason}:total`,
+  recent: "stat:scan_failed:recent",
+};
+const RECENT_FAILURES_KEPT = 50;
+
+/**
+ * A scan the server could not complete: counted as scan_failed (the same
+ * counter the browser uses for the scans it gives up on, so the failure rate
+ * stays one number), plus a per-reason counter, plus the last fifty in a
+ * short list for whoever is on call. The list holds the reason, the failed
+ * layers as layer:provider:model:status, and the time. Nothing about the
+ * person or the photo.
+ */
+export async function recordScanFailure(reason: FailureReason, layers: string[], date = new Date()): Promise<void> {
+  const day = dayKey(date);
+  const safeReason = (FAILURE_REASONS as readonly string[]).includes(reason) ? reason : "engine";
+  try {
+    const pipeline = getRedis().pipeline();
+    pipeline.incr(keys.day("scan_failed", day));
+    pipeline.expire(keys.day("scan_failed", day), DAY_TTL_SECONDS);
+    pipeline.incr(keys.total("scan_failed"));
+    pipeline.incr(failureKeys.day(safeReason, day));
+    pipeline.expire(failureKeys.day(safeReason, day), DAY_TTL_SECONDS);
+    pipeline.incr(failureKeys.total(safeReason));
+    pipeline.lpush(failureKeys.recent, JSON.stringify({
+      at: date.toISOString(), reason: safeReason, layers: layers.slice(0, 6).map(l => String(l).slice(0, 80)),
+    }));
+    pipeline.ltrim(failureKeys.recent, 0, RECENT_FAILURES_KEPT - 1);
+    await pipeline.exec();
+  } catch {
+    /* counting is never worth an error path */
+  }
+}
+
+export interface FailureBreakdown {
+  byReason: { reason: FailureReason; windowTotal: number; total: number }[];
+  recent: { at: string; reason: string; layers: string[] }[];
+}
+
+export async function readScanFailures(days = 30): Promise<FailureBreakdown> {
+  const window = lastNDays(days);
+  const redis = getRedis();
+  try {
+    const dayFields = FAILURE_REASONS.flatMap(r => window.map(d => failureKeys.day(r, d)));
+    const [dayValues, totals, recent] = await Promise.all([
+      redis.mget<(number | null)[]>(...dayFields),
+      redis.mget<(number | null)[]>(...FAILURE_REASONS.map(r => failureKeys.total(r))),
+      redis.lrange<unknown>(failureKeys.recent, 0, RECENT_FAILURES_KEPT - 1),
+    ]);
+    return {
+      byReason: FAILURE_REASONS.map((reason, i) => ({
+        reason,
+        windowTotal: window.reduce((sum, _d, j) => sum + (Number(dayValues[i * window.length + j] ?? 0) || 0), 0),
+        total: Number(totals[i] ?? 0) || 0,
+      })),
+      recent: (recent || []).map(entry => {
+        try {
+          return (typeof entry === "string" ? JSON.parse(entry) : entry) as FailureBreakdown["recent"][number];
+        } catch {
+          return { at: "", reason: "unreadable", layers: [] };
+        }
+      }),
+    };
+  } catch {
+    return { byReason: FAILURE_REASONS.map(reason => ({ reason, windowTotal: 0, total: 0 })), recent: [] };
+  }
 }
 
 export interface EventSeries {

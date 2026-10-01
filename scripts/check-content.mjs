@@ -94,4 +94,19 @@ check("and does not promise receipts when there is no permanent record", !noLink
 const finder = copy.shareCaption({ mode: "FINDER", savings: 0, markup: 0, wholesalePrice: 11.49, hasPermalink: true });
 check("a closest match is captioned as the closest listing", finder.includes("Closest listing found: $11.49"), finder);
 
+// ════════════════════════════════════════════════════════════════
+section("CURRENCY AND FAILURE LINES");
+
+const mad = copy.conversionNote({ amount: 299, currency: "MAD", asOf: "2026-10-01" });
+check("a converted asking price names its currency and the rate date", mad.includes("MAD") && mad.includes("299") && mad.includes("Oct 1, 2026") && mad.includes("USD"), mad);
+check("the original is printed in its own currency", copy.formatOriginalPrice({ amount: 49.99, currency: "EUR" }) === "€49.99");
+const { readFileSync } = await import("node:fs");
+const routeSource = readFileSync(new URL("../src/app/api/scan/route.ts", import.meta.url), "utf8");
+const incomplete = routeSource.match(/const INCOMPLETE_MESSAGE = "([^"]+)"/)?.[1] || "";
+check("the could-not-complete message says try again and that no scan was used",
+  /could not be completed/.test(incomplete) && /did not use a free scan/.test(incomplete) && /Try again/.test(incomplete), incomplete);
+for (const [label, line] of [["conversion note", mad], ["could-not-complete message", incomplete]]) {
+  check(`no em dash in the ${label}`, !/\u2014/.test(line), line);
+}
+
 finish("content");

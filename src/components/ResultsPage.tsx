@@ -4,7 +4,7 @@ import { useRef, useState, useEffect } from "react";
 import VerdictCard, { VerdictData, VerdictType, CardMode, MatchConfidence } from "@/components/VerdictCard";
 import SoundToggle from "@/components/SoundToggle";
 import { track } from "@/lib/track";
-import { shareCaption } from "@/lib/verdict-copy";
+import { conversionNote, shareCaption } from "@/lib/verdict-copy";
 
 interface ScanResult {
   found: boolean;
@@ -26,6 +26,7 @@ interface ScanResult {
     savings: number; savingsPercent: number;
     confidence: "high" | "medium" | "low";
     retailSource: "screenshot" | "estimated" | "shopping";
+    retailOriginal?: { amount: number; currency: string; rate: number; asOf: string };
   };
 }
 
@@ -82,6 +83,7 @@ export default function ResultsPage({
     productUrl: sp.productUrl || undefined,
     platform: sp.platform || undefined,
     retailSource: an.retailSource,
+    retailOriginal: mode === "VERDICT" ? an.retailOriginal : undefined,
     confidence: an.confidence,
     scanId,
     recordedAt: resolvedAt,
@@ -371,6 +373,11 @@ export default function ResultsPage({
                     </>
                   )}
                 </a>
+                {mode === "VERDICT" && an.retailOriginal && (
+                  <p style={{ fontSize: "10px", color: "rgba(238,238,246,0.4)", textAlign: "center", marginBottom: "8px", lineHeight: "1.5" }}>
+                    {conversionNote(an.retailOriginal)}
+                  </p>
+                )}
                 {result.shippingNote && (
                   <p style={{ fontSize: "10px", color: "rgba(238,238,246,0.25)", textAlign: "center", marginBottom: "16px", lineHeight: "1.5" }}>
                     {result.shippingNote}
