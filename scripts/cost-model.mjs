@@ -214,9 +214,7 @@ for (const [name, seq] of Object.entries(SEQUENCES)) {
   }
 }
 
-// ── Full cost of one scan: model spend plus search spend. Search is the
-//    larger half on a cold scan and is not governed by the model budget.
-//    PER_SEARCH and the search counts are defined further down. ───────────
+// ── What thinking would add, had the requests left it on. ──────────────────
 console.log("\n\nTHINKING");
 console.log("-".repeat(78));
 console.log(`  Thinking tokens per Opus 5 / Sonnet 5 call in the figures above: ${THINKING_TOKENS} (thinking disabled).`);
@@ -259,28 +257,55 @@ const FAIR_USE_CEILING = 500;  // PAID_DAILY_SCAN_CEILING default
 const BURST_ONLY_SCANS_PER_DAY = BURST_PER_MINUTE * 60 * 24;
 const MAX_SCANS_PER_DAY = Math.min(FAIR_USE_CEILING, BURST_ONLY_SCANS_PER_DAY);
 
-// Search spend per scan, which the model budget does NOT govern. A cold scan
-// makes a Lens call, up to two shopping tiers, three direct-retailer calls
-// and a link resolution; degraded mode drops the retailer and rebrand
-// layers. Priced at $0.0075 per search, mid-range for SerpApi's plans.
-const PER_SEARCH = 0.0075;
-const SEARCHES_COLD = 5;
-const SEARCHES_DEGRADED = 2.5;
+// Search spend per scan, which the model budget does NOT govern. Priced per
+// provider, from the public price lists as of 2026-10-01:
+//   SerpApi: $25/1,000, $75/5,000, $150/15,000, $275/30,000 searches a month
+//            ($0.025 to $0.009 a search). Lens, the three direct retailers
+//            (Amazon, Walmart, eBay) and merchant-link resolution run here.
+//   Serper:  prepaid credits, $50 for 50,000 down to about $0.30 per 1,000.
+//            Shopping and organic search run here first.
+// Calls per scan as check-identification.mjs observes them: a cold scan makes
+// one Lens call and one three-retailer sweep on SerpApi, and two or three
+// shopping searches (pricing, rebrand) on Serper; degraded mode drops the
+// retailer and rebrand layers; an identity-cache hit still needs its Lens
+// call to fingerprint the photo.
+const SERPAPI_PER_SEARCH = 0.01;   // the $150 / 15,000 plan
+const SERPER_PER_SEARCH = 0.001;   // the smallest credit pack
+const SEARCH_CALLS = {
+  typical: { serpapi: 4, serper: 3 },
+  hard: { serpapi: 4, serper: 5 },
+  fallback: { serpapi: 4, serper: 3 },
+  degraded: { serpapi: 1, serper: 2 },
+  spike: { serpapi: 1, serper: 0 },
+};
+const searchCostFor = (name) => SEARCH_CALLS[name].serpapi * SERPAPI_PER_SEARCH + SEARCH_CALLS[name].serper * SERPER_PER_SEARCH;
 
+// ── Full cost of one scan: model spend plus search spend. Search is about
+//    half of a cold scan and is not governed by the model budget. ─────────
 console.log("\n\nFULL COST PER SCAN: MODEL PLUS SEARCH");
 console.log("-".repeat(78));
-console.log(`  Search priced at $${PER_SEARCH} per call: ${SEARCHES_COLD} calls on a cold scan (${SEARCHES_COLD + 2} on a hard one), ${SEARCHES_DEGRADED} degraded, 1 on an identity-cache hit.`);
-for (const [label, model, searches] of [
-  ["cold, typical", results.typical["opus-batched"], SEARCHES_COLD],
-  ["cold, hard", results.hard["opus-batched"], SEARCHES_COLD + 2],
-  ["cold, Sonnet 5 fallback", results.fallback["opus-batched"], SEARCHES_COLD],
-  ["degraded", results.degraded["opus-batched"], SEARCHES_DEGRADED],
-  ["identity-cache hit", results.spike["opus-batched"], 1],
+console.log(`  SerpApi at $${SERPAPI_PER_SEARCH} a search, Serper at $${SERPER_PER_SEARCH}.`);
+for (const [label, name] of [
+  ["cold, typical", "typical"],
+  ["cold, hard", "hard"],
+  ["cold, Sonnet 5 fallback", "fallback"],
+  ["degraded", "degraded"],
+  ["identity-cache hit", "spike"],
 ]) {
-  const search = searches * PER_SEARCH;
-  console.log(`  ${pad(label, 26)} model ${money(model)}  + search ${money(search)}  = ${money(model + search)}`);
+  const model = results[name]["opus-batched"];
+  const search = searchCostFor(name);
+  const calls = SEARCH_CALLS[name];
+  console.log(`  ${pad(label, 26)} model ${money(model)}  + search ${money(search)} (${calls.serpapi} SerpApi, ${calls.serper} Serper)  = ${money(model + search)}`);
 }
-console.log("  An identity-cache hit still runs the Lens search that finds the match; a 24-hour result-cache hit runs nothing.");
+console.log("  A 24-hour result-cache hit (the same photo again) runs nothing at all.");
+
+console.log("\n\nSERPAPI CAPACITY: COLD SCANS A MONTH PER PLAN");
+console.log("-".repeat(78));
+console.log("  The monthly search allowance, not the bill, is the first wall a viral week hits.");
+for (const [plan, searches] of [["$75 / 5,000", 5000], ["$150 / 15,000", 15000], ["$275 / 30,000", 30000]]) {
+  console.log(`  ${pad(plan, 16)} ${pad(Math.floor(searches / SEARCH_CALLS.typical.serpapi).toLocaleString(), 8)} cold scans, or ${Math.floor(searches / SEARCH_CALLS.spike.serpapi).toLocaleString()} identity-cache hits`);
+}
+console.log("  When the allowance runs out, Lens falls back to Serper and the retailer sweep is skipped (logged).");
 
 console.log("\n\nONE ABUSED PAID SESSION, ONE DAY");
 console.log("-".repeat(78));
@@ -298,10 +323,10 @@ const scansAfterBudget = MAX_SCANS_PER_DAY - scansBeforeBudget;
 
 const uncappedModel = MAX_SCANS_PER_DAY * coldScan;
 const cappedModel = scansBeforeBudget * coldScan + scansAfterBudget * degradedScan;
-const searchCost = scansBeforeBudget * SEARCHES_COLD * PER_SEARCH + scansAfterBudget * SEARCHES_DEGRADED * PER_SEARCH;
+const searchCost = scansBeforeBudget * searchCostFor("typical") + scansAfterBudget * searchCostFor("degraded");
 
 const burstOnlyModel = BURST_ONLY_SCANS_PER_DAY * coldScan;
-const burstOnlySearch = BURST_ONLY_SCANS_PER_DAY * SEARCHES_COLD * PER_SEARCH;
+const burstOnlySearch = BURST_ONLY_SCANS_PER_DAY * searchCostFor("typical");
 console.log(`  BEFORE the ceiling, burst limiter only $${(burstOnlyModel + burstOnlySearch).toFixed(0).padStart(5)}   ` +
             `(${BURST_ONLY_SCANS_PER_DAY.toLocaleString()} scans: $${burstOnlyModel.toFixed(0)} model + $${burstOnlySearch.toFixed(0)} search)`);
 console.log("");
