@@ -82,7 +82,7 @@ globalThis.fetch = async (input, init = {}) => {
         quantity: "", category: "home", platform: "instagram", storeName: "", visibleUrl: "", priceConfidence: "visible", imageQuality: "good",
       }) }] });
     }
-    const count = (prompt.match(/CANDIDATE \d+:/g) || []).length;
+    const count = body.messages[0].content.filter(b => b.type === "image").length - 1;
     return json({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(
       Array.from({ length: count }, (_, i) => ({ candidate: i + 1, match: "exact", why: "same lamp" }))) }] });
   }

@@ -14,7 +14,9 @@ import { isPrivateHostname } from "@/lib/net-guard";
  *   { "op": "extract", "model": "claude-sonnet-5-5", "effort": "low",
  *     "image": { "data": "<base64>", "mimeType": "image/jpeg" } }
  *   { "op": "gate", "model": "claude-opus-5-5", "effort": "low",
- *     "image": { ... the photo ... }, "candidates": ["https://...", ...] }
+ *     "image": { ... the photo ... },
+ *     "candidates": [{ "image": "https://...", "title": "...", "source": "..." }, ...] }
+ *   (a candidate may also be a bare image URL)
  *
  * The production evaluation (scripts/production-eval.mjs) runs a labelled
  * scan, takes the candidates the real gate saw from its trace, and replays
@@ -56,14 +58,22 @@ export async function POST(req: NextRequest) {
   }
   const mimeType = typeof image.mimeType === "string" && IMAGE_TYPES.has(image.mimeType) ? image.mimeType : "";
   if (!mimeType) return badRequest("image.mimeType must be a jpeg, png, webp or gif type");
-  let candidates: string[] = [];
+  let candidates: { imageUrl: string; title?: string; source?: string }[] = [];
   if (op === "gate") {
     const raw = Array.isArray(body.candidates) ? body.candidates : [];
-    candidates = raw.filter((u): u is string => typeof u === "string").slice(0, 8);
+    candidates = raw.slice(0, 8).map((c: unknown) => {
+      if (typeof c === "string") return { imageUrl: c };
+      const o = (c || {}) as { image?: unknown; title?: unknown; source?: unknown };
+      return {
+        imageUrl: typeof o.image === "string" ? o.image : "",
+        title: typeof o.title === "string" ? o.title.slice(0, 200) : undefined,
+        source: typeof o.source === "string" ? o.source.slice(0, 80) : undefined,
+      };
+    });
     if (candidates.length === 0) return badRequest("candidates must list one to eight image URLs");
-    for (const url of candidates) {
+    for (const { imageUrl } of candidates) {
       let parsed: URL;
-      try { parsed = new URL(url); } catch { return badRequest("a candidate is not a URL"); }
+      try { parsed = new URL(imageUrl); } catch { return badRequest("a candidate is not a URL"); }
       if (parsed.protocol !== "https:" || isPrivateHostname(parsed.hostname)) return badRequest("candidates must be public https URLs");
     }
   }

@@ -480,6 +480,7 @@ async function pricesInUsd(candidates: ShoppingCandidate[]): Promise<ShoppingCan
 const SCAN_BUDGET_MS = 85_000;
 const VERIFY_WAVE_COST_MS = 25_000;
 const PRICING_SEARCH_COST_MS = 35_000;
+const PAGE_PRICE_COST_MS = 12_000;
 const ALTERNATIVE_LAYER_COST_MS = 40_000;
 // Per call. A call that takes longer is a failed call, and the next model
 // in the chain gets the work.
@@ -647,8 +648,15 @@ interface ShoppingMatch {
 }
 
 interface VerificationResult {
-  match: "exact" | "similar" | "different";
+  match: "exact" | "likely" | "similar" | "different";
   reasoning: string;
+}
+
+/** What the gate is shown for one candidate: its image, and its listing text where known. */
+interface GateCandidate {
+  imageUrl: string;
+  title?: string;
+  source?: string;
 }
 
 interface PageProductData {
@@ -893,7 +901,7 @@ interface BatchOutcome {
 /** The gate request for one wave, as sent. Also what /api/diagnose sends. */
 function gatePayload(
   reference: { data: string; mimeType: string },
-  candidates: { data: string; mimeType: string }[]
+  candidates: { data: string; mimeType: string; title?: string; source?: string }[]
 ): Record<string, unknown> {
   const content: Record<string, unknown>[] = [
     { type: "text", text: "IMAGE A (the photo being scanned):" },
@@ -909,7 +917,12 @@ function gatePayload(
     },
   ];
   candidates.forEach((image, slot) => {
-    content.push({ type: "text", text: `CANDIDATE ${slot + 1}:` });
+    // The listing's own words, bounded and on one line. See buildBatchPrompt:
+    // they can rule a candidate out or back up the images, never match alone.
+    const title = (image.title || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    const source = (image.source || "").replace(/\s+/g, " ").trim().slice(0, 60);
+    const label = [title && `listing title "${title}"`, source && `on ${source}`].filter(Boolean).join(", ");
+    content.push({ type: "text", text: `CANDIDATE ${slot + 1}${label ? ` (${label})` : ""}:` });
     content.push({
       type: "image",
       source: { type: "base64", media_type: image.mimeType, data: image.data },
@@ -927,21 +940,23 @@ function gatePayload(
 
 async function verifyVisualMatchBatch(
   reference: { data: string; mimeType: string },
-  candidateImageUrls: string[],
+  candidates: GateCandidate[],
   model: string,
   layer: FailureLayer = "gate",
   effort: Effort | null = gateEffort()
 ): Promise<BatchOutcome> {
   const unavailable = (): VerificationResult => ({ match: "different", reasoning: "verification unavailable" });
-  const results: VerificationResult[] = candidateImageUrls.map(unavailable);
+  const results: VerificationResult[] = candidates.map(unavailable);
   let judged = 0;
-  if (candidateImageUrls.length === 0) return { results, ok: false };
+  if (candidates.length === 0) return { results, ok: false };
 
   const images = await Promise.all(
-    candidateImageUrls.map(url => (url ? fetchImageAsBase64(url) : Promise.resolve(null)))
+    candidates.map(c => (c.imageUrl ? fetchImageAsBase64(c.imageUrl) : Promise.resolve(null)))
   );
-  const present: { index: number; image: { data: string; mimeType: string } }[] = [];
-  images.forEach((image, index) => { if (image) present.push({ index, image }); });
+  const present: { index: number; image: { data: string; mimeType: string; title?: string; source?: string } }[] = [];
+  images.forEach((image, index) => {
+    if (image) present.push({ index, image: { ...image, title: candidates[index].title, source: candidates[index].source } });
+  });
   // No candidate image loaded at all. Nothing was judged, but nothing can
   // be judged either, so a retry would not help: not a failed call.
   if (present.length === 0) return { results, ok: true, loaded: 0 };
@@ -1235,7 +1250,7 @@ function simplifyQuery(text: string, maxWords = 4): string {
 // ════════════════════════════════════════════════════════════════
 // LAYER 4 + 5: Shopping text search (store-targeted, then generic)
 // ════════════════════════════════════════════════════════════════
-async function searchShoppingViaSerper(query: string): Promise<ShoppingMatch | null> {
+async function searchShoppingViaSerper(query: string, severity: Severity = "identity"): Promise<ShoppingMatch | null> {
   if (!process.env.SERPER_API_KEY) return null;
   try {
     const res = await searchFetch("shopping", "serper", "shopping", "https://google.serper.dev/shopping", {
@@ -1244,7 +1259,7 @@ async function searchShoppingViaSerper(query: string): Promise<ShoppingMatch | n
       body: JSON.stringify({ q: query, gl: "us", hl: "en", num: 10 }),
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return searchFailed("shopping", "serper", res, null, "identity");
+    if (!res.ok) return searchFailed("shopping", "serper", res, null, severity);
     const data = await res.json();
 
     // A text shopping search is a PRICE source, so a row with no price
@@ -1270,11 +1285,11 @@ async function searchShoppingViaSerper(query: string): Promise<ShoppingMatch | n
 
     return buildShoppingMatch(filterRelevantCandidates(await pricesInUsd(results), query));
   } catch (err) {
-    return searchFailed("shopping", "serper", null, err, "identity");
+    return searchFailed("shopping", "serper", null, err, severity);
   }
 }
 
-async function searchShoppingViaSerpApi(query: string): Promise<ShoppingMatch | null> {
+async function searchShoppingViaSerpApi(query: string, severity: Severity = "identity"): Promise<ShoppingMatch | null> {
   if (!process.env.SERPAPI_KEY) return null;
   try {
     const params = new URLSearchParams({
@@ -1282,10 +1297,10 @@ async function searchShoppingViaSerpApi(query: string): Promise<ShoppingMatch | 
       num: "10", gl: "us", hl: "en",
     });
     const res = await searchFetch("shopping", "serpapi", "google_shopping", `https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(12000) });
-    if (!res.ok) return searchFailed("shopping", "serpapi", res, null, "identity");
+    if (!res.ok) return searchFailed("shopping", "serpapi", res, null, severity);
     const data = await res.json();
     const failure = serpApiError(data);
-    if (failure) return searchFailed("shopping", "serpapi", null, new Error(failure), "identity");
+    if (failure) return searchFailed("shopping", "serpapi", null, new Error(failure), severity);
 
     // Relevance order preserved, price sort removed — same reasoning as
     // the Serper shopping path above.
@@ -1304,7 +1319,7 @@ async function searchShoppingViaSerpApi(query: string): Promise<ShoppingMatch | 
 
     return buildShoppingMatch(filterRelevantCandidates(await pricesInUsd(results), query));
   } catch (err) {
-    return searchFailed("shopping", "serpapi", null, err, "identity");
+    return searchFailed("shopping", "serpapi", null, err, severity);
   }
 }
 
@@ -1458,7 +1473,12 @@ async function searchAllDirectRetailers(query: string): Promise<{ match: Shoppin
 // match at all — retry with the plain title, then a blunt top-words query,
 // before conceding nothing can be found.
 async function searchShoppingWithFallbacks(
-  queries: string[]
+  queries: string[],
+  // "identity" while the search is what identifies the product; "advisory"
+  // once it is identified and the search only looks for a price or a cheaper
+  // copy. A pricing search timing out is not a reason to tell someone their
+  // scan could not be completed, which is what it used to do.
+  severity: Severity = "identity"
 ): Promise<{ match: ShoppingMatch; engineUsed: string } | null> {
   const seen = new Set<string>();
   for (const raw of queries) {
@@ -1467,8 +1487,8 @@ async function searchShoppingWithFallbacks(
     seen.add(q.toLowerCase());
 
     const { value: match, index } = await firstAnswer("shopping", [
-      { configured: !!process.env.SERPER_API_KEY, run: () => searchShoppingViaSerper(q) },
-      { configured: !!process.env.SERPAPI_KEY, run: () => searchShoppingViaSerpApi(q) },
+      { configured: !!process.env.SERPER_API_KEY, run: () => searchShoppingViaSerper(q, severity) },
+      { configured: !!process.env.SERPAPI_KEY, run: () => searchShoppingViaSerpApi(q, severity) },
     ]);
     if (match) return { match, engineUsed: index === 0 ? "serper" : "serpapi" };
   }
@@ -1931,7 +1951,7 @@ async function judgeCandidates(
   const chain = gateChain(options);
   const timeAllows = () => !options.budget || options.budget.allows(VERIFY_WAVE_COST_MS);
   const checked: Checked[] = [];
-  const judgeSlice = async (urls: string[]): Promise<{ outcome: BatchOutcome; judge: string }> => {
+  const judgeSlice = async (urls: GateCandidate[]): Promise<{ outcome: BatchOutcome; judge: string }> => {
     let last: BatchOutcome = { results: urls.map(() => ({ match: "different", reasoning: "verification unavailable" })), ok: false };
     // Once every model in the chain has failed on this scan, the next batch
     // would only repeat the same failing calls and spend the clock doing it.
@@ -1960,7 +1980,7 @@ async function judgeCandidates(
   };
   for (let i = 0; i < candidates.length; i += VERIFY_BATCH_MAX) {
     const slice = candidates.slice(i, i + VERIFY_BATCH_MAX);
-    const { outcome, judge } = await judgeSlice(slice.map(c => c.imageUrl));
+    const { outcome, judge } = await judgeSlice(slice.map(c => ({ imageUrl: c.imageUrl, title: c.title, source: c.source })));
     slice.forEach((candidate, j) => checked.push({ candidate, result: outcome.results[j], judge }));
     traceStep("gate", {
       purpose: options.purpose || "identify",
@@ -2017,7 +2037,7 @@ function settleVerdict(checked: Checked[], ordered: ShoppingCandidate[], options
 }
 
 function settleVerdictOf(checked: Checked[], ordered: ShoppingCandidate[], options: GateOptions): Verified {
-  const pick = (tier: "exact" | "similar", rule: "cheapest" | "best-ranked"): Checked | null => {
+  const pick = (tier: VerificationResult["match"], rule: "cheapest" | "best-ranked"): Checked | null => {
     // `checked` is in ranked order, so index 0 of a tier is its best-ranked
     // member.
     const inTier = checked.filter(c => c.result.match === tier);
@@ -2049,16 +2069,82 @@ function settleVerdictOf(checked: Checked[], ordered: ShoppingCandidate[], optio
 
   const exact = pick("exact", "cheapest");
   if (exact) return settle(exact, "exact");
-  const similar = pick("similar", "best-ranked");
-  if (similar) return settle(similar, "likely");
+  const likely = pick("likely", "best-ranked");
+  if (likely) return settle(likely, "likely");
 
-  // Nothing verified. The honest answer is the engine's own top-ranked
-  // candidate, labeled unverified — not the cheapest thing in the list.
-  // The highest-ranked PRICED candidate is preferred only because a record
-  // with no price cannot carry the one number this product exists to show;
-  // if none of them has a price, the top-ranked one is returned and the
-  // caller refuses to invent a number for it.
+  // Nothing identified. "similar" is a lookalike (the same kind of product,
+  // not this one), so it never becomes a match; it is only the better
+  // candidate to show as the closest lookalike, labeled unverified. After
+  // it, the engine's own top-ranked candidate, never the cheapest arbitrary
+  // one. A priced record is preferred only because a record with no price
+  // cannot carry the one number this product exists to show; if none of them
+  // has a price, the top-ranked one is returned and the caller refuses to
+  // invent a number for it.
+  const lookalike = pick("similar", "best-ranked");
+  if (lookalike && lookalike.candidate.price > 0) return { best: lookalike.candidate, confidence: "unverified" };
   return { best: ordered.find(c => c.price > 0) || ordered[0], confidence: "unverified" };
+}
+
+// ════════════════════════════════════════════════════════════════
+// NOT EVERY PAGE THAT SHOWS THE PRODUCT IS SELLING IT.
+//
+// Google Lens answers "where else does this picture appear", and for a photo
+// that has been published anywhere, the best answers are the pages that
+// published it: a Wikipedia article, a news story, a Reddit thread. The gate
+// rightly called those "exact" (it is literally the same picture), and the
+// engine then treated a USA Today headline as the product's name, searched
+// for a price with it, and found nothing; that is how a photo of Crocs Baya
+// clogs came back "not identified". Pages on hosts that never sell anything
+// are left out of the window here, before any model looks at them; the gate
+// prompt rules out the long tail (any other article, post or forum) by its
+// title. A page with the same picture still proves nothing about which
+// LISTING is the product, which is the only thing the card can show.
+// ════════════════════════════════════════════════════════════════
+const NON_LISTING_HOSTS = [
+  "wikipedia.org", "wikimedia.org", "wikiwand.com", "fandom.com", "reddit.com", "pinterest.",
+  "youtube.com", "youtu.be", "instagram.com", "tiktok.com", "twitter.com", "x.com", "threads.net",
+  "tumblr.com", "flickr.com", "imgur.com", "quora.com", "medium.com", "substack.com", "deviantart.com",
+  "artstation.com", "behance.net", "dribbble.com", "cgtrader.com", "sketchfab.com", "turbosquid.com",
+  "manuals.plus", "manualslib.com",
+];
+
+export function isListingCandidate(candidate: { productUrl: string; source?: string }): boolean {
+  let host = "";
+  let path = "";
+  try {
+    const url = new URL(candidate.productUrl);
+    host = url.hostname.toLowerCase();
+    path = url.pathname;
+  } catch {
+    return true; // no URL to judge by: the gate judges it
+  }
+  // Facebook sells only on Marketplace; the rest of it is posts.
+  if (host === "facebook.com" || host.endsWith(".facebook.com")) return path.startsWith("/marketplace/");
+  return !NON_LISTING_HOSTS.some(h => (h.endsWith(".") ? host.includes(h) : host === h || host.endsWith(`.${h}`)));
+}
+
+/**
+ * The price an identified listing states on its own page, from the page's
+ * structured data only (schema.org Product offers, microdata, product meta
+ * tags), never from a model reading the page. Lens often returns the right
+ * listing with no price - a brand's own store is the usual case - and the
+ * page itself carries one. Price and link then come from the same record,
+ * which is the rule everything else on the card follows.
+ */
+async function priceFromListingPage(url: string): Promise<{ usd: number; amount: number; currency: string } | null> {
+  if (!url || isGoogleDomain(url)) return null;
+  const html = await fetchProductPageHtml(url);
+  if (!html) return null;
+  const jsonLd = extractJsonLdProduct(html);
+  const micro = extractMicrodataPrice(html);
+  const meta = extractMetaProduct(html);
+  const amount = jsonLd.price ?? micro.price ?? meta.price ?? null;
+  const currency = normalizeCurrency(jsonLd.currency || micro.currency || meta.currency || "");
+  // A price with no stated currency is not converted by guesswork.
+  if (!amount || !(amount > 0) || !currency) return null;
+  if (currency === "USD") return { usd: amount, amount, currency };
+  const converted = await toUsd(amount, currency);
+  return converted && converted.usd > 0.5 ? { usd: converted.usd, amount, currency } : null;
 }
 
 async function verifyCandidates(
@@ -2067,7 +2153,7 @@ async function verifyCandidates(
   options: GateOptions = {}
 ): Promise<Verified> {
   const window = options.window ?? VERIFY_WINDOW;
-  const ordered = rankForVerification(match.candidates, options.hints).slice(0, window);
+  const ordered = rankForVerification(match.candidates.filter(isListingCandidate), options.hints).slice(0, window);
   if (ordered.length === 0) return { best: match.candidates[0], confidence: "unverified" };
 
   const checked = await judgeCandidates(ordered.slice(0, VERIFY_WAVE_ONE), reference, options);
@@ -2099,7 +2185,7 @@ async function verifyPools(
   options: GateOptions
 ): Promise<(Verified | null)[]> {
   const window = options.window ?? VERIFY_WINDOW_PRICING;
-  const ordered = pools.map(pool => (pool ? rankForVerification(pool.candidates, options.hints).slice(0, window) : []));
+  const ordered = pools.map(pool => (pool ? rankForVerification(pool.candidates.filter(isListingCandidate), options.hints).slice(0, window) : []));
   const union = ordered.flat();
   if (union.length === 0) return pools.map(() => null);
   const checked = await judgeCandidates(union, reference, options);
@@ -2131,8 +2217,37 @@ async function verifyPools(
 // would be exactly the "price from one listing, link to another" failure
 // this engine is built to refuse.
 // ════════════════════════════════════════════════════════════════
-function queryFromTitle(title: string): string {
-  const cleaned = (title || "").replace(/\s+/g, " ").trim();
+/**
+ * A listing title as a search query. Lens and Shopping titles carry the site
+ * around the product name ("Amazon.com: ...", "... | Flowlife", "... -
+ * Walmart.com") and are often cut off with an ellipsis; searching with that
+ * noise is how a confirmed Flowgun Air came back priced as a Theragun. The
+ * product name is what is left.
+ */
+const MARKETPLACES = /^(amazon|ebay|walmart|target|etsy|temu|aliexpress|best buy|home depot|wayfair|newegg|shein|mercari|poshmark)\b/i;
+
+export function cleanListingTitle(title: string, source = ""): string {
+  let t = (title || "").replace(/\s+/g, " ").trim();
+  t = t.replace(/^[A-Za-z0-9.-]*amazon\.[a-z.]+\s*:\s*/i, "");
+  t = t.replace(/\s*(\.\.\.|…)\s*$/, "");
+  const site = source.toLowerCase().replace(/\.(com|net|org|co|shop|store)\b.*$/, "").trim();
+  // A trailing segment that names the site: anything after " | ", or after a
+  // dash when it is a domain, a marketplace, or the seller the listing came
+  // from. "Apple AirPods Pro - 2nd Generation" keeps its generation.
+  for (let i = 0; i < 2; i++) {
+    const m = t.match(/^(.{12,}?)\s+([|–—-])\s+([^|–—]{2,40})$/);
+    if (!m) break;
+    const tail = m[3].trim();
+    const namesSite = m[2] === "|" || /\.(com|net|org|co|shop|store)\b/i.test(tail) || MARKETPLACES.test(tail)
+      || (site.length >= 3 && tail.toLowerCase().includes(site));
+    if (!namesSite) break;
+    t = m[1].trim();
+  }
+  return t;
+}
+
+function queryFromTitle(title: string, source = ""): string {
+  const cleaned = cleanListingTitle(title, source);
   return cleaned.length <= 110 ? cleaned : cleaned.slice(0, 110).replace(/\s+\S*$/, "");
 }
 
@@ -2142,7 +2257,7 @@ async function priceVerifiedIdentity(
   reference: { data: string; mimeType: string },
   gate: GateOptions
 ): Promise<{ match: ShoppingMatch; engineUsed: string } | null> {
-  const title = queryFromTitle(identified.title);
+  const title = queryFromTitle(identified.title, identified.source);
   if (title.length < 3) return null;
   if (gate.budget && !gate.budget.allows(PRICING_SEARCH_COST_MS)) return null;
 
@@ -2150,7 +2265,7 @@ async function priceVerifiedIdentity(
   const hinted = `${gate.hints?.brand || ""} ${gate.hints?.productName || ""}`.trim();
   if (hinted.length >= 3) queries.push(hinted);
 
-  const found = await searchShoppingWithFallbacks(queries);
+  const found = await searchShoppingWithFallbacks(queries, "advisory");
   if (!found || found.match.lowestPrice <= 0) return null;
 
   // Identity is already settled; this pool exists only to attach a price to
@@ -2230,7 +2345,7 @@ async function reuseIdentification(
   if (!hit) return null;
 
   const confirmation = await verifyVisualMatchBatch(
-    reference, [hit.entry.imageUrl], REUSE_CONFIRM_MODEL
+    reference, [{ imageUrl: hit.entry.imageUrl, title: hit.entry.title, source: hit.entry.source }], REUSE_CONFIRM_MODEL
   );
   // A failed confirmation call is not a confirmation. Falling through to the
   // full gate costs money; accepting an unconfirmed reuse costs correctness.
@@ -2653,35 +2768,51 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
     }
   }
 
-  // ── Store-name-targeted text search — fallback if discovery above found
-  //    nothing usable, or wasn't attempted. ──
-  if (!shopping && vision.storeName) {
+  // ── Text identification: what the photo SAYS, searched as text, when the
+  //    pixels did not identify it. It used to run only when Lens returned
+  //    nothing at all, so a Lens answer made only of pages that reuse the
+  //    photo (news stories, an encyclopedia) shut out the one clean product
+  //    name the scan had: the vision read. A text pool's answer replaces
+  //    what is there only when it is better identified (a Lens lookalike
+  //    stays ahead of a text-search lookalike). When Lens did answer, a
+  //    failure here costs an alternative, not the scan, so it is advisory. ──
+  const identified = () => !!shopping && confidence !== "unverified";
+  const textSeverity: Severity = shopping ? "advisory" : "identity";
+  const adopt = (pool: ShoppingMatch, verified: Verified, label: string): void => {
+    if (shopping && rankConfidence(verified.confidence) <= rankConfidence(confidence)) return;
+    shopping = applyVerifiedCandidate(pool, verified);
+    confidence = verified.confidence;
+    engineUsed = label;
+  };
+
+  //    Store-name-targeted first, when the photo shows a store. ──
+  if (!identified() && vision.storeName && (!shopping || budget.allows(VERIFY_WAVE_COST_MS))) {
     const storeQuery = `${vision.storeName} ${vision.brand} ${vision.productName} ${vision.quantity}`.trim();
-    const found = await searchShoppingWithFallbacks([storeQuery, `${vision.brand} ${vision.productName} ${vision.quantity}`.trim()]);
+    const found = await searchShoppingWithFallbacks([storeQuery, `${vision.brand} ${vision.productName} ${vision.quantity}`.trim()], textSeverity);
     traceStep("store_search", { query: storeQuery.slice(0, 120), found: found?.match.candidates.length ?? 0 });
-    if (found) {
-      shopping = found.match;
-      engineUsed = `store_${found.engineUsed}`;
-      const verified = await verifyCandidates(shopping, reference, gate);
-      confidence = verified.confidence;
-      shopping = applyVerifiedCandidate(shopping, verified);
-    }
+    if (found) adopt(found.match, await verifyCandidates(found.match, reference, gate), `store_${found.engineUsed}`);
   }
 
-  // ── Generic brand/product text search, last resort before category guess ──
-  if (!shopping) {
+  //    Then brand and product name. ──
+  if (!identified() && (!shopping || budget.allows(VERIFY_WAVE_COST_MS))) {
     const base = vision.brand ? `${vision.brand} ${vision.productName}` : (vision.productName || "");
     const genericQuery = `${base} ${vision.quantity}`.trim();
     if (base) {
-      const found = await searchShoppingWithFallbacks([genericQuery, base, vision.productName]);
+      const found = await searchShoppingWithFallbacks([genericQuery, base, vision.productName], textSeverity);
       traceStep("generic_search", { query: genericQuery.slice(0, 120), found: found?.match.candidates.length ?? 0 });
-      if (found) {
-        shopping = found.match;
-        engineUsed = `generic_${found.engineUsed}`;
-        const verified = await verifyCandidates(shopping, reference, gate);
-        confidence = verified.confidence;
-        shopping = applyVerifiedCandidate(shopping, verified);
-      }
+      if (found) adopt(found.match, await verifyCandidates(found.match, reference, gate), `generic_${found.engineUsed}`);
+    }
+  }
+
+  // ── The identified listing's own page. Lens often finds the right listing
+  //    without a price (a brand's own store is the usual case); the page
+  //    states one in its structured data. ──
+  if (shopping && !servedFromIdentityCache && confidence !== "unverified" && shopping.lowestPrice <= 0 && budget.allows(PAGE_PRICE_COST_MS)) {
+    const own = await priceFromListingPage(shopping.productUrl);
+    traceStep("page_price", { url: shopping.productUrl.slice(0, 200), found: !!own, amount: own?.amount ?? null, currency: own?.currency ?? null });
+    if (own) {
+      shopping = { ...shopping, lowestPrice: own.usd, highestPrice: Math.max(shopping.highestPrice, own.usd) };
+      engineUsed = `${engineUsed}+priced_page`;
     }
   }
 
@@ -2733,7 +2864,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   //    these layers only ever improve a price that already exists, which is
   //    the first thing worth giving up when the budget is gone. ──
   if (shopping && !servedFromIdentityCache && spendMode === "full" && budget.allows(ALTERNATIVE_LAYER_COST_MS)) {
-    const identifiedTitle = confidence !== "unverified" ? queryFromTitle(shopping.title) : "";
+    const identifiedTitle = confidence !== "unverified" ? queryFromTitle(shopping.title, shopping.source) : "";
     const visionQuery = (vision.brand ? `${vision.brand} ${vision.productName}` : (vision.productName || "")).trim();
     const retailerQuery = identifiedTitle.length >= 3 ? identifiedTitle : visionQuery;
     const unbrandedQuery = `${vision.productName} ${vision.category} ${vision.quantity}`.trim();
@@ -2741,7 +2872,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
 
     const [unbrandedFound, retailerFound] = await Promise.all([
       canRebrand
-        ? searchShoppingWithFallbacks([unbrandedQuery, vision.productName])
+        ? searchShoppingWithFallbacks([unbrandedQuery, vision.productName], "advisory")
         : Promise.resolve(null),
       retailerQuery.length >= 3
         ? searchAllDirectRetailers(retailerQuery)
@@ -3044,7 +3175,7 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
       // Once the product has been identified, the confirmed title is a
       // better retailer query than the page-derived one, for the same
       // reason it is a better pricing query.
-      const identifiedTitle = confidence !== "unverified" ? queryFromTitle(shopping.title) : "";
+      const identifiedTitle = confidence !== "unverified" ? queryFromTitle(shopping.title, shopping.source) : "";
       const retailerQuery = identifiedTitle.length >= 3 ? identifiedTitle : baseQuery.trim();
       if (retailerQuery.length >= 3) {
         const retailerFound = await searchAllDirectRetailers(retailerQuery);
@@ -3340,13 +3471,13 @@ export async function replayExtraction(
 
 export async function replayGate(
   reference: { data: string; mimeType: string },
-  candidateImageUrls: string[],
+  candidates: GateCandidate[],
   model: string,
   effort: Effort | null
 ): Promise<ReplayCall & { verdicts: VerificationResult[]; loaded: number }> {
   const capped = await capForModel(reference);
   const { value, trace } = await runTraced(() =>
-    verifyVisualMatchBatch(capped, candidateImageUrls.slice(0, VERIFY_BATCH_MAX), model, "gate", effort)
+    verifyVisualMatchBatch(capped, candidates.slice(0, VERIFY_BATCH_MAX), model, "gate", effort)
   );
   return {
     ok: value.ok, kind: value.call?.kind || (value.ok ? "ok" : "no-images"), status: value.call?.status ?? 0,
