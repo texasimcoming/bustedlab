@@ -444,10 +444,11 @@ const SCENARIO_CALL_FAILS = {
   expect: { titleIncludes: "PH2083", price: 99.0, confidence: "exact", platform: "Amazon" },
   expectPreFix: null,
   expectStats: (stats) => {
-    // A clean run of this scenario takes four gate calls. The failed one
-    // must be retried, not absorbed as six "different" verdicts.
-    if (stats.gateCalls !== 5) {
-      return [`${stats.gateCalls} gate call(s); expected 5 (four plus one retry)`];
+    // A clean run of this scenario takes three gate calls (wave one, the
+    // pricing search, and the rebrand and retailer pools judged together).
+    // The failed one must be retried, not absorbed as "different" verdicts.
+    if (stats.gateCalls !== 4) {
+      return [`${stats.gateCalls} gate call(s); expected 4 (three plus one retry)`];
     }
     return [];
   },

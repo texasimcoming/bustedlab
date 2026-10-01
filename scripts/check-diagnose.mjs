@@ -23,7 +23,12 @@ globalThis.fetch = async (input, init = {}) => {
     const text = prompt.includes("candidate product listing image")
       ? JSON.stringify([{ candidate: 1, match: "exact", why: "same photo" }])
       : JSON.stringify({ productName: "whitening strips", brand: "", visiblePrice: null, currency: "", imageQuality: "good" });
-    return json({ stop_reason: "end_turn", usage: { input_tokens: 900, output_tokens: 40 }, content: [{ type: "text", text }] });
+    // As the 5.5 models answer: a thinking block first, then the text, with
+    // output_tokens covering both.
+    return json({
+      stop_reason: "end_turn", usage: { input_tokens: 900, output_tokens: 700 + Math.ceil(text.length / 4) },
+      content: [{ type: "thinking", thinking: "", signature: "sig" }, { type: "text", text }],
+    });
   }
   if (url.startsWith("https://serpapi.com/account.json")) {
     return json({ account_id: "a1", api_key: KEYS.SERPAPI_KEY, account_email: "owner@example.com", plan_name: "Developer",
@@ -46,14 +51,19 @@ const layer = (prefix) => layers.find(l => l.layer.startsWith(prefix));
 check("answers 200 with a layer list", res.status === 200 && layers.length >= 7, `${res.status} ${layers.map(l => l.layer).join(" | ")}`);
 check("every layer says pass or fail, latency, status and detail",
   layers.every(l => typeof l.pass === "boolean" && typeof l.latencyMs === "number" && typeof l.status === "number" && typeof l.detail === "string"));
-for (const model of ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"]) {
+for (const model of ["claude-opus-5-5", "claude-sonnet-5-5"]) {
   const probe = layer(`claude ${model}`);
   check(`${model} probed and passing`, probe?.pass === true, JSON.stringify(probe));
 }
-const opus = sent.find(b => b.model === "claude-opus-5");
-check("the Opus 5 call has the engine's shape: no temperature, thinking disabled, effort high",
-  opus && !("temperature" in opus) && opus.thinking?.type === "disabled" && opus.output_config?.effort === "high", JSON.stringify(opus && { ...opus, messages: undefined }));
-check("and that shape is shown in the answer", layer("claude claude-opus-5")?.request?.thinking?.type === "disabled");
+check("every Claude call went to Opus 5.5 or Sonnet 5.5, nothing else", sent.length === 3 && sent.every(b => ["claude-opus-5-5", "claude-sonnet-5-5"].includes(b.model)),
+  sent.map(b => b.model).join(", "));
+const opus = sent.find(b => b.model === "claude-opus-5-5");
+check("the Opus 5.5 call has the engine's shape: no sampling, no thinking field, effort low, room for thinking",
+  opus && !("temperature" in opus) && !("thinking" in opus) && opus.output_config?.effort === "low" && opus.max_tokens >= 15_000 && opus.max_tokens <= 16_000,
+  JSON.stringify(opus && { ...opus, messages: undefined }));
+check("and that shape is shown in the answer", layer("claude claude-opus-5-5")?.request?.output_config?.effort === "low");
+check("thinking tokens are estimated per call and averaged for the cost model",
+  layer("claude claude-opus-5-5")?.thinkingTokensApprox === 700 && res.json?.thinking?.perCallApprox === 700, JSON.stringify(res.json?.thinking));
 check("the gate probe compares the sample with itself (two images)",
   (opus?.messages?.[0]?.content || []).filter(b => b.type === "image").length === 2);
 check("Claude cost is measured and reported", res.json?.cost?.claudeUsd > 0, JSON.stringify(res.json?.cost));
@@ -61,6 +71,7 @@ const account = layer("serpapi account");
 check("SerpApi remaining searches reported", account?.pass === true && account?.totalSearchesLeft === 4100, JSON.stringify(account));
 check("Serper probed", layer("serper")?.pass === true);
 check("exchange rates probed", layer("exchange rates")?.pass === true, JSON.stringify(layer("exchange rates")));
+check("the 1568px photo cap is proven where it runs", layer("photo cap")?.pass === true && /725x1568/.test(layer("photo cap")?.detail || ""), JSON.stringify(layer("photo cap")));
 check("Blob without a token fails loudly, with the reason", layer("blob")?.pass === false && /BLOB_READ_WRITE_TOKEN/.test(layer("blob")?.detail || ""));
 check("overall pass is false while any layer fails, and names it", res.json?.pass === false && res.json?.failing?.includes("blob"), JSON.stringify(res.json?.failing));
 check("no key, no account email and no image in the answer",

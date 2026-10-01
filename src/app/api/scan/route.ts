@@ -37,12 +37,15 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import crypto from "crypto";
 
-// Vision extraction (~2-8s) + Lens/Shopping search (~2-14s) + parallel
-// verification (~2-10s) can add up past Vercel's default function
-// duration. This requires a plan that supports the value below —
-// confirm your Vercel plan's max before relying on it; Hobby plans cap
-// lower than Pro. If scans are timing out in production, check this first.
-export const maxDuration = 60;
+// The engine budgets itself 85 seconds (SCAN_BUDGET_MS in scan.ts): both
+// models think on every call, so extraction, Lens and the verification gate
+// take longer than they did with thinking off. This leaves room above that
+// for the call still in flight when the budget runs out. With Fluid compute
+// (the default for projects created since April 2025) Vercel allows up to
+// 300s on Hobby and 800s on Pro; the product must be on Pro anyway, since
+// Hobby is for non-commercial use. If scans time out in production, compare
+// /api/diagnose's per-call latencies with the budgets in scan.ts first.
+export const maxDuration = 120;
 
 const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 

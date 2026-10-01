@@ -21,15 +21,21 @@ import { Redis } from "@upstash/redis";
  *
  * Three layers, deliberately:
  *
- *   1. This soft budget. Measured from real `usage` on every API response,
- *      not estimated. When the day's spend crosses DAILY_MODEL_BUDGET_USD
- *      the engine DEGRADES rather than failing: cheap model on the gate,
- *      cache-first, enhancement layers dropped, and the gate barred from
- *      returning its strongest label. A scan still answers, and a match
- *      the cheap gate calls exact AND that independently carries the brand
- *      read off the photo can still reach a verdict - two signals for a
- *      claim, one for everything else. A reused identification is
- *      unaffected, since the strong model is what made it.
+ *   1. This soft budget. Measured from real `usage` on every API response
+ *      (thinking included: it is billed as output), not estimated. When the
+ *      day's spend crosses DAILY_MODEL_BUDGET_USD the engine DEGRADES rather
+ *      than failing: Sonnet 5.5 judges instead of Opus 5.5 (Opus only backs
+ *      it up if Sonnet cannot answer), the rebrand and direct-retailer
+ *      layers are dropped, and the gate is barred from its strongest label.
+ *      A scan still answers: a match the degraded gate calls exact AND that
+ *      independently carries the brand read off the photo is "likely" and
+ *      can still reach a verdict; anything else is a closest match. A reused
+ *      identification is unaffected, since the full gate is what made it.
+ *      The budget never refuses a scan. What bounds a day's total is the
+ *      number of uncached scans that can reach the models at all
+ *      (GLOBAL_DAILY_SCAN_CAP for the free tier, the fair-use ceiling per
+ *      paid account); `npm run cost-model` prints the worst day for each
+ *      budget value.
  *   2. The circuit breaker below, which trips on the API's own backpressure
  *      (429 rate limited, 402 billing, 529 overloaded) and degrades for a
  *      cooldown instead of hammering a limit that is already saying no.
@@ -48,20 +54,21 @@ import { Redis } from "@upstash/redis";
 
 export type SpendMode = "full" | "degraded";
 
-// USD per million tokens, from the published price list. Cache writes cost
-// 1.25x input (5-minute TTL) and cache reads 0.1x. Keyed by model id without
-// a date suffix. Every model the engine can reach is listed, including the
-// gate's fallback, so a fallback is billed at its own rate.
+// USD per million tokens, from the published price list as of 2026-10-01,
+// for the two models the product uses. Cache writes (5-minute TTL) cost
+// 1.25x input on both; cache reads cost 0.05x input on Opus 5.5 and 0.1x on
+// Sonnet 5.5 ($0.20 per million on both). Thinking tokens are billed as
+// output and arrive inside usage.output_tokens, so they are priced here
+// without any special case.
 // https://platform.claude.com/docs/en/about-claude/pricing
-const PRICING: Record<string, { input: number; output: number }> = {
-  "claude-opus-5": { input: 5.0, output: 25.0 },
-  "claude-sonnet-5": { input: 2.0, output: 10.0 },
-  "claude-haiku-4-5": { input: 1.0, output: 5.0 },
-  "claude-opus-5-5": { input: 4.0, output: 20.0 },
-  "claude-sonnet-5-5": { input: 2.0, output: 10.0 },
+const PRICING: Record<string, { input: number; output: number; cacheRead: number }> = {
+  "claude-opus-5-5": { input: 4.0, output: 20.0, cacheRead: 0.05 },
+  "claude-sonnet-5-5": { input: 2.0, output: 10.0, cacheRead: 0.1 },
 };
+// What a model missing from the table is priced at: above both models in
+// use, so an unpriced model can only make the budget trip early, never late.
+const UNKNOWN_MODEL_RATE = { input: 5.0, output: 25.0, cacheRead: 0.1 };
 const CACHE_WRITE_MULTIPLIER = 1.25;
-const CACHE_READ_MULTIPLIER = 0.1;
 
 export interface ClaudeUsage {
   input_tokens?: number;
@@ -78,7 +85,7 @@ export interface ClaudeUsage {
  */
 export function priceUsage(model: string, usage: ClaudeUsage | undefined): number {
   if (!usage) return 0;
-  const rate = PRICING[model.replace(/-\d{8}$/, "")] || { input: 5.0, output: 25.0 };
+  const rate = PRICING[model.replace(/-\d{8}$/, "")] || UNKNOWN_MODEL_RATE;
   const input = usage.input_tokens || 0;
   const output = usage.output_tokens || 0;
   const write = usage.cache_creation_input_tokens || 0;
@@ -86,17 +93,19 @@ export function priceUsage(model: string, usage: ClaudeUsage | undefined): numbe
   return (
     (input * rate.input +
       write * rate.input * CACHE_WRITE_MULTIPLIER +
-      read * rate.input * CACHE_READ_MULTIPLIER +
+      read * rate.input * rate.cacheRead +
       output * rate.output) /
     1_000_000
   );
 }
 
-// The number to tune. At the current cost model a cold scan is roughly four
-// cents of model spend and a scan of an already-identified product is well
-// under one, so $250 buys somewhere between six thousand and forty thousand
-// scans depending on how concentrated the traffic is - and concentrated
-// traffic is exactly what a viral moment produces.
+// The number to tune. In `npm run cost-model`, at 1,000 thinking tokens a
+// call, a cold scan is about $0.105 of model spend on the full path, a scan
+// of an already-identified product about $0.032, and a degraded scan about
+// $0.048. So $250 buys roughly 2,400 cold scans on the full path, or several
+// times that when the traffic is concentrated on a few products, which is
+// what a viral moment produces. Replace those figures with measured ones:
+// /api/diagnose reports real thinking tokens per call.
 export const DAILY_MODEL_BUDGET_USD = Number(process.env.DAILY_MODEL_BUDGET_USD || 250);
 
 // How long the engine stays degraded after the API pushes back. Long enough
@@ -154,7 +163,7 @@ export async function todayModelSpend(): Promise<number> {
  * Trips the breaker when the API itself pushes back. 429 is what a workspace
  * rate limit produces, 402 a billing problem, 529 an overloaded API. None of
  * them are improved by sending the same request again immediately, and all
- * three mean the next scan should take the cheap path.
+ * three mean the next scan should take the degraded path.
  */
 export async function reportModelFailure(status: number): Promise<void> {
   if (status !== 429 && status !== 402 && status !== 529) return;

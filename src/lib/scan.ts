@@ -82,8 +82,9 @@
  * is what happened before, made every non-dollar verdict wrong.
  *
  * Image-upload pipeline:
- * Layer 1: Claude Haiku Vision → product identity, visible price, visible
+ * Layer 1: Claude Sonnet 5.5 vision → product identity, visible price, visible
  *          store/seller handle, and any URL literally visible in the shot
+ *          (escalates to Claude Opus 5.5 when the read fails or is weak)
  * Layer 2: Reverse image search (Google Lens via SerpApi, primary) → exact-pixel candidates
  * Layer 3: Reverse image search (Google Lens via Serper, backup)
  * Layer 3.5: Product-page discovery — if a store name/handle or a visible
@@ -131,30 +132,31 @@
  * Cost per scan. The gate keeps the strongest model - a confident wrong
  * identification is the one failure this product cannot survive, and a
  * cheap one that goes viral is the worst version of it. What makes that
- * affordable is not a weaker model, it is three structural things, all
+ * affordable is not a weaker model, it is four structural things, all
  * priced in scripts/cost-model.mjs from the published rates:
  *
- *   - The gate compares a whole wave of candidates in ONE call rather than
+ *   - The gate compares a whole batch of candidates in ONE call rather than
  *     one call per candidate. Verification input is image-dominated and the
- *     photo is the dominant image, so sending it once with six thumbnails
- *     costs about what six cheap-model calls would and roughly half what
- *     six strong-model calls would.
- *   - The photo is a cached prompt prefix, so later waves and later passes
- *     read it at a tenth of the price. This only works on the strong model
- *     (512-token cache minimum against the cheap model's 4,096, which no
- *     image reaches) - the reason batching beats downgrading here.
+ *     photo is the dominant image, so it is sent once per call, and with
+ *     thinking always on, every call saved is also a thinking pass saved.
+ *     The rebrand and retailer pools share one call for the same reason.
+ *   - The photo is a cached prompt prefix (both models cache from 512
+ *     tokens), so later waves and later passes read it at a fraction of the
+ *     price: 0.05x of the input rate on Opus 5.5, 0.1x on Sonnet 5.5.
+ *   - The photo is capped at 1568px on its long edge before any model sees
+ *     it. The 5.5 models read images up to 2576px, which would bill a phone
+ *     screenshot at roughly two and a half times the tokens for no gain in
+ *     telling two products apart.
  *   - An identification is published for the next person to scan the same
  *     product, so a viral spike pays for identification once rather than
  *     ten thousand times. See reuseIdentification().
  *
- * Model spend, from `npm run cost-model` with thinking off on Opus 5: about
- * $0.044 for a cold typical scan, about $0.069 for a cold hard scan where
- * nothing confirms in the first wave and every fallback fires, about $0.020
- * when Sonnet 5 stands in for the gate, and about $0.006 for a scan of a
- * product already identified in the last hour - which is most scans during
- * the traffic this product exists to create. Search calls (Lens, Shopping,
- * retailer, link resolution) add roughly as much again on a cold scan, and
- * all but the Lens search are skipped on a reused identification.
+ * Model spend per scan is in `npm run cost-model`, priced from the 5.5
+ * models' published rates with thinking always on. Thinking is billed as
+ * output and is the largest single term, which is why effort is set to low
+ * and why the number of gate calls per scan is kept as small as it is.
+ * Search calls (Lens, Shopping, retailer, link resolution) are priced there
+ * too; all but the Lens search are skipped on a reused identification.
  *
  * Spend is measured from the usage the API reports, counted against a daily
  * budget, and when that budget is gone the engine degrades instead of either
@@ -185,70 +187,63 @@ import {
   lensFingerprint, lookupIdentity, storeIdentity, normalizeListingUrl,
   type CachedIdentity, type Fingerprint,
 } from "@/lib/identity-cache";
-import { buildClaudeRequest, readClaudeReply, parseReplyJson } from "@/lib/model-rules";
+import { buildClaudeRequest, readClaudeReply, parseReplyJson, parseEffort, type Effort } from "@/lib/model-rules";
 import {
   runTraced, decideFailure, hasFailed, firstAnswer, reportProviderFailure, recordProviderFailure, logProviderFailure, errorBody,
   type FailureLayer, type ScanFailure, type Severity,
 } from "@/lib/scan-trace";
 import { normalizeCurrency, parsePrice, toUsd } from "@/lib/fx";
+import { capForModel } from "@/lib/image-cap";
 
 // ════════════════════════════════════════════════════════════════
-// MODELS, AND WHY THE EXPENSIVE ONE IS STILL ON THE GATE.
+// MODELS. Two, by the owner's decision: Claude Opus 5.5 and Claude Sonnet 5.5.
 //
 // One decision in this file matters more than everything else in the
 // repository: whether a candidate listing is the same physical object as
-// the photo. Every number on the card is downstream of it. A weaker model
-// there does not produce a slightly less polished answer, it produces a
-// confident answer about the wrong object, and a confident wrong answer
-// that goes viral is worse than no answer at all. So the gate keeps the
-// strongest model.
+// the photo. Every number on the card is downstream of it, and a confident
+// wrong answer that goes viral is worse than no answer at all. So the gate
+// runs on the strongest model, Opus 5.5, with Sonnet 5.5 behind it.
 //
-// Paying for that without a runaway bill came from two measurements, not
-// from moving the gate down a tier. Both are in scripts/cost-model.mjs,
-// which prices real call shapes from the published rates:
+//   extraction, first pass     Sonnet 5.5  (reads brand, name, price, store)
+//   extraction, escalation     Opus 5.5    (a weak or failed first read)
+//   verification gate          Opus 5.5, then Sonnet 5.5 if Opus fails
+//   degraded gate              Sonnet 5.5  (daily budget spent: capped at
+//                                            "likely", enhancements dropped)
+//   cache-hit re-confirmation  Sonnet 5.5  (can only ACCEPT a reuse)
+//   page text, search query    Sonnet 5.5
 //
-//   1. THE CHEAP MODEL CANNOT AMORTISE THE PHOTO. Opus 5 will cache a
-//      prefix from 512 tokens; Haiku 4.5 needs 4,096. A scanned photo is
-//      about 1,600 tokens and an image can never reach 4,096 at the sizes
-//      the API accepts. So the reference photo is a cached prefix on the
-//      strong model and can never be one on the cheap model. Per candidate
-//      compared, the cheap model is therefore only about four times
-//      cheaper, not twenty-five times - the gap that makes a cheap-first
-//      screen look attractive mostly is not there.
+// Both models cache a prefix from 512 tokens, so the reference photo is a
+// cached prefix on either, and the gate compares a whole wave of candidates
+// in one call with the photo sent once (BATCHING BEATS DOWNGRADING in
+// scripts/cost-model.mjs). Both always think; effort is the only control,
+// and it is set to low in model-rules.ts. GATE_EFFORT raises the gate's
+// level without a code change once an eval shows it is needed.
 //
-//   2. BATCHING BEATS DOWNGRADING. Verification input is image-dominated
-//      and the photo is the dominant image. Sending it ONCE with six
-//      candidate thumbnails costs roughly what six separate cheap-model
-//      calls cost, and about half what six separate strong-model calls
-//      cost - while the strong model still judges every candidate. So the
-//      gate now compares a whole wave in a single call. Cheaper than a
-//      cheap-model screen, and it gives up nothing.
-//
-// What did move to the cheap model is the vision EXTRACTION, which reads
-// the brand, product name and any visible price off the photo. That is a
-// transcription task, its output only ranks candidates and builds queries
-// rather than deciding identity, and it escalates to the strong model by
-// itself when the read comes back structurally suspect (see
-// extractFromImage).
-//
-// What each request carries per model (sampling, thinking, effort) is not
-// decided here: it comes from the one table in model-rules.ts, checked
-// against Anthropic's documented rules by scripts/check-model-contract.mjs.
-// Opus 5 and Sonnet 5 run with thinking off, which is what the cost model
-// prices; Haiku keeps temperature 0.
-const EXTRACT_MODEL = "claude-haiku-4-5-20251001";
-const EXTRACT_ESCALATION_MODEL = "claude-opus-5";
-const GATE_MODEL = "claude-opus-5";
+// What each request carries per model (no sampling, thinking left on,
+// effort, max_tokens with thinking room) is not decided here: it comes from
+// the one table in model-rules.ts, checked against Anthropic's documented
+// rules by scripts/check-model-contract.mjs.
+const OPUS = "claude-opus-5-5";
+const SONNET = "claude-sonnet-5-5";
+const EXTRACT_MODEL = SONNET;
+const EXTRACT_ESCALATION_MODEL = OPUS;
+const GATE_MODEL = OPUS;
 // Next in line when the gate model refuses the request, keeps failing, or
 // declines it. A full-strength gate: it may still say "exact".
-const GATE_MODEL_FALLBACK = "claude-sonnet-5";
-// The degraded gate: used when the spend governor has degraded the engine,
-// and last in the fallback chain. Its best label is "likely". See
-// model-budget.ts, and DEGRADED CONFIDENCE in verifyCandidates.
-const GATE_MODEL_DEGRADED = "claude-haiku-4-5-20251001";
+const GATE_MODEL_FALLBACK = SONNET;
+// The whole gate when the spend governor has degraded the engine. Its best
+// label is "likely". See model-budget.ts, and DEGRADED CONFIDENCE in
+// verifyCandidates.
+const GATE_MODEL_DEGRADED = SONNET;
+// Confirms that a cached identification matches this photo. See
+// reuseIdentification: it can only accept a reuse, never make a new one.
+const REUSE_CONFIRM_MODEL = SONNET;
 // Text-only extractions: reading a price off page text, writing a search
 // query. Wrong output costs a retry, not a wrong product.
-const TEXT_MODEL = "claude-haiku-4-5-20251001";
+const TEXT_MODEL = SONNET;
+
+/** The gate's effort, when GATE_EFFORT names a valid level; otherwise the table's. */
+const gateEffort = () => parseEffort(process.env.GATE_EFFORT);
 
 /** Every model the engine can call, by role. Read by /api/diagnose. */
 export const ENGINE_MODELS = {
@@ -257,6 +252,7 @@ export const ENGINE_MODELS = {
   gate: GATE_MODEL,
   gateFallback: GATE_MODEL_FALLBACK,
   gateDegraded: GATE_MODEL_DEGRADED,
+  reuseConfirm: REUSE_CONFIRM_MODEL,
   text: TEXT_MODEL,
 } as const;
 
@@ -295,6 +291,8 @@ interface ClaudeOutcome {
   /** What the call cost, from the usage the API reported. */
   costUsd?: number;
   stopReason?: string | null;
+  /** Output tokens as reported: thinking plus the visible answer. */
+  outputTokens?: number;
 }
 
 const BACKPRESSURE = new Set([402, 429, 529]);
@@ -308,7 +306,8 @@ async function callClaude(
   layer: FailureLayer,
   model: string,
   payload: Record<string, unknown>,
-  timeoutMs: number
+  timeoutMs: number,
+  options: { effort?: Effort | null } = {}
 ): Promise<ClaudeOutcome> {
   const fail = (kind: ClaudeFailureKind, status: number, detail: string): ClaudeOutcome => {
     logProviderFailure({ layer, provider: "anthropic", model, status, kind, detail });
@@ -324,7 +323,7 @@ async function callClaude(
         "x-api-key": process.env.ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
       },
-      body: JSON.stringify(buildClaudeRequest(model, payload)),
+      body: JSON.stringify(buildClaudeRequest(model, payload, options)),
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
@@ -341,17 +340,26 @@ async function callClaude(
   } catch {
     return fail("unparseable", res.status, "response body was not JSON");
   }
-  const costUsd = priceUsage(model, data?.usage as Record<string, number> | undefined);
+  const usage = data?.usage as Record<string, number> | undefined;
+  const costUsd = priceUsage(model, usage);
   await recordModelSpend(costUsd);
+  const outputTokens = typeof usage?.output_tokens === "number" ? usage.output_tokens : undefined;
   const reply = readClaudeReply(data);
-  if (reply.refusal) return { ...fail("refusal", res.status, `stop_reason=refusal category=${reply.refusal}`), costUsd, stopReason: reply.stopReason };
-  if (!reply.text) return { ...fail("empty", res.status, `no text block; stop_reason=${reply.stopReason}`), costUsd, stopReason: reply.stopReason };
+  const extra = { costUsd, stopReason: reply.stopReason, outputTokens };
+  if (reply.refusal) return { ...fail("refusal", res.status, `stop_reason=refusal category=${reply.refusal}`), ...extra };
+  // No text at all and a max_tokens stop: thinking used the whole budget.
+  // That is its own kind, so the gate hands the wave to the next model
+  // instead of repeating a request that would stop in the same place.
+  if (!reply.text) {
+    return { ...fail(reply.truncated ? "truncated" : "empty", res.status, `no text block; stop_reason=${reply.stopReason}`), ...extra };
+  }
   if (reply.truncated) {
     // Not a failure yet: the gate can salvage the verdicts written before
-    // the cut. Said out loud anyway, because it means max_tokens is too low.
+    // the cut. Said out loud anyway, because it means the thinking room in
+    // model-rules.ts was not enough for this call.
     logProviderFailure({ layer, provider: "anthropic", model, status: res.status, kind: "truncated", detail: "stop_reason=max_tokens", recovered: true });
   }
-  return { ok: true, model, text: reply.text, status: res.status, kind: "ok", truncated: reply.truncated, detail: "", costUsd, stopReason: reply.stopReason };
+  return { ok: true, model, text: reply.text, status: res.status, kind: "ok", truncated: reply.truncated, detail: "", ...extra };
 }
 
 /** Records a model failure the caller could not recover from. callClaude already logged it. */
@@ -427,10 +435,22 @@ async function pricesInUsd(candidates: ShoppingCandidate[]): Promise<ShoppingCan
 //
 // Nothing that establishes identity is ever skipped for time: the Lens
 // call and the first verification wave always run.
-const SCAN_BUDGET_MS = 47_000;
-const VERIFY_WAVE_COST_MS = 13_000;
-const PRICING_SEARCH_COST_MS = 22_000;
-const ALTERNATIVE_LAYER_COST_MS = 24_000;
+//
+// Both models think on every call, which makes each call slower than it was
+// with thinking off, so the budget and the per-layer estimates are sized for
+// that. They are estimates until /api/diagnose reports real latencies from
+// production; tune them from its numbers. The route's maxDuration (120s) and
+// the browser's own timeout (135s) sit above SCAN_BUDGET_MS with room for
+// the call still in flight when the budget runs out.
+const SCAN_BUDGET_MS = 85_000;
+const VERIFY_WAVE_COST_MS = 25_000;
+const PRICING_SEARCH_COST_MS = 35_000;
+const ALTERNATIVE_LAYER_COST_MS = 40_000;
+// Per call. A call that takes longer is a failed call, and the next model
+// in the chain gets the work.
+const EXTRACT_TIMEOUT_MS = 35_000;
+const GATE_TIMEOUT_MS = 45_000;
+const TEXT_TIMEOUT_MS = 20_000;
 
 function createBudget(totalMs = SCAN_BUDGET_MS) {
   const startedAt = Date.now();
@@ -641,7 +661,7 @@ export function buildShippingNote(sourceUrl: string, country: string): string | 
 }
 
 // ════════════════════════════════════════════════════════════════
-// LAYER 1: Claude Haiku Vision — extraction
+// LAYER 1: vision extraction (Sonnet 5.5, escalating to Opus 5.5)
 // ════════════════════════════════════════════════════════════════
 /** The extraction request, as sent. Also what /api/diagnose sends. */
 function extractionPayload(imageBase64: string, mimeType: string): Record<string, unknown> {
@@ -709,7 +729,7 @@ async function extractFromImage(
     return null;
   };
 
-  const first = await callClaude("extraction", EXTRACT_MODEL, body, 20000);
+  const first = await callClaude("extraction", EXTRACT_MODEL, body, EXTRACT_TIMEOUT_MS);
   const firstRead = readOf(first);
   if (firstRead) {
     const read = cleanExtraction({ ...defaults, ...firstRead });
@@ -718,18 +738,18 @@ async function extractFromImage(
     // order candidates for the gate, and a missed brand is how a listing that
     // actually carries the logo on the photo fails to reach the front of the
     // queue. When the read comes back weak on an image the model itself called
-    // good, the one call is worth spending on the strong model - it is a
-    // single call per scan, and only on the scans where the cheap read
-    // visibly underperformed. If the escalation itself fails, the weak read
+    // good, the one call is worth spending on Opus 5.5 - it is a single call
+    // per scan, and only on the scans where the first read visibly
+    // underperformed. If the escalation itself fails, the weak read
     // is still a real read, so it stands (the failure is already logged).
-    const second = readOf(await callClaude("extraction", EXTRACT_ESCALATION_MODEL, body, 25000));
+    const second = readOf(await callClaude("extraction", EXTRACT_ESCALATION_MODEL, body, EXTRACT_TIMEOUT_MS));
     return second ? cleanExtraction({ ...defaults, ...second }) : read;
   }
 
-  // The cheap read failed outright: an error, a refusal, or an answer that
-  // was not JSON. The strong model gets the same request, in either spend
-  // mode, because without a read the scan has no asking price at all.
-  const retry = await callClaude("extraction", EXTRACT_ESCALATION_MODEL, body, 25000);
+  // The first read failed outright: an error, a refusal, or an answer that
+  // was not JSON. Opus 5.5 gets the same request, in either spend mode,
+  // because without a read the scan has no asking price at all.
+  const retry = await callClaude("extraction", EXTRACT_ESCALATION_MODEL, body, EXTRACT_TIMEOUT_MS);
   const retryRead = readOf(retry);
   if (retryRead) return cleanExtraction({ ...defaults, ...retryRead });
   reportClaudeFailure("extraction", retry.ok ? { ...retry, ok: false, kind: "unparseable" } : retry, severity);
@@ -784,12 +804,12 @@ function readFailed(read: VisionExtraction): boolean {
 // LAYER 6: the visual verification gate.
 //
 // ONE CALL PER WAVE, NOT ONE CALL PER CANDIDATE. The reference photo is
-// roughly 1,600 tokens and a candidate thumbnail roughly 150, so a
-// pairwise call spends nearly all of its input re-sending the same photo.
-// Sending that photo once alongside six candidates costs about half what
-// six pairwise calls cost even with the photo cached, and roughly what six
-// calls to a cheap model would cost without it - which is how the strong
-// model stays on every candidate. Numbers in scripts/cost-model.mjs.
+// roughly 1,600 tokens (capped at 1568px on its long edge, see
+// capForModel) and a candidate thumbnail roughly 150, so a pairwise call
+// spends nearly all of its input re-sending the same photo. Sending it once
+// alongside a batch of candidates costs a fraction of the pairwise calls,
+// and with thinking always on every call saved is also a thinking pass
+// saved. Numbers in scripts/cost-model.mjs.
 //
 // The risk this shape introduces is real and is handled in the prompt: a
 // model shown six candidates at once can slide from judging each one
@@ -804,7 +824,9 @@ function readFailed(read: VisionExtraction): boolean {
 // "different". An unjudgeable candidate is not given the benefit of the
 // doubt.
 // ════════════════════════════════════════════════════════════════
-const VERIFY_BATCH_MAX = 6;
+// Eight, so the rebrand and retailer pools (four each) fit one call. Wave one
+// of the identification window is six.
+const VERIFY_BATCH_MAX = 8;
 
 interface BatchOutcome {
   results: VerificationResult[];
@@ -826,11 +848,9 @@ function gatePayload(
       source: { type: "base64", media_type: reference.mimeType, data: reference.data },
       // The reference photo is byte-identical for every wave and every pass
       // in a scan, so it is marked as a cache breakpoint: the first wave
-      // writes it and every later one reads it back at a tenth of the
-      // price. Note this only works on the strong model — its minimum
-      // cacheable prefix is 512 tokens, while the cheap model's is 4,096,
-      // which no image can reach. That asymmetry is the reason the gate
-      // batches rather than downgrades.
+      // writes it and every later one reads it back at a fraction of the
+      // price (0.05x on Opus 5.5, 0.1x on Sonnet 5.5; both cache from 512
+      // tokens, which the photo always clears).
       cache_control: { type: "ephemeral" },
     },
   ];
@@ -871,7 +891,7 @@ async function verifyVisualMatchBatch(
   // be judged either, so a retry would not help: not a failed call.
   if (present.length === 0) return { results, ok: true };
 
-  const call = await callClaude(layer, model, gatePayload(reference, present.map(p => p.image)), 30000);
+  const call = await callClaude(layer, model, gatePayload(reference, present.map(p => p.image)), GATE_TIMEOUT_MS, { effort: gateEffort() });
   if (!call.ok) return { results, ok: false, call };
 
   const parsed = parseReplyJson(call.text);
@@ -884,7 +904,7 @@ async function verifyVisualMatchBatch(
   if (list.length === 0) list = salvageVerdictObjects(call.text || "");
   if (list.length === 0) {
     logProviderFailure({ layer, provider: "anthropic", model, status: call.status, kind: "unparseable", detail: call.text || "" });
-    return { results, ok: false, call: { ...call, ok: false, kind: "unparseable", detail: (call.text || "").slice(0, 300) } };
+    return { results, ok: false, call: { ...call, ok: false, kind: call.truncated ? "truncated" : "unparseable", detail: (call.text || "").slice(0, 300) } };
   }
 
   // Read the candidate number the model echoed back rather than trusting
@@ -1771,15 +1791,15 @@ interface GateOptions {
   budget?: Budget;
   /** Defaults to the wide identification window. */
   window?: number;
-  /** "degraded" moves the gate to the cheap model and caps what it may claim. */
+  /** "degraded" moves the gate to Sonnet 5.5 alone and caps what it may claim. */
   mode?: SpendMode;
 }
 
 /**
  * Does this candidate carry the brand the vision pass read off the photo?
  * Used twice: to pull such candidates forward in the queue, and - when the
- * gate has been degraded to the cheap model - as the second, independent
- * signal without which a cheap "exact" is not allowed to claim anything.
+ * gate has been degraded - as the second, independent signal without which a
+ * degraded "exact" is not allowed to claim anything.
  */
 function brandConsistent(candidate: ShoppingCandidate, hints?: IdentityHints): boolean {
   const brandWords = significantWords(hints?.brand || "");
@@ -1816,43 +1836,48 @@ function rankForVerification(candidates: ShoppingCandidate[], hints?: IdentityHi
   return scored.map(s => s.candidate);
 }
 
-async function verifyCandidates(
-  match: ShoppingMatch,
+type Verified = { best: ShoppingCandidate; confidence: "exact" | "likely" | "unverified" };
+type Checked = { candidate: ShoppingCandidate; result: VerificationResult; judge: string };
+
+// Who judges, in order: Opus 5.5, then Sonnet 5.5 when Opus cannot answer.
+// In degraded spend mode the order flips: Sonnet 5.5 judges, and Opus 5.5 is
+// called only if Sonnet cannot answer at all, so a budget-spent day never
+// turns a Sonnet outage into failed scans. Either way the degraded cap in
+// settleVerdict applies.
+const gateChain = (options: GateOptions): string[] =>
+  options.mode === "degraded" ? [GATE_MODEL_DEGRADED, GATE_MODEL] : [GATE_MODEL, GATE_MODEL_FALLBACK];
+
+/**
+ * Judges candidates against the reference photo, in batches of up to
+ * VERIFY_BATCH_MAX per call, walking the model chain for each batch.
+ *
+ * NEVER SILENTLY SKIP VERIFICATION. A batch no model could judge used to
+ * come back as "different" verdicts, which is how a 400 on every gate call
+ * became a confident-looking "closest match". Now each batch walks the chain
+ * until a model answers:
+ *   - a 5xx, or a 200 whose answer could not be read, is retried once on the
+ *     same model, since the same request can succeed a second time;
+ *   - a 4xx is not retried there (the same request gets the same 400), and
+ *     neither is backpressure (the limit is still there), a refusal (the
+ *     other model has different classifiers), a max_tokens stop (the same
+ *     request stops in the same place) or a timeout: the next model gets it.
+ * A batch no model could judge is recorded against the scan, and the scan
+ * reports that it could not be completed unless the product was still
+ * verified some other way. See scan-trace.ts.
+ */
+async function judgeCandidates(
+  candidates: ShoppingCandidate[],
   reference: { data: string; mimeType: string },
-  options: GateOptions = {}
-): Promise<{ best: ShoppingCandidate; confidence: "exact" | "likely" | "unverified" }> {
-  const window = options.window ?? VERIFY_WINDOW;
-  const degraded = options.mode === "degraded";
-  // Who judges, in order. The strong gate first; when it cannot answer, the
-  // next full-strength model; the cheap model last, as the degraded gate,
-  // whose verdicts are capped below (DEGRADED CONFIDENCE). In degraded spend
-  // mode the cheap model is the whole chain: the budget is gone, and the
-  // strong models are what spent it.
-  const chain = degraded ? [GATE_MODEL_DEGRADED] : [GATE_MODEL, GATE_MODEL_FALLBACK, GATE_MODEL_DEGRADED];
+  options: GateOptions
+): Promise<Checked[]> {
+  const chain = gateChain(options);
   const timeAllows = () => !options.budget || options.budget.allows(VERIFY_WAVE_COST_MS);
-
-  const ordered = rankForVerification(match.candidates, options.hints).slice(0, window);
-  if (ordered.length === 0) return { best: match.candidates[0], confidence: "unverified" };
-
-  // NEVER SILENTLY SKIP VERIFICATION. A wave no model could judge used to
-  // come back as six "different" verdicts, which is how a 400 on every gate
-  // call became a confident-looking "closest match". Now each wave walks the
-  // chain until a model answers:
-  //   - a 5xx, or a 200 whose answer could not be read, is retried once on
-  //     the same model, since the same request can succeed a second time;
-  //   - a 4xx is not retried there (the same request gets the same 400),
-  //     and neither is backpressure (the limit is still there) or a refusal
-  //     (another model has different classifiers): the next model gets it;
-  //   - a timeout moves on rather than spending a second 30 seconds.
-  // A wave that no model could judge is recorded against the scan, and the
-  // scan reports that it could not be completed unless the product was
-  // still verified some other way. See scan-trace.ts.
-  const checked: { candidate: ShoppingCandidate; result: VerificationResult; judge: string }[] = [];
+  const checked: Checked[] = [];
   const judgeSlice = async (urls: string[]): Promise<{ outcome: BatchOutcome; judge: string }> => {
     let last: BatchOutcome = { results: urls.map(() => ({ match: "different", reasoning: "verification unavailable" })), ok: false };
-    // Once every model in the chain has failed on this scan, the next wave
+    // Once every model in the chain has failed on this scan, the next batch
     // would only repeat the same failing calls and spend the clock doing it.
-    // The failure is already recorded; this wave is simply not judged.
+    // The failure is already recorded; this batch is simply not judged.
     if (hasFailed("gate")) return { outcome: last, judge: "" };
     for (let m = 0; m < chain.length; m++) {
       if (m > 0 && !timeAllows()) break;
@@ -1860,7 +1885,7 @@ async function verifyCandidates(
       last = await verifyVisualMatchBatch(reference, urls, model);
       if (last.ok) return { outcome: last, judge: model };
       const kind = last.call?.kind;
-      const sameModelAgain = kind === "server" || kind === "unparseable" || kind === "empty" || kind === "truncated" || kind === undefined || kind === "ok";
+      const sameModelAgain = kind === "server" || kind === "unparseable" || kind === "empty" || kind === undefined || kind === "ok";
       if (sameModelAgain && timeAllows()) {
         last = await verifyVisualMatchBatch(reference, urls, model);
         if (last.ok) return { outcome: last, judge: model };
@@ -1875,79 +1900,64 @@ async function verifyCandidates(
     });
     return { outcome: last, judge: "" };
   };
-  const runWave = async (wave: ShoppingCandidate[]) => {
-    for (let i = 0; i < wave.length; i += VERIFY_BATCH_MAX) {
-      const slice = wave.slice(i, i + VERIFY_BATCH_MAX);
-      const { outcome, judge } = await judgeSlice(slice.map(c => c.imageUrl));
-      slice.forEach((candidate, j) => checked.push({ candidate, result: outcome.results[j], judge }));
-    }
-  };
-
-  await runWave(ordered.slice(0, VERIFY_WAVE_ONE));
-
-  // Second wave, only when the first produced no confirmed identity. A
-  // buried correct match is precisely what a narrow window misses, and it
-  // is worth the extra call. When the top of the list has already
-  // confirmed, spending it would only be hunting for a cheaper copy of
-  // something the direct-retailer layer downstream already hunts for.
-  const secondWave = ordered.slice(VERIFY_WAVE_ONE);
-  const confirmed = () => checked.some(c => c.result.match === "exact");
-  if (!confirmed() && secondWave.length > 0 && (!options.budget || options.budget.allows(VERIFY_WAVE_COST_MS))) {
-    await runWave(secondWave);
+  for (let i = 0; i < candidates.length; i += VERIFY_BATCH_MAX) {
+    const slice = candidates.slice(i, i + VERIFY_BATCH_MAX);
+    const { outcome, judge } = await judgeSlice(slice.map(c => c.imageUrl));
+    slice.forEach((candidate, j) => checked.push({ candidate, result: outcome.results[j], judge }));
   }
+  return checked;
+}
 
-  // The two tiers are not the same decision, and treating them as one
-  // would smuggle the original bug back in a smaller form.
-  //
-  // "exact" means identity is CONFIRMED, so the cheapest confirmed record
-  // wins: identity first, price second. Every record in that tier is the
-  // same object, so choosing the cheapest is choosing a better price for
-  // the thing in the photo, which is what both intents want.
-  //
-  // "similar" means identity is NOT confirmed — same category, or same
-  // brand, nothing more. In that tier the engine's own ranking is the
-  // strongest evidence available, and price must not override it: a
-  // cheaper lookalike eight places down is not a better price, it is a
-  // likelier wrong product wearing a smaller number. So the best-ranked
-  // record wins there, preferring one that publishes a price because a
-  // record without one cannot carry the figure on the card.
-  //
-  // In both tiers, when the chosen record has no price at all — normal for
-  // Lens, where the best match is often a brand's own page — the caller
-  // prices it with a second, now-accurate search (priceVerifiedIdentity).
-  const pick = (tier: "exact" | "similar", rule: "cheapest" | "best-ranked"): { candidate: ShoppingCandidate; judge: string } | null => {
-    // `checked` is in ranked order (wave one, then wave two), so index 0 of
-    // a tier is its best-ranked member.
+/**
+ * Turns judged candidates into one answer.
+ *
+ * The two tiers are not the same decision, and treating them as one would
+ * smuggle the original bug back in a smaller form.
+ *
+ * "exact" means identity is CONFIRMED, so the cheapest confirmed record
+ * wins: identity first, price second. Every record in that tier is the same
+ * object, so choosing the cheapest is choosing a better price for the thing
+ * in the photo, which is what both intents want.
+ *
+ * "similar" means identity is NOT confirmed — same category, or same brand,
+ * nothing more. In that tier the engine's own ranking is the strongest
+ * evidence available, and price must not override it: a cheaper lookalike
+ * eight places down is not a better price, it is a likelier wrong product
+ * wearing a smaller number. So the best-ranked record wins there, preferring
+ * one that publishes a price because a record without one cannot carry the
+ * figure on the card.
+ *
+ * In both tiers, when the chosen record has no price at all — normal for
+ * Lens, where the best match is often a brand's own page — the caller prices
+ * it with a second, now-accurate search (priceVerifiedIdentity).
+ */
+function settleVerdict(checked: Checked[], ordered: ShoppingCandidate[], options: GateOptions): Verified {
+  const pick = (tier: "exact" | "similar", rule: "cheapest" | "best-ranked"): Checked | null => {
+    // `checked` is in ranked order, so index 0 of a tier is its best-ranked
+    // member.
     const inTier = checked.filter(c => c.result.match === tier);
     if (inTier.length === 0) return null;
     const priced = inTier.filter(c => c.candidate.price > 0);
-    const chosen = rule === "best-ranked" || priced.length === 0
+    return rule === "best-ranked" || priced.length === 0
       ? (priced[0] || inTier[0])
       : priced.reduce((best, c) => (c.candidate.price < best.candidate.price ? c : best), priced[0]);
-    return { candidate: chosen.candidate, judge: chosen.judge };
   };
 
-  // DEGRADED CONFIDENCE. When the spend governor has taken the gate down to
-  // the cheap model, the gate is no longer allowed to say "exact" — the
-  // card's strongest label has to mean what it says, and what produced it
-  // was not the judge that label was calibrated on. Its best available
-  // answer becomes "likely", and only for a candidate that ALSO carries the
-  // brand read off the photo, which is a second signal the model did not
-  // produce. Anything less corroborated is "unverified", which still
-  // returns a full FINDER result and simply never carries a markup
-  // accusation. That is the honest shape of "we are running cheap right
-  // now", and it is why degrading is survivable: the product keeps
-  // answering, it just stops making its strongest claim.
-  //
-  // The same cap applies when the cheap model judged a wave because both
-  // stronger models in the fallback chain failed: what matters is which
-  // judge produced the verdict, not why it was the one asked.
-  const settle = (
-    picked: { candidate: ShoppingCandidate; judge: string },
-    confidence: "exact" | "likely"
-  ): { best: ShoppingCandidate; confidence: "exact" | "likely" | "unverified" } => {
+  // DEGRADED CONFIDENCE. When the spend governor has degraded the engine,
+  // the gate runs on the cheaper path and is no longer allowed to say
+  // "exact": the card's strongest label has to mean what it says, and it
+  // was calibrated on the full gate. Its best available answer becomes
+  // "likely", and only for a candidate that ALSO carries the brand read off
+  // the photo, which is a second signal the model did not produce. Anything
+  // less corroborated is "unverified", which still returns a full FINDER
+  // result and simply never carries a markup accusation. That is the honest
+  // shape of "we are running cheap right now", and it is why degrading is
+  // survivable: the product keeps answering, it just stops making its
+  // strongest claim. Outside degraded mode, Sonnet 5.5 standing in for a
+  // failed Opus 5.5 is a full-strength gate, by the owner's decision.
+  const settle = (picked: Checked, confidence: "exact" | "likely"): Verified => {
     const { candidate } = picked;
-    if (!degraded && picked.judge !== GATE_MODEL_DEGRADED) return { best: candidate, confidence };
+    if (options.mode !== "degraded") return { best: candidate, confidence };
     if (brandConsistent(candidate, options.hints)) return { best: candidate, confidence: "likely" };
     return { best: candidate, confidence: "unverified" };
   };
@@ -1964,6 +1974,55 @@ async function verifyCandidates(
   // if none of them has a price, the top-ranked one is returned and the
   // caller refuses to invent a number for it.
   return { best: ordered.find(c => c.price > 0) || ordered[0], confidence: "unverified" };
+}
+
+async function verifyCandidates(
+  match: ShoppingMatch,
+  reference: { data: string; mimeType: string },
+  options: GateOptions = {}
+): Promise<Verified> {
+  const window = options.window ?? VERIFY_WINDOW;
+  const ordered = rankForVerification(match.candidates, options.hints).slice(0, window);
+  if (ordered.length === 0) return { best: match.candidates[0], confidence: "unverified" };
+
+  const checked = await judgeCandidates(ordered.slice(0, VERIFY_WAVE_ONE), reference, options);
+
+  // Second wave, only when the first produced no confirmed identity. A
+  // buried correct match is precisely what a narrow window misses, and it
+  // is worth the extra call. When the top of the list has already
+  // confirmed, spending it would only be hunting for a cheaper copy of
+  // something the direct-retailer layer downstream already hunts for.
+  const secondWave = ordered.slice(VERIFY_WAVE_ONE);
+  const confirmed = checked.some(c => c.result.match === "exact");
+  if (!confirmed && secondWave.length > 0 && (!options.budget || options.budget.allows(VERIFY_WAVE_COST_MS))) {
+    checked.push(...(await judgeCandidates(secondWave, reference, options)));
+  }
+  return settleVerdict(checked, ordered, options);
+}
+
+/**
+ * Several candidate pools from independent searches, judged together and
+ * settled separately. The rebrand and direct-retailer searches each bring a
+ * narrow window of candidates; judging them in ONE call (they fit in a
+ * single batch) instead of one call each saves a full call's thinking and
+ * latency on every cold scan, and each pool still gets its own answer from
+ * its own candidates.
+ */
+async function verifyPools(
+  pools: (ShoppingMatch | null)[],
+  reference: { data: string; mimeType: string },
+  options: GateOptions
+): Promise<(Verified | null)[]> {
+  const window = options.window ?? VERIFY_WINDOW_PRICING;
+  const ordered = pools.map(pool => (pool ? rankForVerification(pool.candidates, options.hints).slice(0, window) : []));
+  const union = ordered.flat();
+  if (union.length === 0) return pools.map(() => null);
+  const checked = await judgeCandidates(union, reference, options);
+  return pools.map((pool, i) => {
+    if (!pool || ordered[i].length === 0) return null;
+    const mine = new Set(ordered[i]);
+    return settleVerdict(checked.filter(c => mine.has(c.candidate)), ordered[i], options);
+  });
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2041,16 +2100,15 @@ async function priceVerifiedIdentity(
 //      title.
 //   4. One visual comparison has to come back "exact".
 //
-// That fourth check runs on the cheap model on purpose, and it is the one
-// place in this engine where the cheap model touches identification. It is
-// safe because of what it is allowed to do: it can only ACCEPT an
-// identification the strong model already made for a photo that
+// That fourth check runs on Sonnet 5.5 rather than the full gate on
+// purpose. It is safe because of what it is allowed to do: it can only
+// ACCEPT an identification the gate already made for a photo that
 // fingerprinted the same way, and anything short of "exact" falls straight
 // through to the full gate. It cannot produce a new identification, and a
 // wrong answer from it costs a wasted call, not a wrong product.
 //
 // A hit keeps full confidence even when the engine is degraded, because the
-// identification being reused was not made by the cheap model. That is what
+// identification being reused was made by the full gate. That is what
 // keeps a viral product producing full-strength verdicts during exactly the
 // spike that would otherwise have spent the budget.
 // ════════════════════════════════════════════════════════════════
@@ -2087,7 +2145,7 @@ async function reuseIdentification(
   if (!hit) return null;
 
   const confirmation = await verifyVisualMatchBatch(
-    reference, [hit.entry.imageUrl], GATE_MODEL_DEGRADED
+    reference, [hit.entry.imageUrl], REUSE_CONFIRM_MODEL
   );
   // A failed confirmation call is not a confirmation. Falling through to the
   // full gate costs money; accepting an unconfirmed reuse costs correctness.
@@ -2268,7 +2326,7 @@ CRITICAL: title must include defining material/type descriptors, not a bare gene
 PAGE TEXT:
 ${text}`,
     }],
-  }, 12000);
+  }, TEXT_TIMEOUT_MS);
 
   const parsed = (call.ok ? parseReplyJson(call.text) : null) as { title?: unknown; price?: unknown; currency?: unknown } | null;
   if (!parsed || typeof parsed !== "object") {
@@ -2304,7 +2362,7 @@ PRODUCT TITLE: ${title || "(none given)"}
 PAGE CONTENT:
 ${context}`,
     }],
-  }, 12000);
+  }, TEXT_TIMEOUT_MS);
 
   // The page title is a usable query on its own, so a failure here costs
   // precision, not the scan. Logged by callClaude; nothing else to do.
@@ -2382,11 +2440,14 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   const requesterCountry = sanitizeCountry(country);
   const budget = createBudget();
   // Read once, applied for the whole scan. "degraded" means the day's model
-  // budget is spent or the API is pushing back: the gate moves to the cheap
-  // model, caps what it is allowed to claim, and the enhancement layers are
+  // budget is spent or the API is pushing back: the gate moves to Sonnet 5.5
+  // alone, caps what it is allowed to claim, and the enhancement layers are
   // skipped. See model-budget.ts.
   const spendMode = await currentSpendMode();
-  const vision = await extractFromImage(imageBase64, mimeType, spendMode, intent);
+  // What the models see: the photo capped at 1568px (see image-cap.ts).
+  // Lens still gets the original upload below.
+  const modelPhoto = await capForModel({ data: imageBase64, mimeType });
+  const vision = await extractFromImage(modelPhoto.data, modelPhoto.mimeType, spendMode, intent);
   // No read at all, on a scan that needs one: the result is already decided
   // (could not be completed), so nothing else is worth paying for. During a
   // model outage this keeps a failing scan from spending a Lens search.
@@ -2403,7 +2464,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   // unless identification ends up running off a product photo found on the
   // seller's own page, in which case the whole verification chain stays
   // consistent with the image that actually established the identity.
-  let reference = { data: imageBase64, mimeType };
+  let reference = modelPhoto;
   const gate: GateOptions = { hints, budget, mode: spendMode };
 
   // ── Try Lens first: match on pixels, not words ──
@@ -2468,7 +2529,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
             // Identity is being established from the photo on the seller's
             // own product page, so that photo becomes the reference every
             // later check in this scan compares against.
-            reference = { data: pageImage.data, mimeType: pageImage.mimeType };
+            reference = await capForModel(pageImage);
             const verified = await verifyCandidates(shopping, reference, gate);
             // Same honesty fix as above - no artificial upgrade of a
             // genuinely unverified match.
@@ -2585,23 +2646,24 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
         : Promise.resolve(null),
     ]);
 
-    if (unbrandedFound && unbrandedFound.match.lowestPrice > 0) {
-      const unbrandedVerified = await verifyCandidates(
-        unbrandedFound.match, reference, { ...gate, window: VERIFY_WINDOW_PRICING }
+    // Both pools judged in one gate call, each settled on its own; then
+    // applied in order, the retailer challenger measured against whatever
+    // the rebrand step left in place.
+    const unbrandedPool = unbrandedFound && unbrandedFound.match.lowestPrice > 0 ? unbrandedFound.match : null;
+    const retailerPool = retailerFound && retailerFound.match.lowestPrice > 0 ? retailerFound.match : null;
+    if ((unbrandedPool || retailerPool) && budget.allows(VERIFY_WAVE_COST_MS)) {
+      const [unbrandedVerified, retailerVerified] = await verifyPools(
+        [unbrandedPool, retailerPool], reference, { ...gate, window: VERIFY_WINDOW_PRICING }
       );
-      if (shouldReplace(confidence, shopping.lowestPrice, unbrandedVerified.confidence, unbrandedVerified.best.price)) {
-        shopping = applyVerifiedCandidate(unbrandedFound.match, unbrandedVerified);
+      if (unbrandedFound && unbrandedPool && unbrandedVerified &&
+          shouldReplace(confidence, shopping.lowestPrice, unbrandedVerified.confidence, unbrandedVerified.best.price)) {
+        shopping = applyVerifiedCandidate(unbrandedPool, unbrandedVerified);
         engineUsed = `unbranded_${unbrandedFound.engineUsed}`;
         confidence = unbrandedVerified.confidence;
       }
-    }
-
-    if (retailerFound && retailerFound.match.lowestPrice > 0 && budget.allows(VERIFY_WAVE_COST_MS)) {
-      const retailerVerified = await verifyCandidates(
-        retailerFound.match, reference, { ...gate, window: VERIFY_WINDOW_PRICING }
-      );
-      if (shouldReplace(confidence, shopping.lowestPrice, retailerVerified.confidence, retailerVerified.best.price)) {
-        shopping = applyVerifiedCandidate(retailerFound.match, retailerVerified);
+      if (retailerFound && retailerPool && retailerVerified &&
+          shouldReplace(confidence, shopping.lowestPrice, retailerVerified.confidence, retailerVerified.best.price)) {
+        shopping = applyVerifiedCandidate(retailerPool, retailerVerified);
         engineUsed = `direct_${retailerFound.source.toLowerCase()}`;
         confidence = retailerVerified.confidence;
       }
@@ -2801,6 +2863,9 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
     if (!baseQuery || baseQuery.length < 3) return getUnresolvedResult();
 
     const pageImage = pageData.imageUrl ? await fetchImageAsBase64(pageData.imageUrl) : null;
+    // The page's own product photo is the reference every check on this
+    // path compares against: capped for the models, original for Lens.
+    const pageReference = pageImage ? await capForModel(pageImage) : null;
     // There is no vision pass on this path, so the page's own title is the
     // only identity hint available for ordering candidates. Same rule as
     // the image path: it affects the order candidates are checked in,
@@ -2843,7 +2908,7 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
     // ── Step 3: visual verification — only possible with a real photo.
     //    Without one, confidence honestly stays "unverified" (FINDER). ──
     if (pageImage) {
-      const verified = await verifyCandidates(shopping, pageImage, gate);
+      const verified = await verifyCandidates(shopping, pageReference!, gate);
       confidence = verified.confidence;
       shopping = applyVerifiedCandidate(shopping, verified);
 
@@ -2852,7 +2917,7 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
       // easily be a record with no published price; the confirmed name is
       // then what finds one.
       if (confidence !== "unverified" && shopping.lowestPrice <= 0) {
-        const priced = await priceVerifiedIdentity(shopping, confidence, pageImage, gate);
+        const priced = await priceVerifiedIdentity(shopping, confidence, pageReference!, gate);
         if (priced) {
           shopping = priced.match;
           engineUsed = `${engineUsed}+priced_${priced.engineUsed}`;
@@ -2876,7 +2941,7 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
         const retailerFound = await searchAllDirectRetailers(retailerQuery);
         if (retailerFound && retailerFound.match.lowestPrice > 0) {
           const retailerVerified = await verifyCandidates(
-            retailerFound.match, pageImage, { ...gate, window: VERIFY_WINDOW_PRICING }
+            retailerFound.match, pageReference!, { ...gate, window: VERIFY_WINDOW_PRICING }
           );
           // Same rule as the image pipeline: a cheaper challenger never
           // evicts a better-identified incumbent.
@@ -2997,8 +3062,8 @@ export function getUnresolvedResult(): ScanResult {
 // ════════════════════════════════════════════════════════════════
 // DIAGNOSE. What /api/diagnose runs: one real call to each Claude model the
 // engine uses, built by the same builder with the same payload a scan sends
-// (the gate shape for the two gate models, the extraction shape for the
-// cheap model), and one real Lens search on a sample photo through the same
+// (the gate shape on Opus 5.5 and on Sonnet 5.5, the extraction shape on
+// Sonnet 5.5), and one real Lens search on a sample photo through the same
 // Blob upload and delete a scan does. The test suite cannot do this: it
 // stubs every provider, which is exactly how a request every provider would
 // have refused shipped green.
@@ -3027,28 +3092,39 @@ export async function diagnoseEngine(sample: { data: string; mimeType: string })
   // The photo compared with itself: a working gate answers "exact".
   const gate = gatePayload(sample, [sample]);
   const extraction = extractionPayload(sample.data, sample.mimeType);
-  const probes: [string, FailureLayer, string, Record<string, unknown>, (t: string | null) => boolean][] = [
-    ["gate", "gate", GATE_MODEL, gate, isVerdict],
-    ["gate fallback", "gate", GATE_MODEL_FALLBACK, gate, isVerdict],
-    ["extraction, degraded gate, text", "extraction", EXTRACT_MODEL, extraction, isExtraction],
+  // Every model the engine uses, each in the role that matters most for it:
+  // Opus 5.5 as the gate; Sonnet 5.5 as the gate it falls back to (also the
+  // degraded gate and the cache-hit re-confirmation) and as the first read.
+  const probes: [string, FailureLayer, string, Record<string, unknown>, (t: string | null) => boolean, Effort | null][] = [
+    ["gate", "gate", GATE_MODEL, gate, isVerdict, gateEffort()],
+    ["gate fallback, degraded gate, re-confirmation", "gate", GATE_MODEL_FALLBACK, gate, isVerdict, gateEffort()],
+    ["first read, page text, search query", "extraction", EXTRACT_MODEL, extraction, isExtraction, null],
   ];
 
-  const claude = Promise.all(probes.map(async ([role, layer, model, payload, accept]): Promise<LayerProbe> => {
+  const claude = Promise.all(probes.map(async ([role, layer, model, payload, accept, effort]): Promise<LayerProbe> => {
     const started = Date.now();
-    const call = await callClaude(layer, model, payload, 30000);
+    const call = await callClaude(layer, model, payload, layer === "gate" ? GATE_TIMEOUT_MS : EXTRACT_TIMEOUT_MS, { effort });
     const parsed = call.ok && accept(call.text);
-    const { messages, ...shape } = buildClaudeRequest(model, payload);
+    const { messages, ...shape } = buildClaudeRequest(model, payload, { effort });
     void messages;
+    // Output tokens are thinking plus the visible answer. The answer is
+    // estimated at four characters a token; the rest is thinking, which is
+    // the number scripts/cost-model.mjs needs (--thinking).
+    const answerTokens = Math.ceil((call.text || "").length / 4);
+    const thinkingTokens = typeof call.outputTokens === "number" ? Math.max(0, call.outputTokens - answerTokens) : null;
     return {
       layer: `claude ${model} (${role})`,
-      pass: parsed,
+      pass: parsed && !call.truncated,
       latencyMs: Date.now() - started,
       status: call.status,
-      detail: parsed ? "answered and parsed"
+      detail: parsed ? (call.truncated ? "answered, but stopped at max_tokens: thinking needs more room" : "answered and parsed")
         : call.ok ? `answered but the reply did not parse: ${(call.text || "").slice(0, 200)}`
         : `${call.kind}: ${call.detail.slice(0, 300)}`,
       stopReason: call.stopReason ?? null,
       costUsd: roundUsd(call.costUsd || 0),
+      outputTokens: call.outputTokens ?? null,
+      thinkingTokensApprox: thinkingTokens,
+      maxTokens: shape.max_tokens,
       reply: call.ok ? (call.text || "").slice(0, 200) : null,
       request: shape,
     };

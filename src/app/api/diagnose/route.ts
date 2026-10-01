@@ -5,6 +5,8 @@ import { DIAGNOSE_SAMPLE } from "@/lib/diagnose-sample";
 import { usdRates } from "@/lib/fx";
 import { redisRoundTrip } from "@/lib/redis";
 import { currentSpendMode, todayModelSpend, DAILY_MODEL_BUDGET_USD } from "@/lib/model-budget";
+import { capForModel, MODEL_IMAGE_LONG_EDGE } from "@/lib/image-cap";
+import sharp from "sharp";
 
 /**
  * LIVE DIAGNOSE. Every provider the scan engine depends on, called for real,
@@ -19,12 +21,18 @@ import { currentSpendMode, todayModelSpend, DAILY_MODEL_BUDGET_USD } from "@/lib
  * it stubs every provider; that is how a request every Opus 5 call refused
  * shipped green. Run this after every deploy and after any provider change.
  *
- * What one run spends: three Claude calls (the gate on Opus 5 and on Sonnet
- * 5, each comparing a 320px sample with itself; the extraction on Haiku 4.5),
- * measured from the usage they report and returned as cost.claudeUsd, about
- * one cent at list prices; one SerpApi Lens search; one Serper search credit;
+ * What one run spends: three Claude calls (the gate on Opus 5.5 and on
+ * Sonnet 5.5, each comparing a 320px sample with itself; the first read on
+ * Sonnet 5.5), measured from the usage they report and returned as
+ * cost.claudeUsd: about two to six cents at list prices, depending on how
+ * much the models think; one SerpApi Lens search; one Serper search credit;
  * one Blob upload and delete. The SerpApi account lookup is free. The Claude
  * spend counts against the day's model budget like any other call.
+ *
+ * Each Claude layer also reports outputTokens and thinkingTokensApprox. The
+ * models always think, thinking is billed as output, and it is the number
+ * that decides what a scan costs: feed the average to
+ *   npm run cost-model -- --thinking <tokens>
  *
  * Behind the same bearer token as /api/stats and /api/preflight. Answers
  * never include a key, an email or the image.
@@ -106,6 +114,27 @@ async function exchangeRates(): Promise<LayerProbe> {
   return { layer: "exchange rates", pass: !!table.rates.mad, latencyMs: since(started), status: 200, detail: `rates for ${table.date}: ${shown} per USD` };
 }
 
+// The 1568px cap on photos sent to the models runs on sharp, a native
+// module. If it ever fails to load in the runtime, the cap silently passes
+// photos through at full size, which costs about 2.5x the image tokens on
+// every call. This proves it works where it runs.
+async function photoCap(): Promise<LayerProbe> {
+  const started = Date.now();
+  try {
+    const big = await sharp({ create: { width: 1170, height: 2532, channels: 3, background: "#7b5ea7" } }).png().toBuffer();
+    const capped = await capForModel({ data: big.toString("base64"), mimeType: "image/png" });
+    const meta = await sharp(Buffer.from(capped.data, "base64")).metadata();
+    const longEdge = Math.max(meta.width || 0, meta.height || 0);
+    const ok = longEdge === MODEL_IMAGE_LONG_EDGE;
+    return {
+      layer: "photo cap", pass: ok, latencyMs: since(started), status: ok ? 200 : 0,
+      detail: ok ? `a 1170x2532 screenshot reaches the models at ${meta.width}x${meta.height}` : `long edge ${longEdge}, expected ${MODEL_IMAGE_LONG_EDGE}: photos are not being capped`,
+    };
+  } catch (err) {
+    return { layer: "photo cap", pass: false, latencyMs: since(started), status: 0, detail: `sharp failed: ${String((err as Error)?.message || err).slice(0, 200)}` };
+  }
+}
+
 async function redis(): Promise<LayerProbe> {
   const started = Date.now();
   const ok = await redisRoundTrip();
@@ -116,17 +145,19 @@ export async function GET(req: NextRequest) {
   if (!isOperator(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const started = Date.now();
-  const [engine, account, backup, rates, store, mode, spend] = await Promise.all([
+  const [engine, account, backup, rates, store, cap, mode, spend] = await Promise.all([
     diagnoseEngine(DIAGNOSE_SAMPLE),
     serpApiAccount(),
     serper(),
     exchangeRates(),
     redis(),
+    photoCap(),
     currentSpendMode(),
     todayModelSpend(),
   ]);
-  const layers = [...engine, account, backup, rates, store];
+  const layers = [...engine, account, backup, rates, store, cap];
   const claudeUsd = engine.reduce((sum, p) => sum + (typeof p.costUsd === "number" ? p.costUsd : 0), 0);
+  const thinking = engine.map(p => p.thinkingTokensApprox).filter((t): t is number => typeof t === "number");
 
   return NextResponse.json(
     {
@@ -139,6 +170,10 @@ export async function GET(req: NextRequest) {
         claudeUsd: Math.round(claudeUsd * 1_000_000) / 1_000_000,
         searches: { serpapiLens: process.env.SERPAPI_KEY ? 1 : 0, serper: process.env.SERPER_API_KEY ? (process.env.SERPAPI_KEY ? 1 : 2) : 0 },
         note: "Claude cost is measured from this run's reported usage. Search cost is one search per provider at your plan's per-search price; the SerpApi account lookup is free.",
+      },
+      thinking: {
+        perCallApprox: thinking.length ? Math.round(thinking.reduce((a, b) => a + b, 0) / thinking.length) : null,
+        note: "Average thinking tokens per call in this run. Re-price scans with: npm run cost-model -- --thinking <this number>",
       },
       layers,
     },

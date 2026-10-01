@@ -14,7 +14,14 @@
  *
  * Both failures were swallowed and looked like "nothing verified". The other
  * checks stub api.anthropic.com with a server that accepts anything, which is
- * why none of them could see it. This one stubs it with a server that applies
+ * why none of them could see it.
+ *
+ * Since then the owner has settled the models: Claude Opus 5.5 and Claude
+ * Sonnet 5.5, nothing else, in every path that identifies or verifies a
+ * product. Both always think, and max_tokens covers thinking plus the
+ * answer, so this check also proves that the thinking room on every call
+ * leaves the JSON answer intact, and that a call whose thinking used the
+ * whole budget is handed to the next model rather than read as "no match". This one stubs it with a server that applies
  * Anthropic's DOCUMENTED request rules and answers a violation the way the
  * real API does, with a 400. The rules below are written out here from the
  * documentation, not imported from the engine, so the engine cannot pass by
@@ -80,30 +87,42 @@ function documentedViolations(body) {
 }
 
 /**
- * The owner's rules on top of the documented ones. The cost model assumes no
- * thinking tokens, so the two models that can turn thinking off must; Opus 5.5
- * cannot, so it runs at low effort with room for the thinking it will do;
- * Haiku keeps temperature 0; a model nobody has written rules for gets none of
- * the optional fields, because a guess is how the original 400 happened.
+ * The owner's rules on top of the documented ones: only the two 5.5 models;
+ * no sampling parameters; adaptive thinking left on (no thinking field, or
+ * "adaptive"); effort at its lowest unless GATE_EFFORT raises the gate; and
+ * max_tokens big enough that thinking cannot eat the answer, without going
+ * past the 16K that a non-streamed call should stay under.
  */
-function policyViolations(body) {
+const ENGINE_MODELS = ["claude-opus-5-5", "claude-sonnet-5-5"];
+const THINKING_ROOM = 15_000;
+const MAX_TOKENS_CEILING = 16_000;
+
+/** What the answer itself needs, by the kind of call: the engine's own budgets. */
+function answerBudget(body) {
+  const prompt = textOf(body);
+  if (prompt.includes("candidate product listing image")) {
+    const candidates = body.messages[0].content.filter(b => b.type === "image").length - 1;
+    return 250 + candidates * 90;
+  }
+  if (prompt.includes("Product intelligence scan")) return 350;
+  if (prompt.includes("Extract the product name and price")) return 200;
+  return 120;
+}
+
+function policyViolations(body, { gateEffort = "low" } = {}) {
   const out = [];
   const model = canonical(body.model);
-  const known = !!DOCUMENTED[model];
+  if (!ENGINE_MODELS.includes(model)) out.push(`policy: ${body.model} is not one of the product's models (${ENGINE_MODELS.join(", ")})`);
   const sampling = ["temperature", "top_p", "top_k"].filter(p => p in body);
-  if (model !== "claude-haiku-4-5" && sampling.length) out.push(`policy: no sampling parameters on ${body.model} (sent ${sampling.join(", ")})`);
-  if (model === "claude-haiku-4-5" && body.temperature !== 0) out.push("policy: Haiku 4.5 keeps temperature 0");
-  if ((model === "claude-opus-5" || model === "claude-sonnet-5") && body.thinking?.type !== "disabled") {
-    out.push(`policy: ${body.model} must send thinking {type:"disabled"} (the cost model assumes no thinking tokens)`);
-  }
-  if (model === "claude-opus-5-5") {
-    if (body.output_config?.effort !== "low") out.push("policy: Opus 5.5 runs at effort low");
-    if (!(body.max_tokens >= 4000)) out.push("policy: Opus 5.5 needs max_tokens raised for its thinking");
-  }
-  if (!known && (sampling.length || body.thinking || body.output_config?.effort)) {
-    out.push(`policy: unknown model ${body.model} must carry no sampling, thinking or effort fields`);
-  }
+  if (sampling.length) out.push(`policy: no sampling parameters (sent ${sampling.join(", ")})`);
+  if (body.thinking && body.thinking.type !== "adaptive") out.push(`policy: thinking stays adaptive (sent ${body.thinking.type})`);
+  const isGate = textOf(body).includes("candidate product listing image");
+  const expected = isGate ? gateEffort : "low";
+  if (body.output_config?.effort !== expected) out.push(`policy: effort ${expected} on ${isGate ? "the gate" : "this call"} (sent ${body.output_config?.effort})`);
   if (!(Number.isInteger(body.max_tokens) && body.max_tokens > 0)) out.push("max_tokens missing");
+  const room = body.max_tokens - answerBudget(body);
+  if (room < THINKING_ROOM) out.push(`policy: only ${room} tokens of thinking room above a ${answerBudget(body)}-token answer (need ${THINKING_ROOM})`);
+  if (body.max_tokens > MAX_TOKENS_CEILING) out.push(`policy: max_tokens ${body.max_tokens} is above ${MAX_TOKENS_CEILING} for a non-streamed call`);
   return out;
 }
 
@@ -175,6 +194,16 @@ function textOf(body) {
 
 function simulatedReply(body, text) {
   const rules = DOCUMENTED[canonical(body.model)];
+  // Thinking that used the whole output budget: a thinking block and
+  // nothing else, stopped at max_tokens.
+  if (scenario.thinkingEatsBudget?.[canonical(body.model)] && text.startsWith("[")) {
+    return json({
+      id: "msg_contract", type: "message", role: "assistant", model: body.model,
+      content: [{ type: "thinking", thinking: "", signature: "c2lnbmF0dXJl" }],
+      stop_reason: "max_tokens", stop_sequence: null,
+      usage: { input_tokens: 1800, output_tokens: body.max_tokens },
+    });
+  }
   // What the real API does: a model that thinks by default thinks unless the
   // request turned it off, and its reply then opens with a thinking block
   // whose text is empty under the default display.
@@ -190,8 +219,10 @@ function simulatedReply(body, text) {
   });
 }
 
+const allModelsSeen = new Set();
 function anthropic(body) {
   anthropicBodies.push(body);
+  allModelsSeen.add(body.model);
   const broken = documentedViolations(body);
   if (broken.length) {
     return json({ type: "error", error: { type: "invalid_request_error", message: broken[0] } }, 400);
@@ -268,51 +299,69 @@ const summary = (r) => `${r.mode} / ${r.matchConfidence} / $${r.sourceProduct?.p
   (r.failure ? ` / failure: ${JSON.stringify(r.failure)}` : "");
 const models = (bodies) => [...new Set(bodies.map(b => b.model))].join(", ") || "none";
 
-function auditBodies(label, bodies) {
+function auditBodies(label, bodies, options = {}) {
   const problems = [];
   for (const body of bodies) {
-    for (const v of [...documentedViolations(body), ...policyViolations(body)]) problems.push(`${body.model}: ${v}`);
+    for (const v of [...documentedViolations(body), ...policyViolations(body, options)]) problems.push(`${body.model}: ${v}`);
   }
   check(`${label}: every request body follows the rules (${bodies.length} calls: ${models(bodies)})`,
     problems.length === 0, [...new Set(problems)].join("\n        "));
 }
 
-// 1. A clean image scan: extraction on Haiku, the gate on Opus 5.
+const OPUS = "claude-opus-5-5";
+const SONNET = "claude-sonnet-5-5";
+const isGateBody = (b) => textOf(b).includes("candidate product listing image");
+const isExtractBody = (b) => textOf(b).includes("Product intelligence scan");
+
+// 1. A clean image scan: extraction on Sonnet 5.5, the gate on Opus 5.5.
 section("IMAGE SCAN, FULL MODE");
 {
   const { result, bodies } = await scan({});
   auditBodies("image scan", bodies);
-  check("the gate ran on Opus 5", bodies.some(b => canonical(b.model) === "claude-opus-5" && textOf(b).includes("candidate product listing image")));
+  check("the first read ran on Sonnet 5.5", bodies.some(b => canonical(b.model) === SONNET && isExtractBody(b)), models(bodies));
+  check("the gate ran on Opus 5.5", bodies.some(b => canonical(b.model) === OPUS && isGateBody(b)), models(bodies));
   check("the photo is identified: exact match, the olive cap at $20, a verdict", result.matchConfidence === "exact" && result.sourceProduct.price === 20 && result.mode === "VERDICT", summary(result));
 }
 
-// 2. A weak cheap read escalates extraction to Opus 5.
+// 2. A weak first read escalates extraction to Opus 5.5.
 section("EXTRACTION ESCALATION");
 {
-  const { result, bodies } = await scan({ extract: { "claude-haiku-4-5": { ...READ, productName: "", brand: "" } } });
+  const { result, bodies } = await scan({ extract: { [SONNET]: { ...READ, productName: "", brand: "" } } });
   auditBodies("escalated scan", bodies);
-  check("the escalation call went to Opus 5", bodies.some(b => canonical(b.model) === "claude-opus-5" && textOf(b).includes("Product intelligence scan")));
+  check("the escalation call went to Opus 5.5", bodies.some(b => canonical(b.model) === OPUS && isExtractBody(b)));
   check("and its read was used: a verdict on the olive cap", result.mode === "VERDICT" && result.sourceProduct.price === 20, summary(result));
 }
 
-// 3. Budget spent: the degraded gate on Haiku, capped at "likely".
-section("DEGRADED MODE");
+// 3. Budget spent: the degraded gate on Sonnet 5.5, capped at "likely".
+section("DEGRADED MODE (DAILY BUDGET SPENT)");
 {
   const { result, bodies } = await scan({ spendToday: 1_000_000 });
   auditBodies("degraded scan", bodies);
-  check("no Opus call once the budget is spent", !bodies.some(b => canonical(b.model).startsWith("claude-opus")), models(bodies));
-  check("the cheap gate's best label is likely, never exact", result.matchConfidence !== "exact", summary(result));
+  check("no Opus 5.5 call once the budget is spent", !bodies.some(b => canonical(b.model) === OPUS), models(bodies));
+  check("the gate ran on Sonnet 5.5", bodies.some(b => canonical(b.model) === SONNET && isGateBody(b)), models(bodies));
+  check("the scan still answers: a match, at most likely, never a failure",
+    !result.failure && result.found && result.matchConfidence === "likely", summary(result));
 }
 
-// 4. A pasted link: text extraction and query writing on Haiku, the gate on Opus 5.
+section("DEGRADED MODE, SONNET 5.5 DOWN");
+{
+  const down = { status: 529, type: "overloaded_error", message: "simulated: overloaded" };
+  const { result, bodies } = await scan({ spendToday: 1_000_000, gateFault: { [SONNET]: down } });
+  check("a budget-spent day with Sonnet 5.5 down still answers: Opus 5.5 backs it up",
+    !result.failure && result.found && bodies.some(b => canonical(b.model) === OPUS && isGateBody(b)), summary(result));
+  check("and the degraded cap still holds: likely, never exact", result.matchConfidence === "likely", summary(result));
+}
+
+// 4. A pasted link: page text and query on Sonnet 5.5, the gate on Opus 5.5.
 section("URL SCAN");
 {
   const { result, bodies } = await scan({}, () => engine.scanProductUrl("https://shop.test/acme-trail-cap", "us", "verdict"));
   auditBodies("url scan", bodies);
+  check("page text read on Sonnet 5.5", bodies.some(b => canonical(b.model) === SONNET && textOf(b).includes("Extract the product name and price")), models(bodies));
   check("the url scan identified the cap", result.matchConfidence === "exact", summary(result));
 }
 
-// 5. The thinking-first reply, on every call.
+// 5. Every reply opens with a thinking block, as the 5.5 models' do.
 section("REPLIES THAT OPEN WITH A THINKING BLOCK");
 {
   const { result } = await scan({ thinkingFirst: true });
@@ -320,15 +369,27 @@ section("REPLIES THAT OPEN WITH A THINKING BLOCK");
     result.matchConfidence === "exact" && result.mode === "VERDICT" && result.sourceProduct.price === 20, summary(result));
 }
 
-// 6. The gate model refuses the request shape: fall back, loudly.
+// 6. Thinking eats the whole output budget on the gate model.
+section("THINKING THAT EATS THE OUTPUT BUDGET");
+{
+  const { result, bodies, errors } = await scan({ thinkingEatsBudget: { [OPUS]: true } });
+  const opusGateCalls = bodies.filter(b => canonical(b.model) === OPUS && isGateBody(b)).length;
+  check("a gate reply that is all thinking (stop_reason max_tokens, no text) is not read as no match",
+    result.matchConfidence === "exact" && !result.failure, summary(result));
+  check("it is handed to Sonnet 5.5, not repeated on Opus 5.5 where it would stop in the same place",
+    bodies.some(b => canonical(b.model) === SONNET && isGateBody(b)) && opusGateCalls === 1, `${opusGateCalls} Opus gate call(s); ${models(bodies)}`);
+  check("and logged as truncated", errors.some(e => e.includes("kind=truncated")), errors.join(" | "));
+}
+
+// 7. The gate model refuses the request shape: fall back, loudly.
 section("GATE FALLBACK");
 {
   const fault = { status: 400, type: "invalid_request_error", message: "simulated: model rejected the request" };
-  const { result, bodies, errors } = await scan({ gateFault: { "claude-opus-5": fault } });
+  const { result, bodies, errors } = await scan({ gateFault: { [OPUS]: fault } });
   auditBodies("fallback scan", bodies);
-  check("a 400 from the gate model falls back to Sonnet 5", bodies.some(b => canonical(b.model) === "claude-sonnet-5"), models(bodies));
-  check("and the scan still identifies the cap", result.matchConfidence === "exact" && result.mode === "VERDICT", summary(result));
-  const logged = errors.find(e => e.includes("claude-opus-5") && e.includes("400"));
+  check("a 400 from Opus 5.5 falls back to Sonnet 5.5", bodies.some(b => canonical(b.model) === SONNET && isGateBody(b)), models(bodies));
+  check("which is a full-strength gate: the cap is still an exact match and a verdict", result.matchConfidence === "exact" && result.mode === "VERDICT", summary(result));
+  const logged = errors.find(e => e.includes(OPUS) && e.includes("400"));
   check("the failure is logged with layer, model, status and the error body", !!logged && /gate/.test(logged) && logged.includes("simulated"), errors.join(" | ") || "nothing logged");
   check("the log never carries the API key or the photo",
     !errors.some(e => e.includes(API_KEY) || e.includes(PHOTO)), "a secret or the image reached the log");
@@ -337,12 +398,46 @@ section("GATE FALLBACK");
 section("EVERY GATE MODEL FAILS");
 {
   const down = { status: 500, type: "api_error", message: "simulated outage" };
-  const { result, errors } = await scan({ gateFault: { "claude-opus-5": down, "claude-sonnet-5": down, "claude-haiku-4-5": down } });
+  const { result, errors } = await scan({ gateFault: { [OPUS]: down, [SONNET]: down } });
   check("verification is never skipped silently: the scan reports it could not be completed",
     !!result.failure && result.mode !== "VERDICT", summary(result));
   check("and the reason names the gate", JSON.stringify(result.failure || {}).includes("gate"), summary(result));
-  check("each failed model was logged", ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"].every(m => errors.some(e => e.includes(m))), errors.join(" | "));
+  check("both models were tried and logged", [OPUS, SONNET].every(m => errors.some(e => e.includes(`model=${m}`))), errors.join(" | "));
 }
+
+// 8. A second photo of a product identified in the last hour.
+section("CACHED IDENTITY, RE-CONFIRMED ON SONNET 5.5");
+{
+  await scan({}, async () => {
+    await engine.scanProduct(PHOTO, "image/jpeg", "us", "verdict");
+    anthropicBodies.length = 0;
+    return engine.scanProduct(Buffer.from("A-SECOND-PHOTO-OF-THE-CAP").toString("base64"), "image/jpeg", "us", "verdict");
+  }).then(({ result, bodies }) => {
+    const gateBodies = bodies.filter(isGateBody);
+    check("the reuse is confirmed by one Sonnet 5.5 call, and the full gate does not run",
+      gateBodies.length === 1 && canonical(gateBodies[0].model) === SONNET &&
+      gateBodies[0].messages[0].content.filter(b => b.type === "image").length === 2, models(bodies));
+    check("and keeps full confidence", result.matchConfidence === "exact", summary(result));
+    auditBodies("cached-identity scan", bodies);
+  });
+}
+
+// 9. GATE_EFFORT raises the gate, and only the gate.
+section("GATE EFFORT OVERRIDE");
+{
+  process.env.GATE_EFFORT = "medium";
+  const { bodies } = await scan({});
+  delete process.env.GATE_EFFORT;
+  auditBodies("GATE_EFFORT=medium", bodies, { gateEffort: "medium" });
+  process.env.GATE_EFFORT = "ludicrous";
+  const { bodies: invalid } = await scan({});
+  delete process.env.GATE_EFFORT;
+  auditBodies("an invalid GATE_EFFORT falls back to low", invalid);
+}
+
+section("NO OTHER MODEL, ANYWHERE");
+check("every request in every scenario above went to Opus 5.5 or Sonnet 5.5",
+  allModelsSeen.size > 0 && [...allModelsSeen].every(m => [OPUS, SONNET].includes(canonical(m))), [...allModelsSeen].join(", "));
 
 section("NOTHING FOUND IS NOT AN ERROR");
 {
@@ -382,12 +477,27 @@ if (rules) {
   const none = rules.readClaudeReply({ stop_reason: "end_turn", content: [{ type: "thinking", thinking: "" }] });
   check("a reply with no text block reads as no text", none.text === null, JSON.stringify(none));
 
-  const sample = { max_tokens: 300, messages: [{ role: "user", content: "hi" }] };
-  for (const model of ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001", "claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-opus-4-7", "claude-some-future-model"]) {
-    const body = rules.buildClaudeRequest(model, sample);
+  for (const model of [OPUS, SONNET]) {
+    const body = rules.buildClaudeRequest(model, { max_tokens: 350, messages: [{ role: "user", content: "Product intelligence scan" }] });
     const problems = [...documentedViolations(body), ...policyViolations(body)];
-    check(`request built for ${model} follows the rules`, problems.length === 0, problems.join("; "));
+    check(`request built for ${model} follows the documented and the owner's rules`, problems.length === 0, problems.join("; "));
+    check(`${model}: no thinking field (adaptive, always on), no sampling, effort low`,
+      !("thinking" in body) && !["temperature", "top_p", "top_k"].some(k => k in body) && body.output_config?.effort === "low", JSON.stringify({ ...body, messages: undefined }));
   }
+  // The batched gate's output limit, for every batch size the engine sends
+  // (one to eight candidates): thinking room of at least 15,000 tokens above
+  // the JSON answer's own budget, and never more than 16,000 in total.
+  const short = [];
+  for (let n = 1; n <= 8; n++) {
+    const answer = 250 + n * 90;
+    const body = rules.buildClaudeRequest(OPUS, { max_tokens: answer, messages: [{ role: "user", content: "x" }] });
+    if (body.max_tokens - answer < THINKING_ROOM || body.max_tokens > MAX_TOKENS_CEILING) short.push(`${n}: ${body.max_tokens}`);
+  }
+  check("the batched gate's thinking can never eat its answer: >= 15,000 tokens of room for 1 to 8 candidates, <= 16,000 total",
+    short.length === 0, short.join(", "));
+  const unknown = rules.buildClaudeRequest("claude-some-future-model", { max_tokens: 300, messages: [{ role: "user", content: "hi" }] });
+  check("a model outside the table gets no sampling, thinking or effort fields",
+    !["temperature", "top_p", "top_k", "thinking", "output_config"].some(k => k in unknown), JSON.stringify(unknown));
 }
 
 console.error = realError;

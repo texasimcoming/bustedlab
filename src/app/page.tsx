@@ -478,10 +478,10 @@ export default function Home() {
 
     // A request with no ceiling leaves the scanning screen running forever if
     // the connection drops or the function dies without answering. The scan
-    // route allows itself 60 seconds, so this gives it that plus margin and
+    // route allows itself 120 seconds, so this gives it that plus margin and
     // then fails visibly instead of spinning.
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 75000);
+    const timeout = setTimeout(() => controller.abort(), 135000);
 
     try {
       let res: Response;

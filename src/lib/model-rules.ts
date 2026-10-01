@@ -3,84 +3,69 @@
  *
  * Every request the engine sends to the Claude API is built here, and every
  * reply is read here. Both used to be done inline in scan.ts, with
- * `temperature: 0` added to every call and the reply read as content[0].text.
- * Opus 5 answers any non-default sampling parameter with HTTP 400, and it
- * thinks by default, so its first block can be a thinking block with no text.
- * The verification gate and the extraction escalation both run on Opus 5, so
- * for as long as that shipped, neither of them ever produced an answer, and
- * both failures were indistinguishable from "nothing verified".
+ * `temperature: 0` added to every call and the reply read as content[0].text,
+ * which is how a 400 on every gate call shipped and read as "nothing
+ * verified".
  *
- * The table below is the per-model request surface, from Anthropic's docs as
- * of 2026-10-01 (thinking-troubleshooting: the per-model thinking table;
- * effort: supported models and the disabled-thinking effort cap; the Opus
- * 4.7, Opus 5, Sonnet 5, Opus 5.5, Sonnet 5.5 and Fable 5.1 migration
- * guides). scripts/check-model-contract.mjs holds an independent copy of the
- * documented rules and fails the build if a body built here breaks them.
+ * The product runs on exactly two models: Claude Opus 5.5 and Claude Sonnet
+ * 5.5. Their request surface, from Anthropic's migration guides and the
+ * effort and thinking docs as of 2026-10-01:
  *
- * Zero imports, so the contract check and the diagnose route can exercise the
- * real builder rather than a copy.
+ *   - Sampling: temperature, top_p and top_k at any non-default value are a
+ *     400. They are never sent.
+ *   - Thinking: adaptive thinking runs on every request. Opus 5.5 rejects
+ *     thinking "disabled" and manual budgets with a 400; Sonnet 5.5 rejects
+ *     "disabled" too. Omitting the field is the same as {type: "adaptive"},
+ *     so the field is never sent. (Sonnet 5.5 also accepts "between_tools",
+ *     its no-up-front-thinking setting; it is not used, by the owner's
+ *     decision that thinking stays on.)
+ *   - Effort: the only control over how much the model thinks. Opus 5.5
+ *     defaults to medium, Sonnet 5.5 to high with recalibrated levels; both
+ *     are set to low here, the lowest level, and the gate's level can be
+ *     raised with GATE_EFFORT once an eval shows it is needed.
+ *   - max_tokens is a hard cap on thinking PLUS the answer. So every request
+ *     gets the answer's own budget plus THINKING_HEADROOM tokens on top, up to
+ *     MAX_TOKENS_CEILING: thinking would have to run past 15,000 tokens at low
+ *     effort to touch the JSON answer, and if it ever did, the reply stops
+ *     with stop_reason max_tokens, which the engine treats as a failed call
+ *     and hands to the next model rather than reading a cut-off answer.
+ *     The ceiling stays at 16,000 because Anthropic's guidance is to stream
+ *     anything above about 16K output, and these calls are not streamed.
+ *   - Replies can open with thinking blocks (empty text under the default
+ *     display), so replies are read by block type.
+ *   - No assistant prefill (a 400), no forced tool use (not used).
+ *
+ * Any model not in the table gets no sampling, thinking or effort fields at
+ * all, which is a valid request on every current model. scripts/
+ * check-model-contract.mjs holds an independent copy of the documented rules
+ * and fails the build if a body built here breaks them.
+ *
+ * Zero imports, so the contract check, eval-gate and the diagnose route
+ * exercise the real builder rather than a copy.
  */
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+const EFFORTS: readonly Effort[] = ["low", "medium", "high", "xhigh", "max"];
 
 interface ModelRule {
-  /** Sent only where the API accepts it. */
-  temperature?: number;
-  /** Omitted when undefined: the model's own default applies. */
-  thinking?: { type: "disabled" } | { type: "between_tools" };
-  effort?: Effort;
-  /**
-   * Extra output room for models whose thinking cannot be turned off.
-   * max_tokens caps thinking plus text, so a ceiling sized for a short JSON
-   * answer would cut the answer off.
-   */
-  thinkingHeadroom?: number;
-  /** A system instruction specific to how this model is run. */
-  systemNote?: string;
+  /** Default effort for this model. */
+  effort: Effort;
+  /** Effort levels the model accepts. */
+  efforts: readonly Effort[];
 }
 
-// Opus 5 with thinking disabled can write internal XML tags into its visible
-// text. Anthropic's documented mitigation is this sentence, in this generic
-// form: naming the tags is less effective, and telling the model not to think
-// makes the leak more likely. readClaudeJson also strips tags if one leaks.
-const NO_INTERNAL_TAGS = "Do not include internal or system XML tags in your response.";
-const ALWAYS_THINKING_HEADROOM = 8000;
+/** Thinking room added on top of every call's own answer budget. */
+export const THINKING_HEADROOM = 15_000;
+/** Upper bound on max_tokens for a non-streamed call. */
+export const MAX_TOKENS_CEILING = 16_000;
 
-/**
- * Keys are model ids without a date suffix.
- *
- * - Haiku 4.5: sampling accepted, so temperature stays at 0. Thinking is off
- *   unless enabled. Effort is not supported on it (absent from the effort
- *   docs' supported models), so it is never sent.
- * - Opus 5 and Sonnet 5: sampling parameters rejected. Thinking runs by
- *   default, so it is turned off explicitly: the cost model prices these
- *   calls with no thinking tokens, and the gate's answer is a short JSON
- *   array that does not need it. Opus 5 only accepts disabled thinking at
- *   effort high or below, so effort is pinned to high (the default) rather
- *   than left to a default that could move.
- * - Opus 5.5 and Fable 5 / 5.1: thinking cannot be turned off (disabled is a
- *   400 at every effort level), so effort goes to low, the documented lever
- *   for keeping thinking short, and max_tokens gets room for it.
- * - Sonnet 5.5: disabled is a 400; between_tools is its lowest setting, valid
- *   at effort high or below.
- * - Opus 4.7 / 4.8: sampling rejected; thinking is off when omitted.
- * - Any model not listed: no sampling, thinking or effort fields at all. A
- *   guess about an unknown model's request surface is how the original 400
- *   happened.
- */
+/** Keys are model ids without a date suffix. */
 export const MODEL_RULES: Record<string, ModelRule> = {
-  "claude-haiku-4-5": { temperature: 0 },
-  "claude-opus-4-7": {},
-  "claude-opus-4-8": {},
-  "claude-opus-5": { thinking: { type: "disabled" }, effort: "high", systemNote: NO_INTERNAL_TAGS },
-  "claude-sonnet-5": { thinking: { type: "disabled" }, effort: "high", systemNote: NO_INTERNAL_TAGS },
-  "claude-opus-5-5": { effort: "low", thinkingHeadroom: ALWAYS_THINKING_HEADROOM },
-  "claude-sonnet-5-5": { thinking: { type: "between_tools" }, effort: "high", systemNote: NO_INTERNAL_TAGS },
-  "claude-fable-5": { effort: "low", thinkingHeadroom: ALWAYS_THINKING_HEADROOM },
-  "claude-fable-5-1": { effort: "low", thinkingHeadroom: ALWAYS_THINKING_HEADROOM },
+  "claude-opus-5-5": { effort: "low", efforts: EFFORTS },
+  "claude-sonnet-5-5": { effort: "low", efforts: EFFORTS },
 };
 
-/** "claude-haiku-4-5-20251001" -> "claude-haiku-4-5". */
+/** "claude-sonnet-5-5-20261001" -> "claude-sonnet-5-5". Current ids carry no date. */
 export function canonicalModel(model: string): string {
   return model.replace(/-\d{8}$/, "");
 }
@@ -89,12 +74,22 @@ export function rulesFor(model: string): ModelRule | null {
   return MODEL_RULES[canonicalModel(model)] ?? null;
 }
 
+export function parseEffort(value: unknown): Effort | null {
+  return typeof value === "string" && (EFFORTS as readonly string[]).includes(value) ? (value as Effort) : null;
+}
+
 /**
- * The request body for one call. Callers pass what is specific to the call
- * (max_tokens, messages); everything model-specific comes from the table, and
- * a caller cannot add a sampling or thinking field the table did not choose.
+ * The request body for one call. Callers pass what is specific to the call:
+ * messages and `max_tokens` as the budget for the ANSWER alone; thinking
+ * room is added here. Everything model-specific comes from the table, and a
+ * caller cannot add a sampling or thinking field the table did not choose.
+ * `effort` overrides the model's default when the model accepts that level.
  */
-export function buildClaudeRequest(model: string, payload: Record<string, unknown>): Record<string, unknown> {
+export function buildClaudeRequest(
+  model: string,
+  payload: Record<string, unknown>,
+  options: { effort?: Effort | null } = {}
+): Record<string, unknown> {
   const { temperature, top_p, top_k, thinking, output_config, ...rest } = payload;
   void temperature; void top_p; void top_k; void thinking;
   const rule = rulesFor(model);
@@ -104,13 +99,9 @@ export function buildClaudeRequest(model: string, payload: Record<string, unknow
   if (Object.keys(otherOutputConfig).length) body.output_config = otherOutputConfig;
   if (!rule) return body;
 
-  if (rule.temperature !== undefined) body.temperature = rule.temperature;
-  if (rule.thinking) body.thinking = { ...rule.thinking };
-  if (rule.effort) body.output_config = { ...otherOutputConfig, effort: rule.effort };
-  if (rule.thinkingHeadroom) body.max_tokens = Number(rest.max_tokens || 0) + rule.thinkingHeadroom;
-  if (rule.systemNote) {
-    body.system = typeof rest.system === "string" && rest.system ? `${rest.system}\n\n${rule.systemNote}` : rule.systemNote;
-  }
+  const effort = options.effort && rule.efforts.includes(options.effort) ? options.effort : rule.effort;
+  body.output_config = { ...otherOutputConfig, effort };
+  body.max_tokens = Math.min(Number(rest.max_tokens || 0) + THINKING_HEADROOM, MAX_TOKENS_CEILING);
   return body;
 }
 
@@ -145,9 +136,9 @@ export function readClaudeReply(data: unknown): ClaudeReply {
 }
 
 /**
- * JSON out of a reply's text. Tolerates a code fence, and an internal XML
- * block leaked ahead of the answer (the documented artifact of running Opus 5
- * with thinking disabled), by falling back to the outermost JSON value.
+ * JSON out of a reply's text. Tolerates a code fence, prose around the
+ * answer, and an internal XML block leaked ahead of it, by falling back to
+ * the outermost JSON value.
  */
 export function parseReplyJson(text: string | null): unknown {
   if (!text) return null;
