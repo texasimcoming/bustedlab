@@ -126,6 +126,8 @@ async function diagnose() {
   // The free plan's searches cost nothing; a paid plan's cost its price over its allowance.
   const plans = { 250: 0, 1000: 25, 5000: 75, 15000: 150, 30000: 275 };
   if (perMonth in plans) spend.serpapiPerSearch = plans[perMonth] / perMonth;
+  results.deployedCommit = d.deployment?.commit || null;
+  report.push(`Production is running commit \`${d.deployment?.commit || "unknown"}\` (${d.deployment?.environment || "unknown"}).`);
   report.push(`Pass: **${d.pass}**. Failing: ${(d.failing || []).join(", ") || "none"}. Spend mode: ${d.spend?.mode}, today $${d.spend?.todayUsd} of $${d.spend?.dailyBudgetUsd}. This run's Claude cost: $${d.cost?.claudeUsd}. Thinking per call: ${d.thinking?.perCallApprox ?? "n/a"}.`);
   report.push("", "| layer | pass | status | ms | detail |", "|---|---|---|---|---|");
   for (const l of d.layers) {
@@ -267,6 +269,7 @@ async function photosStep() {
   results.photos = {};
   for (const c of CASES) {
     let lastError = "";
+    const errors = [];
     for (const src of c.source) {
       try {
         const resolved = await resolveSource(src);
@@ -298,11 +301,14 @@ async function photosStep() {
         break;
       } catch (err) {
         lastError = String(err?.message || err).slice(0, 200);
+        errors.push(lastError);
       }
     }
     if (lastError) {
-      results.photos[c.id] = { error: lastError };
-      report.push(`| ${c.id} | FAILED | | | ${escapeMd(lastError)} |`);
+      results.photos[c.id] = { error: lastError, errors };
+      report.push(`| ${c.id} | FAILED | | | ${escapeMd(errors.join(" ; "))} |`);
+    } else if (errors.length) {
+      results.photos[c.id].skippedSources = errors;
     }
   }
   report.push("");
@@ -311,6 +317,7 @@ const escapeMd = (t) => String(t ?? "").replace(/\|/g, "/").replace(/\n/g, " ");
 
 // ── scan ─────────────────────────────────────────────────────────────────
 const scans = []; // { caseId, intent, status, ms, json, classification }
+let stopAll = false;
 
 function identityMatches(c, text) {
   const t = String(text || "").toLowerCase();
@@ -326,13 +333,13 @@ function classify(c, res) {
   const shown = `${r.sourceProduct?.title || ""} ${r.sourceProduct?.productUrl || ""}`;
   const confident = r.found && (r.matchConfidence === "exact" || r.matchConfidence === "likely");
   if (confident) {
-    if (!c.findable) return { label: "WRONG", detail: `an unfindable item shown as ${r.matchConfidence}` };
+    if (c.findable === false) return { label: "WRONG", detail: `an unfindable item shown as ${r.matchConfidence}` };
     return identityMatches(c, shown)
       ? { label: r.matchConfidence === "exact" ? "correct exact" : "correct likely" }
       : { label: "WRONG", detail: `shown as ${r.matchConfidence}: ${r.sourceProduct?.title}` };
   }
   const lookalike = r.found && r.mode !== "UNRESOLVED";
-  if (!c.findable) return { label: lookalike ? "honest lookalike" : "honest no-match" };
+  if (c.findable !== true) return { label: lookalike ? "honest lookalike" : "honest no-match" };
   return { label: "miss", detail: lookalike ? "only an unverified lookalike" : "no match" };
 }
 
@@ -349,6 +356,12 @@ async function freeAllowanceLeft() {
 }
 
 async function scanStep() {
+  // A run made for a fix must not measure the build before it.
+  if (run.expectCommit && results.deployedCommit && !String(run.expectCommit).startsWith(results.deployedCommit)) {
+    report.push(`## Scans\n\nStopped: production is running \`${results.deployedCommit}\`, not \`${run.expectCommit}\`. The deploy has not finished; push run.json again.\n`);
+    stopAll = true;
+    return;
+  }
   const probe = await operator("/api/eval", { method: "POST", body: "{}", headers: { "content-type": "application/json" } }, 20_000);
   if (probe.status !== 400) {
     report.push(`## Scans\n\nStopped: the evaluation path is not live on ${BASE} yet (POST /api/eval answered ${probe.status}). The deploy may still be building.\n`);
@@ -361,10 +374,15 @@ async function scanStep() {
   if (!Number.isFinite(serpapiLeft)) serpapiLeft = Number(run.serpapiLeft ?? 0);
   const allowanceBefore = await freeAllowanceLeft();
   let stopped = "";
-  for (const c of CASES) {
+  // run.plan, when given, is the exact list and order of [case, intent] to
+  // scan: the cases most worth the remaining searches first.
+  const plan = Array.isArray(run.plan)
+    ? run.plan.map(([id, intent]) => ({ c: CASES.find(x => x.id === id), intents: [intent] })).filter(p => p.c)
+    : CASES.map(c => ({ c, intents }));
+  for (const { c, intents: caseIntents } of plan) {
     const photo = photos.get(c.id);
     if (!photo) { scans.push({ caseId: c.id, intent: "-", status: 0, classification: { label: "error", detail: "no photo" } }); continue; }
-    for (const intent of intents) {
+    for (const intent of caseIntents) {
       if (serpapiLeft - 6 < reserve) { stopped = `SerpApi reserve reached (${serpapiLeft} searches left, reserve ${reserve})`; break; }
       if (!canSpend(0.3)) { stopped = "the spend cap for this run was reached"; break; }
       log(`scan ${c.id} ${intent}`);
@@ -426,6 +444,9 @@ function scanReport(stopped, before, after, serpapiLeft) {
 }
 
 // ── replay ───────────────────────────────────────────────────────────────
+// What the engine would show from one model's verdicts, by the engine's own
+// rule (settleVerdict): the cheapest "exact", else the best-ranked "likely";
+// "similar" is a lookalike and never identifies anything.
 function pickFrom(candidates, verdicts) {
   const judged = candidates.map((c, i) => ({ c, v: verdicts[i]?.match || "different" }));
   const tier = (m) => judged.filter(j => j.v === m);
@@ -435,16 +456,50 @@ function pickFrom(candidates, verdicts) {
     const best = priced.length ? priced.reduce((a, b) => (b.c.price < a.c.price ? b : a)) : exact[0];
     return { confidence: "exact", candidate: best.c };
   }
-  const similar = tier("similar");
-  if (similar.length) return { confidence: "likely", candidate: similar.find(j => j.c.price > 0)?.c || similar[0].c };
+  const likely = tier("likely");
+  if (likely.length) return { confidence: "likely", candidate: likely.find(j => j.c.price > 0)?.c || likely[0].c };
   return { confidence: "none", candidate: null };
 }
 
 function judgePick(c, pick) {
-  if (pick.confidence === "none") return c.findable ? "miss" : "honest";
-  if (!c.findable) return "WRONG";
+  if (pick.confidence === "none") return c.findable === true ? "miss" : "honest";
+  if (c.findable === false) return "WRONG";
   return identityMatches(c, `${pick.candidate.title} ${pick.candidate.link}`) ? "hit" : "WRONG";
 }
+
+// The same host rule as isListingCandidate in src/lib/scan.ts: pages on these
+// hosts never reach the gate, so replays do not send them either.
+const NON_LISTING_HOSTS = [
+  "wikipedia.org", "wikimedia.org", "wikiwand.com", "fandom.com", "reddit.com", "pinterest.",
+  "youtube.com", "youtu.be", "instagram.com", "tiktok.com", "twitter.com", "x.com", "threads.net",
+  "tumblr.com", "flickr.com", "imgur.com", "quora.com", "medium.com", "substack.com", "deviantart.com",
+  "artstation.com", "behance.net", "dribbble.com", "cgtrader.com", "sketchfab.com", "turbosquid.com",
+  "manuals.plus", "manualslib.com",
+];
+function isListing(link) {
+  let host = "", path = "";
+  try { const u = new URL(link); host = u.hostname.toLowerCase(); path = u.pathname; } catch { return true; }
+  if (host === "facebook.com" || host.endsWith(".facebook.com")) return path.startsWith("/marketplace/");
+  return !NON_LISTING_HOSTS.some(h => (h.endsWith(".") ? host.includes(h) : host === h || host.endsWith(`.${h}`)));
+}
+
+/** The identification candidates a case's gate saw, from this run or an earlier one. */
+function identifyBatches(caseId) {
+  const fromScans = (list) => {
+    const scan = (list || []).find(x => x.caseId === caseId && x.json?.evaluation?.trace);
+    const steps = scan?.json?.evaluation?.trace?.steps || [];
+    return steps.filter(st => st.step === "gate" && (st.purpose || "identify") === "identify").map(st => st.candidates || []);
+  };
+  let batches = fromScans(scans);
+  if (batches.length === 0 && earlier) batches = fromScans(earlier.scans);
+  // Re-batched after the listing filter, eight to a call as the engine does.
+  const flat = batches.flat().filter(c => isListing(c.link));
+  const out = [];
+  for (let i = 0; i < flat.length; i += 8) out.push(flat.slice(i, i + 8));
+  return out;
+}
+const earlier = run.replayFrom && existsSync(resolve(RESULTS, run.replayFrom))
+  ? JSON.parse(readFileSync(resolve(RESULTS, run.replayFrom), "utf8")) : null;
 
 async function pool(items, limit, fn) {
   const out = new Array(items.length);
@@ -456,6 +511,7 @@ async function pool(items, limit, fn) {
 }
 
 async function replayStep() {
+  if (stopAll) { report.push("## Model replays\n\nSkipped: see Scans.\n"); return; }
   const gateConfigs = run.replay?.gate || [];
   const extractConfigs = run.replay?.extract || [];
   const parse = (cfg) => { const [model, effort] = cfg.split("@"); return { model, effort: effort || null, key: cfg }; };
@@ -463,9 +519,7 @@ async function replayStep() {
   for (const c of CASES) {
     const photo = photos.get(c.id);
     if (!photo) continue;
-    const scan = scans.find(s => s.caseId === c.id && s.json?.evaluation?.trace) ;
-    const steps = scan?.json?.evaluation?.trace?.steps || [];
-    const batches = steps.filter(st => st.step === "gate" && (st.purpose || "identify") === "identify").map(st => st.candidates || []);
+    const batches = identifyBatches(c.id);
     for (const cfg of gateConfigs.map(parse)) {
       batches.forEach((batch, b) => jobs.push({ op: "gate", c, photo, cfg, batch, b }));
     }
@@ -477,7 +531,7 @@ async function replayStep() {
     const body = {
       op: job.op, model: job.cfg.model, effort: job.cfg.effort,
       image: { data: job.photo.data.toString("base64"), mimeType: job.photo.mimeType },
-      ...(job.op === "gate" ? { candidates: job.batch.map(x => x.image) } : {}),
+      ...(job.op === "gate" ? { candidates: job.batch.map(x => ({ image: x.image, title: x.title, source: x.source })) } : {}),
     };
     const res = await operator("/api/eval", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } }, 90_000);
     spend.claudeUsd += Number(res.json?.call?.costUsd) || 0;
@@ -494,7 +548,7 @@ async function replayStep() {
       const verdicts = mine.flatMap(o => (o.res?.json?.verdicts || o.batch.map(() => ({ match: "different" }))));
       const failed = mine.some(o => !o.res || o.res.status !== 200 || o.res.json?.ok === false);
       const pick = pickFrom(candidates, verdicts);
-      const reachable = c.findable && candidates.some(x => identityMatches(c, `${x.title} ${x.link}`));
+      const reachable = c.findable === true && candidates.some(x => identityMatches(c, `${x.title} ${x.link}`));
       rows.push({
         caseId: c.id, findable: c.findable, reachable, failed, confidence: pick.confidence, outcome: failed ? "error" : judgePick(c, pick),
         shown: pick.candidate ? `${pick.candidate.title} | ${pick.candidate.link}` : "",
@@ -532,6 +586,30 @@ function replayReport(gate, extract) {
     const n = (f) => rows.filter(f).length;
     const think = rows.flatMap(r => r.thinking);
     report.push(`| ${cfg} | ${n(r => r.outcome === "WRONG")} | ${n(r => r.outcome === "hit")} | ${n(r => r.outcome === "miss" && r.reachable)} of ${n(r => r.reachable)} reachable | ${n(r => !r.findable && r.outcome === "honest")} of ${n(r => !r.findable)} | ${n(r => r.outcome === "error")} | ${rows.reduce((s, r) => s + r.usd, 0).toFixed(4)} | ${Math.round(rows.reduce((s, r) => s + r.ms, 0) / Math.max(1, rows.length))} | ${think.length ? Math.round(think.reduce((a, b) => a + b, 0) / think.length) : "n/a"} |`);
+  }
+  // Candidate by candidate, against the first configuration (the production
+  // gate): where each model claims identity (exact or likely) that the
+  // reference does not, and the reverse.
+  const configs = Object.keys(gate);
+  if (configs.length > 1) {
+    const ref = gate[configs[0]];
+    const claims = (v) => v === "exact" || v === "likely";
+    report.push("", `Candidate-level agreement with ${configs[0]}:`, "", "| model@effort | candidates | same answer | claims identity where reference does not | reference claims, this one does not |", "|---|---|---|---|---|");
+    for (const cfg of configs.slice(1)) {
+      let n = 0, same = 0, more = 0, fewer = 0;
+      for (const row of gate[cfg]) {
+        const r = ref.find(x => x.caseId === row.caseId);
+        if (!r) continue;
+        row.verdicts.forEach((v, i) => {
+          if (r.verdicts[i] === undefined) return;
+          n++;
+          if (v === r.verdicts[i]) same++;
+          if (claims(v) && !claims(r.verdicts[i])) more++;
+          if (!claims(v) && claims(r.verdicts[i])) fewer++;
+        });
+      }
+      report.push(`| ${cfg} | ${n} | ${same} | ${more} | ${fewer} |`);
+    }
   }
   report.push("", "Per case (outcome / confidence):", "", `| case | ${Object.keys(gate).join(" | ")} |`, `|---|${Object.keys(gate).map(() => "---").join("|")}|`);
   for (const c of CASES) {

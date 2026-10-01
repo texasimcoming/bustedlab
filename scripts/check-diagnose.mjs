@@ -87,6 +87,8 @@ const models = layer("models api");
 check("the Models API is asked about every model the engine and the rules table name, free of charge",
   models?.pass === true && ["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"].every(id => modelLookups.some(u => u.endsWith(id))) && sent.length === 3,
   JSON.stringify(models));
+check("the answering build is named, so a run can tell an old deploy from a new one",
+  "deployment" in (res.json || {}) && "commit" in (res.json?.deployment || {}), JSON.stringify(res.json?.deployment));
 check("today's uses of the evaluation path are reported", typeof res.json?.evaluation?.today?.scans === "number" && Array.isArray(res.json?.evaluation?.recent),
   JSON.stringify(res.json?.evaluation));
 check("no key, no account email and no image in the answer",

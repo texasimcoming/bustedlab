@@ -314,14 +314,16 @@ const SCENARIO_VERDICT = {
 };
 
 // ════════════════════════════════════════════════════════════════
-// SCENARIO 6 - nothing is confirmed, two things are merely plausible.
+// SCENARIO 6 - nothing is confirmed, two things are plausibly it.
 //
-// The unconfirmed tier must not be decided on price. Google's best match is
-// plausible but unconfirmable (a stock photo); a cheaper lookalike sits
-// seven places below it. With identity unconfirmed, the engine's own
-// ranking is the only real evidence, and a cheaper lookalike further down
-// the list is not a better price - it is a likelier wrong product wearing a
-// smaller number. The pre-fix engine takes the cheap one.
+// The "likely" tier must not be decided on price. Google's best match is
+// plausibly the product but unconfirmable (a stock photo); a cheaper one the
+// gate also calls plausible sits seven places below it. With identity
+// unconfirmed, the engine's own ranking is the only real evidence, and a
+// cheaper candidate further down the list is not a better price - it is a
+// likelier wrong product wearing a smaller number. The pre-fix engine takes
+// the cheap one. (The gate's answer for "plausibly this product" was called
+// "similar" until the four-level scale; see gate-prompt.ts.)
 // ════════════════════════════════════════════════════════════════
 const SCENARIO_SIMILAR_TIER = {
   name: "Unconfirmed tier is decided on rank, not price",
@@ -345,8 +347,8 @@ const SCENARIO_SIMILAR_TIER = {
   shopping: () => [],
   amazon: () => [],
   verdicts: {
-    "https://img.test/dress-ranked": "similar",
-    "https://img.test/dress-cheap": "similar",
+    "https://img.test/dress-ranked": "likely",
+    "https://img.test/dress-cheap": "likely",
     "https://img.test/dress-a": "different",
     "https://img.test/dress-b": "different",
     "https://img.test/dress-c": "different",
@@ -454,6 +456,128 @@ const SCENARIO_CALL_FAILS = {
   },
 };
 
+
+// ════════════════════════════════════════════════════════════════
+// FROM THE PRODUCTION EVALUATION (evals/results/run-2.md). Each of these is
+// a real failure the labelled set caught, reduced to the shape that caused
+// it. guardOnly: the pre-v10 fixture predates them, so there is no recorded
+// pre-fix behaviour to compare against.
+// ════════════════════════════════════════════════════════════════
+
+// A handmade raku pitcher that exists nowhere online came back as a LIKELY
+// match to a different raku pitcher on eBay, because the gate's "same kind
+// of product" answer was reported as likely. A lookalike is a lookalike.
+const SCENARIO_LOOKALIKE = {
+  name: "A lookalike is never a likely match",
+  intent: "finder",
+  guardOnly: true,
+  vision: {
+    productName: "raku fired ceramic pitcher with copper glaze", brand: "", visiblePrice: null, currency: "",
+    quantity: "", category: "home", platform: "unknown", storeName: "", visibleUrl: "",
+    priceConfidence: "none", imageQuality: "good",
+  },
+  lens: [
+    { title: "Raku Pottery Pitcher - Iridescent Glaze Pottery Pitcher", source: "eBay", link: "https://www.ebay.test/itm/raku", thumbnail: "https://img.test/raku-other", price: { value: "$32.50", extracted_value: 32.5, currency: "$" } },
+    { title: "Studio Art Pottery Jug", source: "etsy.test", link: "https://etsy.test/jug", thumbnail: "https://img.test/jug-other", price: { value: "$48.00", extracted_value: 48.0, currency: "$" } },
+  ],
+  shopping: () => [],
+  amazon: () => [],
+  verdicts: {
+    "https://img.test/raku-other": "similar",
+    "https://img.test/jug-other": "different",
+  },
+  expect: { titleIncludes: "Raku Pottery Pitcher", price: 32.5, confidence: "unverified", mode: "FINDER" },
+};
+
+// A photo of Crocs that news sites and Wikipedia had published: Lens
+// answered with the articles, the gate called them "exact" (the same
+// picture), and the engine searched for a price using a USA Today headline.
+// Now a page on a host that never sells anything is not judged at all, the
+// gate rules out an article by its title, and the vision read ("Crocs Baya
+// clog") identifies the product by text.
+const SCENARIO_REUSED_PHOTO = {
+  name: "A photo reused by articles is identified by what it shows",
+  intent: "finder",
+  guardOnly: true,
+  vision: {
+    productName: "Crocs Baya clog with heel strap", brand: "Crocs", visiblePrice: null, currency: "",
+    quantity: "", category: "fashion", platform: "unknown", storeName: "", visibleUrl: "",
+    priceConfidence: "none", imageQuality: "good",
+  },
+  lens: [
+    { title: "Crocs closing its last manufacturing plant, says it's still ...", source: "USA Today", link: "https://news.test/crocs-plant", thumbnail: "https://img.test/news-crocs" },
+    { title: "Crocs - Wikipedia", source: "Wikipedia", link: "https://en.wikipedia.org/wiki/Crocs", thumbnail: "https://img.test/wiki-crocs" },
+    { title: "Classic Clog", source: "crocs.test", link: "https://crocs.test/classic", thumbnail: "https://img.test/crocs-classic", price: { value: "$49.99", extracted_value: 49.99, currency: "$" } },
+  ],
+  shopping: (q) => (/baya/i.test(q)
+    ? [{ title: "Crocs Adult Baya Clog", source: "Walmart", link: "https://walmart.test/baya", imageUrl: "https://img.test/crocs-baya", price: "$34.99" }]
+    : []),
+  amazon: () => [],
+  verdicts: {
+    "https://img.test/news-crocs": "different",
+    "https://img.test/crocs-classic": "similar",
+    "https://img.test/crocs-baya": "likely",
+  },
+  expect: { titleIncludes: "Baya", price: 34.99, confidence: "likely", mode: "FINDER" },
+  expectStats: (stats) => (stats.verified.some(v => v.includes("wiki-crocs"))
+    ? ["the Wikipedia page was sent to the gate; a page on a host that sells nothing must not be"]
+    : []),
+};
+
+// A Flowlife massage gun: Lens found the brand's own product page, the gate
+// confirmed it, and Lens had no price for it, as is usual for a brand's
+// store. The pricing search found nothing (the brand is barely in the US
+// index), so the scan said "Product not identified" about a product it had
+// identified. The page states its price in its structured data.
+const SCENARIO_PRICED_FROM_PAGE = {
+  name: "An identified listing without a price is priced from its own page",
+  intent: "finder",
+  guardOnly: true,
+  vision: {
+    productName: "black mini percussion massage gun", brand: "", visiblePrice: null, currency: "",
+    quantity: "", category: "fitness", platform: "unknown", storeName: "", visibleUrl: "",
+    priceConfidence: "none", imageQuality: "good",
+  },
+  lens: [
+    { title: "Flowgun Air – Lightweight Percussive Massage Gun | Flowlife", source: "Flowlife", link: "https://flowlife.test/en-GB/product/flowgun-air", thumbnail: "https://img.test/flowgun-air" },
+    { title: "Opove M3 Pro 2 Massage Gun", source: "Amazon.com", link: "https://amazon.test/opove", thumbnail: "https://img.test/opove", price: { value: "$69.99", extracted_value: 69.99, currency: "$" } },
+  ],
+  pages: {
+    "https://flowlife.test/en-GB/product/flowgun-air":
+      '<html><head><script type="application/ld+json">{"@context":"https://schema.org","@type":"Product","name":"Flowgun Air","offers":{"@type":"Offer","price":"99.00","priceCurrency":"GBP"}}</script></head><body></body></html>',
+  },
+  shopping: () => [],
+  amazon: () => [],
+  verdicts: {
+    "https://img.test/flowgun-air": "exact",
+    "https://img.test/opove": "different",
+  },
+  // 99 GBP at the mocked 0.75 GBP per USD.
+  expect: { titleIncludes: "Flowgun Air", price: 132, confidence: "exact", mode: "FINDER" },
+};
+
+// A supermarket gua sha set, identified, then every search for a cheaper
+// copy timed out: the scan answered "could not be completed" because a
+// price search was treated as if it had been identifying the product.
+const SCENARIO_PRICE_SEARCH_DOWN = {
+  name: "A price search failing after identification does not fail the scan",
+  intent: "verdict",
+  guardOnly: true,
+  vision: {
+    productName: "jade roller and gua sha set", brand: "", visiblePrice: null, currency: "",
+    quantity: "", category: "beauty", platform: "unknown", storeName: "", visibleUrl: "",
+    priceConfidence: "none", imageQuality: "good",
+  },
+  lens: [
+    { title: "Jade Roller & Gua Sha Set", source: "beauty.test", link: "https://beauty.test/set", thumbnail: "https://img.test/gua-sha" },
+  ],
+  shoppingDown: true,
+  shopping: () => [],
+  amazon: () => [],
+  verdicts: { "https://img.test/gua-sha": "exact" },
+  expect: { titleIncludes: "not identified", price: 0, mode: "UNRESOLVED", failure: false },
+};
+
 // ════════════════════════════════════════════════════════════════
 // The mocked internet.
 // ════════════════════════════════════════════════════════════════
@@ -536,6 +660,15 @@ function installFetch(scenario, stats) {
       return imageResponse(url);
     }
 
+    if (scenario.pages?.[url]) {
+      const html = scenario.pages[url];
+      return { ok: true, status: 200, headers: { get: (k) => (String(k).toLowerCase() === "content-type" ? "text/html" : null) },
+               text: async () => html, json: async () => ({}) };
+    }
+    if (url.includes("currency-api")) return jsonResponse({ date: "2026-10-01", usd: { eur: 0.9, gbp: 0.75, mad: 9.7 } });
+    const shoppingDown = () => ({ ok: false, status: 503, headers: { get: () => "application/json" },
+                                   json: async () => ({ error: "down" }), text: async () => "down" });
+
     if (url.startsWith("https://api.anthropic.com/")) {
       const payload = JSON.parse(init.body);
       const blocks = payload.messages[0].content;
@@ -555,7 +688,10 @@ function installFetch(scenario, stats) {
           .toString("utf8").replace(/^IMG::/, "");
         stats.gateCalls++;
         stats.candidatesJudged++;
-        const match = scenario.verdicts[candidateUrl];
+        // The pre-v10 engine spoke a three-level scale, in which "similar"
+        // was its word for what the gate now calls "likely".
+        const scenarioMatch = scenario.verdicts[candidateUrl];
+        const match = scenarioMatch === "likely" ? "similar" : scenarioMatch;
         if (!match) throw new Error(`scenario "${scenario.name}" has no verification verdict for ${candidateUrl}`);
         return jsonResponse({ usage, content: [{ type: "text", text: JSON.stringify({ match, reasoning: "mocked" }) }] });
       }
@@ -619,6 +755,7 @@ function installFetch(scenario, stats) {
         return jsonResponse({ visual_matches: scenario.lens });
       }
       if (engine === "google_shopping") {
+        if (scenario.shoppingDown) return shoppingDown();
         const rows = scenario.shopping(params.get("q") || "");
         return jsonResponse({
           shopping_results: rows.map(r => ({
@@ -641,11 +778,16 @@ function installFetch(scenario, stats) {
     }
 
     if (url === "https://google.serper.dev/shopping") {
+      if (scenario.shoppingDown) return shoppingDown();
       const rows = scenario.shopping(body?.q || "");
       return jsonResponse({ shopping: rows });
     }
     if (url === "https://google.serper.dev/lens") return jsonResponse({ organic: [] });
     if (url === "https://google.serper.dev/search") return jsonResponse({ organic: [] });
+    // Any other page an identified listing links to: no structured price.
+    if (/^https:\/\/[^/]*\.test\//.test(url)) {
+      return { ok: true, status: 200, headers: { get: () => "text/html" }, text: async () => "<html></html>", json: async () => ({}) };
+    }
 
     throw new Error(`unmocked fetch: ${url}`);
   };
@@ -702,6 +844,7 @@ function describe({ result }) {
     verdict: result.analysis.verdict,
     retail: result.analysis.retailEstimate,
     savings: result.analysis.savings,
+    failure: result.failure ? result.failure.reason : null,
   };
 }
 
@@ -719,6 +862,7 @@ function checkExpected(got, expected) {
     problems.push(`retail ${got.retail} is not ${expected.retail}`);
   }
   if (typeof expected.found === "boolean" && got.found !== expected.found) problems.push(`found ${got.found} is not ${expected.found}`);
+  if (expected.failure === false && got.failure) problems.push(`the scan failed (${got.failure}); it should have stood`);
   return problems;
 }
 
@@ -733,6 +877,7 @@ const SCENARIOS = [
   SCENARIO_GLASSES, SCENARIO_BAG, SCENARIO_NO_MATCH,
   SCENARIO_UNPRICEABLE, SCENARIO_VERDICT, SCENARIO_SIMILAR_TIER,
   SCENARIO_SPIKE, SCENARIO_DEGRADED, SCENARIO_TRUNCATED, SCENARIO_CALL_FAILS,
+  SCENARIO_LOOKALIKE, SCENARIO_REUSED_PHOTO, SCENARIO_PRICED_FROM_PAGE, SCENARIO_PRICE_SEARCH_DOWN,
 ];
 
 for (const scenario of SCENARIOS) {
@@ -794,6 +939,44 @@ for (const scenario of SCENARIOS) {
       failures++;
     }
   }
+}
+
+// ── Listing titles as queries, and pages that sell nothing ──
+const TITLE_SOURCES = { "Flowlife Flowgun Go! Massagepistol – Ongoal": "Ongoal" };
+const sourceFor = (raw) => TITLE_SOURCES[raw] || "";
+line(`\n${"=".repeat(74)}`);
+line("Listing titles and non-listing pages");
+line("=".repeat(74));
+for (const [raw, want] of [
+  ["Amazon.com: Silicone Basting Brush 9\" Kitchen Cooking ...", "Silicone Basting Brush 9\" Kitchen Cooking"],
+  ["Flowgun Air – Lightweight Percussive Massage Gun | Flowlife", "Flowgun Air – Lightweight Percussive Massage Gun"],
+  ["Nintendo Switch With Docking Station, Charger, HDMI 55GB | eBay", "Nintendo Switch With Docking Station, Charger, HDMI 55GB"],
+  ["Owala FreeSip 24oz - Walmart.com", "Owala FreeSip 24oz"],
+  ["Stanley Quencher H2.0 FlowState Tumbler 40 oz", "Stanley Quencher H2.0 FlowState Tumbler 40 oz"],
+  ["Ray-Ban - New Wayfarer Classic", "Ray-Ban - New Wayfarer Classic"],
+  ["Apple AirPods Pro - 2nd Generation", "Apple AirPods Pro - 2nd Generation"],
+  ["Flowlife Flowgun Go! Massagepistol – Ongoal", "Flowlife Flowgun Go! Massagepistol", "Ongoal"],
+  ["Nintendo Switch OLED Model - 64GB", "Nintendo Switch OLED Model - 64GB"],
+]) {
+  const got = current.cleanListingTitle(raw, sourceFor(raw));
+  const ok = got === want;
+  line(`  ${ok ? "PASS" : "FAIL"}  "${raw}" -> "${got}"`);
+  if (!ok) failures++;
+}
+for (const [url, listing] of [
+  ["https://en.wikipedia.org/wiki/Crocs", false],
+  ["https://commons.wikimedia.org/wiki/File:Crocs.JPG", false],
+  ["https://www.reddit.com/r/crocs/comments/x", false],
+  ["https://www.pinterest.co.uk/pin/123", false],
+  ["https://www.facebook.com/groups/x/posts/1", false],
+  ["https://www.facebook.com/marketplace/item/123", true],
+  ["https://www.ebay.com/itm/406332220524", true],
+  ["https://flowlife.com/en-GB/product/flowgun-air", true],
+  ["https://www.usatoday.com/story/money/crocs", true], // the gate rules articles out by title
+]) {
+  const ok = current.isListingCandidate({ productUrl: url }) === listing;
+  line(`  ${ok ? "PASS" : "FAIL"}  ${url} ${listing ? "can be a listing" : "is never a listing"}`);
+  if (!ok) failures++;
 }
 
 line(`\n${"=".repeat(74)}`);

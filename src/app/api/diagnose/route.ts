@@ -212,6 +212,12 @@ export async function GET(req: NextRequest) {
       failing: layers.filter(l => !l.pass).map(l => l.layer),
       ranAt: new Date().toISOString(),
       tookMs: since(started),
+      // Which build answered, so a run can tell a finished deploy from the
+      // previous one still serving.
+      deployment: {
+        commit: (process.env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 7) || null,
+        environment: process.env.VERCEL_ENV || null,
+      },
       spend: { mode, todayUsd: Math.round(spend * 100) / 100, dailyBudgetUsd: DAILY_MODEL_BUDGET_USD },
       cost: {
         claudeUsd: Math.round(claudeUsd * 1_000_000) / 1_000_000,
