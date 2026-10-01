@@ -405,6 +405,15 @@ section("EVERY GATE MODEL FAILS");
   check("both models were tried and logged", [OPUS, SONNET].every(m => errors.some(e => e.includes(`model=${m}`))), errors.join(" | "));
 }
 
+section("ANTHROPIC SPEND CAP REACHED");
+{
+  const capped = { status: 429, type: "rate_limit_error", message: "You have reached your API usage limits (enforced_spend_limit_reached)" };
+  const { result, errors } = await scan({ gateFault: { [OPUS]: capped, [SONNET]: capped } });
+  check("the account's monthly spend cap is named as such in the log, not as a rate limit",
+    errors.some(e => e.includes("kind=spend_cap")), errors.join(" | "));
+  check("and the scan says it could not be completed, never a silent no-match", !!result.failure, summary(result));
+}
+
 // 8. A second photo of a product identified in the last hour.
 section("CACHED IDENTITY, RE-CONFIRMED ON SONNET 5.5");
 {

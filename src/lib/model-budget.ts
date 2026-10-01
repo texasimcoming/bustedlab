@@ -165,9 +165,11 @@ export async function todayModelSpend(): Promise<number> {
  * them are improved by sending the same request again immediately, and all
  * three mean the next scan should take the degraded path.
  */
-export async function reportModelFailure(status: number): Promise<void> {
-  if (status !== 429 && status !== 402 && status !== 529) return;
-  const cooldown = status === 402 ? BILLING_COOLDOWN_SECONDS : BREAKER_COOLDOWN_SECONDS;
+export async function reportModelFailure(status: number, spendCap = false): Promise<void> {
+  if (status !== 429 && status !== 402 && status !== 529 && !spendCap) return;
+  // A spend cap (the account tier's monthly cap, or a limit set in the
+  // Console) does not lift in minutes either; probe it at the billing pace.
+  const cooldown = status === 402 || spendCap ? BILLING_COOLDOWN_SECONDS : BREAKER_COOLDOWN_SECONDS;
   try {
     await getRedis().set(BREAKER_KEY, String(status), { ex: cooldown });
   } catch {

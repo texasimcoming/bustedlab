@@ -230,6 +230,18 @@ for (const [label, cost] of [
   console.log(`  ${pad(label, 26)}${pad("$" + Math.round(cost * 10000).toLocaleString(), 14)}${money(cost)}`);
 }
 
+// The Anthropic account's tier carries a MONTHLY spend cap (Start $500,
+// Build $1,000, Scale $200,000 as of 2026-10-01). At the cap every request
+// answers 429 until the 1st of the next month, whatever this application's
+// own budget says, and every scan fails. Raise the tier before traffic.
+console.log(`\n\nANTHROPIC MONTHLY SPEND CAP BY ACCOUNT TIER (thinking ${think.toLocaleString()} per call)`);
+rule();
+console.log("  At the cap, every model call answers 429 until the 1st of next month: all scans fail.");
+for (const [tier, cap] of [["Start", 500], ["Build", 1000], ["Scale", 200000]]) {
+  console.log(`  ${pad(tier, 8)} $${pad(cap.toLocaleString(), 9)} ${pad(Math.floor(cap / c("cold")).toLocaleString(), 10)} cold scans a month, or ${Math.floor(cap / c("identity")).toLocaleString()} identity-cache hits`);
+}
+console.log(`  DAILY_MODEL_BUDGET_USD of $250 allows up to $${(250 * 30).toLocaleString()} a month on the full path alone.`);
+
 console.log("\n\nSERPAPI CAPACITY: SCANS A MONTH PER PLAN");
 rule();
 console.log("  The monthly search allowance, not the bill, is the first wall a viral week hits.");

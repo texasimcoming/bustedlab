@@ -276,7 +276,7 @@ export const ENGINE_MODELS = {
 // which knows whether another model can still answer.
 // ════════════════════════════════════════════════════════════════
 type ClaudeFailureKind =
-  | "unconfigured" | "backpressure" | "client" | "server" | "timeout" | "network"
+  | "unconfigured" | "backpressure" | "spend_cap" | "client" | "server" | "timeout" | "network"
   | "refusal" | "truncated" | "empty" | "unparseable";
 
 interface ClaudeOutcome {
@@ -331,8 +331,16 @@ async function callClaude(
     return fail(name === "TimeoutError" || name === "AbortError" ? "timeout" : "network", 0, String((err as Error)?.message || err));
   }
   if (!res.ok) {
-    await reportModelFailure(res.status);
-    return fail(failureKindForStatus(res.status), res.status, await errorBody(res));
+    // The account's monthly spend cap answers 429 with error_code
+    // enforced_spend_limit_reached and no retry-after; a limit set in the
+    // Console answers 400 "You have reached your specified ... usage
+    // limits". Neither clears until the month turns or the limit is raised,
+    // so both are named as such in the log, where a plain rate limit or a
+    // bad request would send whoever is on call looking in the wrong place.
+    const body = await errorBody(res);
+    const spendCap = /enforced_spend_limit_reached|reached your specified (workspace )?API usage limits/i.test(body);
+    await reportModelFailure(res.status, spendCap);
+    return fail(spendCap ? "spend_cap" : failureKindForStatus(res.status), res.status, body);
   }
   let data: Record<string, unknown> | null = null;
   try {

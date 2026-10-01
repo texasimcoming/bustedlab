@@ -51,7 +51,12 @@ Set in Vercel project settings, then redeploy:
 
 - `ANTHROPIC_API_KEY`, in a workspace with access to `claude-opus-5-5` and
   `claude-sonnet-5-5`, the only two models the engine calls. Set a workspace
-  spend limit and a rate limit in the Claude Console.
+  spend limit and a rate limit in the Claude Console. Check the account's
+  usage tier first: each tier has a MONTHLY spend cap (Start $500, Build
+  $1,000, Scale $200,000), and at the cap every call is refused until the
+  1st of the next month, so every scan fails. `npm run cost-model` shows how
+  many scans each cap covers. Request the tier you need on the Console's
+  Rate limits page before sending traffic.
 - `GATE_EFFORT` (optional): the verification gate's effort level, `low` by
   default. Raise it to `medium` only if `npm run eval:gate` on labelled
   photos shows the gate missing matches at `low`.
