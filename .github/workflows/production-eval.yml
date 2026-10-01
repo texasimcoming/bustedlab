@@ -1,0 +1,61 @@
+# Runs the labelled evaluation against the live site, from GitHub's runners
+# (the development sandbox cannot reach production).
+#
+# Triggered only by a push to the working branch that changes evals/run.json,
+# or by hand. Never by pull_request: a fork must not be able to run a job that
+# holds the operator token. The token is read from the ANALYTICS_TOKEN repo
+# secret, passed to the one step that needs it, and never written anywhere:
+# scripts/production-eval.mjs redacts it from every byte it writes, and
+# Actions masks it in the log as well.
+#
+# Results are committed back to the branch under evals/results/, which is the
+# only reason this job can write to the repository.
+name: production-eval
+
+on:
+  push:
+    branches: ["claude/wizardly-bohr-ftv40e"]
+    paths: ["evals/run.json"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: production-eval
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      # sharp composes the price screenshots and caps photo sizes.
+      - run: npm ci
+      - name: Evaluate production
+        env:
+          ANALYTICS_TOKEN: ${{ secrets.ANALYTICS_TOKEN }}
+          BASE_URL: https://www.bustedlab.com
+        run: node --experimental-strip-types --no-warnings scripts/production-eval.mjs
+      - name: Commit results to the branch
+        if: always()
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add evals/results
+          if git diff --cached --quiet; then echo "no results to commit"; exit 0; fi
+          git commit -q -m "Production eval results (run ${GITHUB_RUN_NUMBER})"
+          for attempt in 1 2 3 4; do
+            if git pull -q --rebase origin "$BRANCH" && git push -q origin "HEAD:$BRANCH"; then exit 0; fi
+            sleep $((2 ** attempt))
+          done
+          exit 1
