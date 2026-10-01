@@ -14,7 +14,14 @@
       "claudeUsd": 4.551,
       "searchUsd": 0.046,
       "totalUsd": 4.597
+    },
+    {
+      "run": 3,
+      "at": "2026-10-01T21:36:12.506Z",
+      "claudeUsd": 1.5575,
+      "searchUsd": 0.016,
+      "totalUsd": 1.5735
     }
   ],
-  "totalUsd": 4.6189
+  "totalUsd": 6.1924
 }
