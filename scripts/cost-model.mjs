@@ -8,6 +8,9 @@
  *
  *   npm run cost-model                    # thinking priced at 300 / 1,000 / 3,000 tokens per call
  *   npm run cost-model -- --thinking 640  # one measured figure, e.g. from /api/diagnose
+ *   npm run cost-model -- --measured evals/results/run-3.json
+ *                                         # what real production scans cost, from the traces
+ *                                         # the evaluation recorded (scripts/production-eval.mjs)
  *
  * The product runs on two models, Claude Opus 5.5 and Claude Sonnet 5.5,
  * and both think on every call: adaptive thinking cannot be turned off, and
@@ -50,8 +53,6 @@ const T = {
 const arg = process.argv.indexOf("--thinking");
 const MEASURED = arg > 0 ? Number(process.argv[arg + 1]) : null;
 const THINKING_LEVELS = MEASURED !== null && Number.isFinite(MEASURED) ? [MEASURED] : [300, 1000, 3000];
-// The level the budget and viral-day sections are worked at.
-const HEADLINE_THINKING = MEASURED !== null && Number.isFinite(MEASURED) ? MEASURED : 1000;
 
 function price(tier, { input = 0, cacheWrite = 0, cacheRead = 0, output = 0 }) {
   const m = MODELS[tier];
@@ -141,6 +142,57 @@ const SEARCH_CALLS = {
 };
 const searchCost = (name) => SEARCH_CALLS[name].serpapi * SERPAPI_PER_SEARCH + SEARCH_CALLS[name].serper * SERPER_PER_SEARCH;
 
+// ── Measured: real production scans, from an evaluation results file ────
+const measuredArg = process.argv.indexOf("--measured");
+if (measuredArg > 0) {
+  const { readFileSync } = await import("node:fs");
+  const files = process.argv.slice(measuredArg + 1).filter(a => !a.startsWith("--"));
+  const scans = files.flatMap(f => (JSON.parse(readFileSync(f, "utf8")).scans || []))
+    .filter(s => s.json?.evaluation?.trace);
+  const kind = (s) => {
+    const r = s.json;
+    if (r.error) return "incomplete";
+    if (/\+reused/.test(r.engineUsed || "")) return "identity reuse";
+    if (r.mode === "UNRESOLVED") return "no answer";
+    return r.matchConfidence === "unverified" ? "lookalike" : "identified";
+  };
+  const groups = {};
+  const calls = {};
+  for (const s of scans) {
+    const t = s.json.evaluation.trace;
+    const g = (groups[kind(s)] = groups[kind(s)] || []);
+    const serpapi = t.searchesByProvider?.serpapi || 0;
+    const serper = t.searchesByProvider?.serper || 0;
+    g.push({ model: t.claudeUsd || 0, serpapi, serper, ms: t.totalMs || 0, thinking: t.thinkingPerCall });
+    for (const c of t.calls || []) {
+      const key = `${c.model} ${c.layer}`;
+      const e = (calls[key] = calls[key] || { n: 0, usd: 0, think: 0, ms: 0, input: 0, output: 0 });
+      e.n++; e.usd += c.costUsd || 0; e.think += c.thinkingApprox || 0; e.ms += c.ms || 0;
+      e.input += (c.inputTokens || 0) + (c.cacheReadTokens || 0) + (c.cacheWriteTokens || 0); e.output += c.outputTokens || 0;
+    }
+  }
+  const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+  const median = (xs) => { const v = [...xs].sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : 0; };
+  console.log(`\nMEASURED IN PRODUCTION: ${scans.length} traced scans from ${files.join(", ")}`);
+  console.log("-".repeat(78));
+  console.log(`  SerpApi priced at $${SERPAPI_PER_SEARCH} a search (the $150 / 15,000 plan), Serper at $${SERPER_PER_SEARCH}.`);
+  console.log(`  ${"scan".padEnd(16)}${"n".padStart(4)}${"model mean".padStart(12)}${"SerpApi".padStart(9)}${"Serper".padStart(8)}${"total mean".padStart(12)}${"median s".padStart(10)}${"max s".padStart(8)}`);
+  for (const [k, g] of Object.entries(groups)) {
+    const model = mean(g.map(x => x.model));
+    const sa = mean(g.map(x => x.serpapi));
+    const se = mean(g.map(x => x.serper));
+    const total = model + sa * SERPAPI_PER_SEARCH + se * SERPER_PER_SEARCH;
+    console.log(`  ${k.padEnd(16)}${String(g.length).padStart(4)}${("$" + model.toFixed(4)).padStart(12)}${sa.toFixed(1).padStart(9)}${se.toFixed(1).padStart(8)}${("$" + total.toFixed(4)).padStart(12)}${(median(g.map(x => x.ms)) / 1000).toFixed(1).padStart(10)}${(Math.max(...g.map(x => x.ms)) / 1000).toFixed(1).padStart(8)}`);
+  }
+  console.log(`\n  ${"model and layer".padEnd(32)}${"calls".padStart(6)}${"mean $".padStart(10)}${"thinking".padStart(10)}${"input".padStart(8)}${"output".padStart(8)}${"mean s".padStart(8)}`);
+  for (const [k, e] of Object.entries(calls).sort()) {
+    console.log(`  ${k.padEnd(32)}${String(e.n).padStart(6)}${("$" + (e.usd / e.n).toFixed(4)).padStart(10)}${Math.round(e.think / e.n).toString().padStart(10)}${Math.round(e.input / e.n).toString().padStart(8)}${Math.round(e.output / e.n).toString().padStart(8)}${(e.ms / e.n / 1000).toFixed(1).padStart(8)}`);
+  }
+  const allThinking = Object.values(calls).reduce((a, e) => a + e.think, 0) / Math.max(1, Object.values(calls).reduce((a, e) => a + e.n, 0));
+  console.log(`\n  Thinking per call, all calls: ${Math.round(allThinking)} tokens. The modelled sections below use it.\n`);
+  if (MEASURED === null) THINKING_LEVELS.splice(0, THINKING_LEVELS.length, Math.round(allThinking));
+}
+
 // ── Report ───────────────────────────────────────────────────────────────
 const pad = (s, n) => String(s).padEnd(n);
 const lpad = (s, n) => String(s).padStart(n);
@@ -173,7 +225,9 @@ console.log("  degraded  " + SEQUENCES.degraded.label);
 console.log("  fallback  " + SEQUENCES.fallback.label);
 console.log("  result cache: the same photo or link again within 24 hours; nothing runs");
 
-const think = HEADLINE_THINKING;
+// The level the budget and viral-day sections are worked at: the measured
+// figure when there is one, otherwise the middle of the three.
+const think = THINKING_LEVELS.length === 1 ? THINKING_LEVELS[0] : 1000;
 const c = (name) => scanCost(name, think);
 const thinkingShare = (c("cold") - scanCost("cold", 0)) / c("cold");
 console.log(`\n  At ${think.toLocaleString()} thinking tokens per call, thinking is ${(thinkingShare * 100).toFixed(0)}% of a cold scan's model spend.`);
