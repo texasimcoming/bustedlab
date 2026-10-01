@@ -11,7 +11,7 @@ import { importSrc, env, reset, call, mail, redis, check, section, finish } from
 const preflight = await importSrc("app/api/preflight/route.ts");
 const LS_LINK = "https://bustedlab.lemonsqueezy.com/checkout/buy/9f1c-variant";
 const READY = {
-  ANALYTICS_TOKEN: "op-token", CHECKOUT_URL: LS_LINK, ANTHROPIC_API_KEY: "sk-ant-x", SERPER_API_KEY: "serper-x",
+  ANALYTICS_TOKEN: "op-token", CHECKOUT_URL: LS_LINK, ANTHROPIC_API_KEY: "sk-ant-x", SERPER_API_KEY: "serper-x", SERPAPI_KEY: "serpapi-x",
   BLOB_READ_WRITE_TOKEN: "blob-x", CRON_SECRET: "cron-x", UNSUBSCRIBE_SECRET: "unsub-x", VERCEL_ENV: "production",
 };
 const run = (origin) => call(preflight.GET, "/api/preflight", { headers: { authorization: "Bearer op-token" }, origin })
@@ -27,7 +27,8 @@ check("with nothing to warn about", res.warnings.length === 0, JSON.stringify(re
 check("names what it verified", ["redis", "base url", "model key", "search key", "identity salt"].every(k => res.ok.includes(k)) &&
       res.ok.some(k => k.startsWith("checkout (lemonsqueezy, overlay")) && res.ok.includes("email (bustedlab.com verified)"), res.ok.join(", "));
 check("and the spending limits in force", res.limits.dailyModelBudgetUsd > 0 && res.limits.paidScansPerAccountPerDay === 500);
-check("never echoes a secret", !JSON.stringify(res).match(/sk-ant-x|serper-x|blob-x|cron-x|unsub-x|op-token|ls_signing_secret|re_test/));
+check("and points at the live diagnose for whether the keys actually work", /\/api\/diagnose/.test(res.next || ""), res.next);
+check("never echoes a secret", !JSON.stringify(res).match(/sk-ant-x|serper-x|serpapi-x|blob-x|cron-x|unsub-x|op-token|ls_signing_secret|re_test/));
 
 section("EACH THING THAT WOULD LOSE MONEY OR CUSTOMERS IS A BLOCKER");
 env(READY); reset();
@@ -55,7 +56,7 @@ env({ ...READY, EMAIL_FROM: "BustedLab <hello@otherdomain.com>" }); reset();
 mail.domains = [{ name: "otherdomain.com", status: "verified" }];
 res = await run();
 check("EMAIL_FROM on a verified domain fixes it", res.ready && res.ok.includes("email (otherdomain.com verified)"));
-env({ ...READY, ANTHROPIC_API_KEY: undefined, SERPER_API_KEY: undefined }); reset();
+env({ ...READY, ANTHROPIC_API_KEY: undefined, SERPER_API_KEY: undefined, SERPAPI_KEY: undefined }); reset();
 res = await run();
 check("scanner keys missing", !!blocker(res, "model key") && !!blocker(res, "search key"));
 env({ ...READY, IDENTITY_SALT: undefined }); reset();
@@ -76,6 +77,11 @@ check("a Gumroad setting that does nothing on Lemon Squeezy", !!warning(res, "gu
 env({ ...READY, CSP_REPORT_ONLY: "true" }); reset();
 res = await run();
 check("the CSP break-glass switch left on", !!warning(res, "csp"));
+env({ ...READY, SERPAPI_KEY: undefined }); reset();
+{
+  const lens = await run();
+  check("Lens through Serper alone is a warning, not a blocker", lens.ready && !!warning(lens, "lens") && !blocker(lens, "search key"), JSON.stringify(lens.warnings));
+}
 env({ ...READY, UNSUBSCRIBE_SECRET: undefined, CRON_SECRET: undefined, BLOB_READ_WRITE_TOKEN: undefined }); reset();
 res = await run();
 check("unsubscribe secret, cron secret and blob token", res.ready && !!warning(res, "unsubscribe") && !!warning(res, "cron") && !!warning(res, "blob"));

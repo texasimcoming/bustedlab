@@ -206,6 +206,10 @@ export default function Home() {
   // rebuilt it on every magic-link sign-in and every post-purchase arrival.
   const arrivalMessage = useSyncExternalStore(subscribeToNothing, messageForArrivalUrl, () => "");
   const [pageMessage, setAuthMessage] = useState<string | null>(null);
+  // Why the last scan did not produce a result, shown right above the scan
+  // button rather than in the banner at the top: after a scan the page is
+  // scrolled to the button, and a phone never shows the banner from there.
+  const [scanNotice, setScanNotice] = useState<string | null>(null);
   const authMessage = pageMessage ?? arrivalMessage;
   const [showLoginForm, setShowLoginForm] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
@@ -242,6 +246,11 @@ export default function Home() {
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     scanItRef.current?.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
   }, [preview]);
+  useEffect(() => {
+    if (!scanNotice) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    (scanItRef.current ?? urlFieldRef.current)?.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+  }, [scanNotice]);
 
   // ── The funnel. ──
   // One landing per page load, and the first photo and the first link of a
@@ -416,6 +425,7 @@ export default function Home() {
     if (!file.type.startsWith("image/")) return;
     if (!inputTracked.current.photo) { inputTracked.current.photo = true; track("photo_selected"); }
     setUploadedFile(file);
+    setScanNotice(null);
     const reader = new FileReader();
     reader.onload = (e) => setPreview(e.target?.result as string);
     reader.readAsDataURL(file);
@@ -463,14 +473,15 @@ export default function Home() {
     armAudio();
 
     track("scan_started");
+    setScanNotice(null);
     setState("scanning");
 
     // A request with no ceiling leaves the scanning screen running forever if
     // the connection drops or the function dies without answering. The scan
-    // route allows itself 60 seconds, so this gives it that plus margin and
+    // route allows itself 120 seconds, so this gives it that plus margin and
     // then fails visibly instead of spinning.
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 75000);
+    const timeout = setTimeout(() => controller.abort(), 135000);
 
     try {
       let res: Response;
@@ -492,13 +503,13 @@ export default function Home() {
         // prompt to someone who just clicked twice reads as a shakedown.
         const body = await res.json().catch(() => ({}));
         if (body?.error === "rate_limited") {
-          setAuthMessage("Too many scans too quickly. Try again in a minute.");
+          setScanNotice("Too many scans too quickly. Try again in a minute.");
         } else if (body?.error === "fair_use_ceiling") {
           // Fair use on the unlimited tier. This person has already paid, so
           // the paywall branch below would be the worst possible response:
           // a purchase prompt in front of a customer. Say what happened and
           // when it clears, and offer nothing.
-          setAuthMessage(
+          setScanNotice(
             `Daily fair-use ceiling reached (${body?.ceiling || 500} scans). ` +
             "Resets at midnight UTC. Email support if you need it lifted."
           );
@@ -514,7 +525,7 @@ export default function Home() {
       }
       if (res.status === 413) {
         setState("landing");
-        setAuthMessage("That image is too large. Under 12MB.");
+        setScanNotice("That image is too large. Under 12MB.");
         return;
       }
       if (res.status === 503) {
@@ -522,6 +533,19 @@ export default function Home() {
         setState("landing");
         setAuthMessage("Capacity reached for today. Unlimited access scans immediately.");
         openPaywall("capacity");
+        return;
+      }
+      if (res.status === 502) {
+        // The server could not complete the scan (a provider failed). It
+        // used no free scan and the server has already counted it, so the
+        // allowance shown stays as it is and the photo stays loaded for the
+        // retry.
+        const body = await res.json().catch(() => ({}));
+        // A 502 the server did not write (a crashed function, a gateway) was
+        // never counted there, so the browser counts that one.
+        if (body?.error !== "scan_incomplete") track("scan_failed");
+        setState("landing");
+        setScanNotice(body?.message || "That scan could not be completed on our side. It did not use a free scan. Try again.");
         return;
       }
       const data = await res.json();
@@ -533,7 +557,7 @@ export default function Home() {
       // screen and say what happened.
       track("scan_failed");
       setState("landing");
-      setAuthMessage(
+      setScanNotice(
         (err as Error)?.name === "AbortError"
           ? "That scan took too long to resolve. Try a direct product link."
           : "Connection dropped mid-scan. Try again."
@@ -618,7 +642,7 @@ export default function Home() {
     }
   };
 
-  const handleReset = () => { setState("landing"); setPreview(null); setResult(null); setUploadedFile(null); setUrlInput(""); };
+  const handleReset = () => { setState("landing"); setPreview(null); setResult(null); setUploadedFile(null); setUrlInput(""); setScanNotice(null); };
 
   // What the visitor wants to know, asked up front and sitting directly above
   // the scan button, with the verdict preselected. The same panel stays in
@@ -849,6 +873,11 @@ export default function Home() {
             <div style={{ height: "12px" }} />
             {intentPanel}
 
+            {scanNotice && (
+              <div role="alert" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.28)", borderRadius: "10px", padding: "10px 14px", margin: "0 0 10px", color: "#fbbf24", fontSize: "13px", fontWeight: 500, lineHeight: 1.5, textAlign: "center" }}>
+                {scanNotice}
+              </div>
+            )}
             {/* Deactivated rather than relabeled when the free allowance is
                 spent - same button, same words, just disabled. */}
             <button
@@ -863,6 +892,11 @@ export default function Home() {
         ) : (
           <>
             {intentPanel}
+            {scanNotice && (
+              <div role="alert" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.28)", borderRadius: "10px", padding: "10px 14px", margin: "0 0 10px", color: "#fbbf24", fontSize: "13px", fontWeight: 500, lineHeight: 1.5, textAlign: "center" }}>
+                {scanNotice}
+              </div>
+            )}
             <button
               className="btn-primary"
               onClick={() => fileInputRef.current?.click()}

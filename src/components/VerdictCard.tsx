@@ -27,7 +27,7 @@
 
 import { useEffect, useState } from "react";
 import { playVerdictTone } from "@/lib/sound";
-import { buildFinderMessage, buildMessage, evidenceNote, plateLabel } from "@/lib/verdict-copy";
+import { buildFinderMessage, buildMessage, evidenceNote, formatOriginalPrice, plateLabel } from "@/lib/verdict-copy";
 
 export type VerdictType = "HIGH_MARKUP" | "OVERPRICED" | "FAIR" | "UNVERIFIED";
 export type CardMode = "VERDICT" | "FINDER" | "UNRESOLVED";
@@ -46,6 +46,13 @@ export interface VerdictData {
   productUrl?: string;
   platform?: string;
   retailSource?: "screenshot" | "estimated" | "shopping";
+  /**
+   * The asking price as the seller showed it, when that was not in US
+   * dollars. Every number on the card is in USD; this is printed under the
+   * converted asking price so the card never shows a figure in a currency
+   * nobody charged.
+   */
+  retailOriginal?: { amount: number; currency: string; asOf: string };
   confidence?: "high" | "medium" | "low";
   scanId?: string;
   isDemo?: boolean;
@@ -596,6 +603,11 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                 }}>
                   ${data.retailPrice.toFixed(2)}
                 </div>
+                {data.retailOriginal && (
+                  <div style={{ fontSize: compact ? "10px" : "11px", color: "rgba(238,238,246,0.5)", marginTop: "3px", fontWeight: 500 }}>
+                    {formatOriginalPrice(data.retailOriginal)} on screen
+                  </div>
+                )}
               </div>
 
               <div style={{ textAlign: "center", fontSize: compact ? "9px" : "10px", color: "rgba(238,238,246,0.38)", fontWeight: "600", letterSpacing: "0.5px" }}>VS</div>

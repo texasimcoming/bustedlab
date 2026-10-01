@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { scanProduct, scanProductUrl, getUnresolvedResult, buildShippingNote, type ScanResult } from "@/lib/scan";
+import { scanProduct, scanProductUrl, buildShippingNote, type ScanResult } from "@/lib/scan";
 import { resignProxyPath } from "@/lib/image-proxy";
 import {
   freeScansRemaining,
@@ -31,19 +31,21 @@ import {
   recordScan,
   newScanId,
 } from "@/lib/redis";
-import { cookies } from "next/headers";
 import { after } from "next/server";
-import { recordEvents, type EventName } from "@/lib/analytics";
+import { recordEvents, recordScanFailure, type EventName, type FailureReason } from "@/lib/analytics";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import crypto from "crypto";
 
-// Vision extraction (~2-8s) + Lens/Shopping search (~2-14s) + parallel
-// verification (~2-10s) can add up past Vercel's default function
-// duration. This requires a plan that supports the value below —
-// confirm your Vercel plan's max before relying on it; Hobby plans cap
-// lower than Pro. If scans are timing out in production, check this first.
-export const maxDuration = 60;
+// The engine budgets itself 85 seconds (SCAN_BUDGET_MS in scan.ts): both
+// models think on every call, so extraction, Lens and the verification gate
+// take longer than they did with thinking off. This leaves room above that
+// for the call still in flight when the budget runs out. With Fluid compute
+// (the default for projects created since April 2025) Vercel allows up to
+// 300s on Hobby and 800s on Pro; the product must be on Pro anyway, since
+// Hobby is for non-commercial use. If scans time out in production, compare
+// /api/diagnose's per-call latencies with the budgets in scan.ts first.
+export const maxDuration = 120;
 
 const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 
@@ -113,9 +115,8 @@ function getClientIp(req: NextRequest): string {
 
 // Browser fingerprint from cookie. Persists across the IP changes that are
 // normal on mobile networks, which is the hole a pure IP limit leaves open.
-async function getBrowserId(): Promise<string | null> {
-  const cookieStore = await cookies();
-  const value = cookieStore.get("bl_bid")?.value || "";
+async function getBrowserId(req: NextRequest): Promise<string | null> {
+  const value = req.cookies.get("bl_bid")?.value || "";
   // Only the shape this route issues. Anything else is treated as no cookie,
   // which falls back to the strict per-address allowance.
   return /^[0-9a-f]{32}$/.test(value) ? value : null;
@@ -148,9 +149,8 @@ async function paidScansRemaining(email: string | null): Promise<number> {
   }
 }
 
-async function resolveAccess(): Promise<{ email: string | null; isPaid: boolean }> {
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get("bl_session")?.value;
+async function resolveAccess(req: NextRequest): Promise<{ email: string | null; isPaid: boolean }> {
+  const sessionToken = req.cookies.get("bl_session")?.value;
   if (!sessionToken) return { email: null, isPaid: false };
   try {
     const email = await getSessionEmail(sessionToken);
@@ -165,14 +165,14 @@ async function resolveAccess(): Promise<{ email: string | null; isPaid: boolean 
 // GET — free-tier state plus the real public counters behind the landing page
 export async function GET(req: NextRequest) {
   const ip = getClientIp(req);
-  const existingBrowserId = await getBrowserId();
+  const existingBrowserId = await getBrowserId(req);
   // A first visit has no browser id yet; this response issues it. The
   // allowance shown must be the one that new browser will have, not the
   // cookieless per-address rule, or the first page anyone behind a busy
   // shared address sees says their free scans are already spent.
   const issuedBrowserId = existingBrowserId ? null : newBrowserId();
   const browserId = existingBrowserId ?? issuedBrowserId;
-  const { email, isPaid } = await resolveAccess();
+  const { email, isPaid } = await resolveAccess(req);
 
   const withBrowserCookie = (res: NextResponse) => {
     // Issued on the first page load rather than on the first scan, so the
@@ -231,11 +231,45 @@ export async function GET(req: NextRequest) {
   }));
 }
 
+// ════════════════════════════════════════════════════════════════
+// "This scan could not be completed" is its own answer, not a "no match".
+//
+// When a provider failed and the engine could not establish what the photo
+// shows (see scan-trace.ts), the person is told to try again, and nothing
+// about the attempt sticks: it does not use one of their free scans or count
+// against fair use, it is not cached (a cached failure would answer their
+// retry with the same failure for a day), and it never reaches the ledger.
+// It IS counted, as scan_failed with the failing layer as its reason, so a
+// provider outage shows up on the dashboard as what it is.
+//
+// 502 because the failure is upstream of this server. The browser does not
+// report scan_failed for it again; the server already counted it.
+// ════════════════════════════════════════════════════════════════
+const INCOMPLETE_MESSAGE = "That scan could not be completed on our side. It did not use a free scan. Try again.";
+
+async function incompleteScan(reason: FailureReason, layers: string[], issueBrowserId: boolean): Promise<NextResponse> {
+  await recordScanFailure(reason, layers);
+  const response = NextResponse.json(
+    { error: "scan_incomplete", reason, message: INCOMPLETE_MESSAGE },
+    { status: 502, headers: { "Cache-Control": "no-store" } }
+  );
+  if (issueBrowserId) {
+    response.cookies.set("bl_bid", newBrowserId(), {
+      maxAge: 60 * 60 * 24 * 30,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: true,
+      path: "/",
+    });
+  }
+  return response;
+}
+
 // POST — run scan
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
-  const { email, isPaid } = await resolveAccess();
-  const browserId = await getBrowserId();
+  const { email, isPaid } = await resolveAccess(req);
+  const browserId = await getBrowserId(req);
 
   if (!(await withinBurstLimit(ip, browserId))) {
     return NextResponse.json(
@@ -328,6 +362,9 @@ export async function POST(req: NextRequest) {
         } catch { /* allow */ }
       }
       result = await runScan();
+      if (result.failure) {
+        return incompleteScan(result.failure.reason, result.failure.layers, !browserId);
+      }
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -364,6 +401,7 @@ export async function POST(req: NextRequest) {
         imageUrl: result.sourceProduct.imageUrl,
         productKey: cacheKey || "",
         cached: servedFromCache,
+        ...(result.analysis.retailOriginal ? { retailOriginal: result.analysis.retailOriginal } : {}),
       });
       // If the write failed, no permanent page exists, so no link is offered.
       // A share button pointing at a 404 is worse than no share button.
@@ -446,14 +484,16 @@ export async function POST(req: NextRequest) {
     }
     return response;
   } catch (err) {
-    console.error("Scan error:", err);
-    return NextResponse.json(getUnresolvedResult());
+    // An exception here is this server failing, not the product being
+    // unfindable, so it gets the same answer as a provider failure.
+    console.error("[scan] route error:", err);
+    return incompleteScan("engine", ["engine:route"], !browserId);
   }
 }
 
 // PATCH — session check
-export async function PATCH() {
-  const { email, isPaid } = await resolveAccess();
+export async function PATCH(req: NextRequest) {
+  const { email, isPaid } = await resolveAccess(req);
   if (!email) return NextResponse.json({ authenticated: false });
   return NextResponse.json({ authenticated: true, email, paid: isPaid });
 }

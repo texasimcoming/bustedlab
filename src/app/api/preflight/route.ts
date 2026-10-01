@@ -94,6 +94,9 @@ export async function GET(req: NextRequest) {
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     warnings.push({ check: "blob", detail: "BLOB_READ_WRITE_TOKEN is not set: photo scans cannot use reverse-image search and will match less often." });
   }
+  if (!process.env.SERPAPI_KEY && process.env.SERPER_API_KEY) {
+    warnings.push({ check: "lens", detail: "SERPAPI_KEY is not set: reverse-image search runs only through Serper, and the direct-retailer price check is off. Run /api/diagnose to see whether Serper's Lens answers well enough." });
+  }
 
   // ── Promises the site makes.
   if (process.env.IDENTITY_SALT) ok.push("identity salt");
@@ -115,6 +118,9 @@ export async function GET(req: NextRequest) {
       blockers,
       warnings,
       ok,
+      // Configuration present is not configuration working. /api/diagnose
+      // calls every provider for real with the engine's own requests.
+      next: "GET /api/diagnose with the same token: real calls to every model and provider",
       limits: {
         dailyModelBudgetUsd: DAILY_MODEL_BUDGET_USD,
         paidScansPerAccountPerDay: PAID_DAILY_SCAN_CEILING,

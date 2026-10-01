@@ -5,6 +5,7 @@ import { unstable_cache } from "next/cache";
 import { getScanRecord, getProductAggregate, getRecentRecords, type ScanRecord } from "@/lib/redis";
 import { recordToVerdictData, recordHeadline, VERDICT_COLOR, VERDICT_LABEL } from "@/lib/scan-record-view";
 import SharedVerdict from "@/components/SharedVerdict";
+import { conversionNote } from "@/lib/verdict-copy";
 
 /**
  * THE PERMANENT PAGE.
@@ -197,6 +198,11 @@ export default async function ScanPage({ params }: Props) {
           <Stat label="Markup" value={`${record.markup.toLocaleString()}%`} color={VERDICT_COLOR[record.verdict]} />
           <Stat label="Gap" value={`$${record.savings.toFixed(2)}`} color={VERDICT_COLOR[record.verdict]} />
         </div>
+        {record.retailOriginal && (
+          <p style={{ fontSize: "11px", color: "var(--text-3)", textAlign: "center", marginTop: "10px", lineHeight: 1.5 }}>
+            {conversionNote(record.retailOriginal)}
+          </p>
+        )}
 
         <div style={{
           marginTop: "10px", padding: "13px 15px", borderRadius: "10px",

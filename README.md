@@ -29,6 +29,10 @@ src/app/api/notify/route.ts   Intent capture: the product update list
 src/app/api/event/route.ts    Analytics beacon (3 browser events, allowlisted)
 src/app/api/stats/route.ts    The funnel, and what the CSP blocked. Token-protected.
 src/app/api/preflight/        Launch readiness: every blocker, by name. Token-protected.
+src/app/api/diagnose/         Real calls to every provider, per-layer pass/fail. Token-protected.
+src/lib/model-rules.ts        Per-model Claude request rules; replies read by block type
+src/lib/scan-trace.ts         Provider error vs "nothing found"; loud, per-scan failure record
+src/lib/fx.ts                 Daily exchange rates; asking prices compared in USD
 src/proxy.ts                  Enforced Content-Security-Policy, fresh nonce per request
 src/lib/analytics.ts          Six events, daily counters, no third parties
 src/app/scan/[id]/            Permanent page + per-scan OG image for one verdict

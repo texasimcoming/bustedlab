@@ -26,6 +26,7 @@ export function recordToVerdictData(record: ScanRecord): VerdictData {
     productImageUrl: resignProxyPath(record.imageUrl || "") || undefined,
     productUrl: record.sourceUrl || undefined,
     platform: record.platform || undefined,
+    retailOriginal: record.retailOriginal,
     confidence: record.confidence,
     scanId: `SCAN #${record.id.slice(0, 10).toUpperCase()}`,
     // The card is stamped with when the measurement happened, not when the

@@ -50,7 +50,14 @@
  * run without --yes.
  *
  *   node --experimental-strip-types --no-warnings scripts/eval-gate.mjs --yes
- *   node ... scripts/eval-gate.mjs --models claude-opus-5,claude-haiku-4-5-20251001 --yes
+ *   node ... scripts/eval-gate.mjs --models claude-opus-5-5@low,claude-opus-5-5@medium --yes
+ *
+ * A model may carry an effort level after "@". Both product models always
+ * think and effort is the only control over how much, so the question this
+ * answers on real photos is the one the owner asked: what is the lowest
+ * effort at which the gate still judges correctly? The default compares the
+ * two models at low, which is what the engine runs. If the gate misses at
+ * low, rerun with @medium and set GATE_EFFORT to the level that holds.
  *
  * Raw fetch rather than the Anthropic SDK, because this project has no SDK
  * dependency and every model call in src/lib/scan.ts is raw fetch too. The
@@ -60,6 +67,10 @@
 import { readFileSync, existsSync, writeFileSync, statSync } from "node:fs";
 import { resolve, dirname, extname } from "node:path";
 import { buildBatchPrompt, coerceVerdict, salvageVerdictObjects } from "../src/lib/gate-prompt.ts";
+// The engine's own request builder and reply reader, so this measures each
+// model under the request the engine actually sends (no sampling, thinking
+// on, effort, thinking room in max_tokens) and reads replies the same way.
+import { buildClaudeRequest, readClaudeReply, parseReplyJson } from "../src/lib/model-rules.ts";
 
 const REPO = resolve(dirname(new URL(import.meta.url).pathname), "..");
 
@@ -70,17 +81,23 @@ const flag = (name, fallback = null) => {
   return i >= 0 && args[i + 1] && !args[i + 1].startsWith("--") ? args[i + 1] : fallback;
 };
 const MANIFEST = resolve(REPO, flag("manifest", "evals/gate-cases.json"));
-const MODELS = flag("models", "claude-opus-5,claude-haiku-4-5-20251001").split(",").map(s => s.trim());
+// "model" or "model@effort"; the whole spec is the row label.
+const MODELS = flag("models", "claude-opus-5-5@low,claude-sonnet-5-5@low").split(",").map(s => s.trim());
+const parseSpec = (spec) => {
+  const [model, effort] = spec.split("@");
+  return { model, effort: effort || null };
+};
+// Thinking per call, for the up-front estimate only; the real cost is
+// measured from usage as the eval runs.
+const THINKING_ESTIMATE = 1000;
 const BATCH = Number(flag("batch", "6"));
 const OUT = flag("out", null);
 const CONFIRMED = args.includes("--yes");
 
 // Published rates, USD per million tokens. Same table as scripts/cost-model.mjs.
 const PRICING = {
-  "claude-opus-5": { input: 5.0, output: 25.0 },
-  "claude-haiku-4-5-20251001": { input: 1.0, output: 5.0 },
-  "claude-haiku-4-5": { input: 1.0, output: 5.0 },
-  "claude-sonnet-5": { input: 2.0, output: 10.0 },
+  "claude-opus-5-5": { input: 4.0, output: 20.0 },
+  "claude-sonnet-5-5": { input: 2.0, output: 10.0 },
 };
 
 const MIME = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif" };
@@ -152,9 +169,9 @@ for (const testCase of cases) {
   for (let b = 0; b < batches; b++) {
     const slice = testCase.candidates.slice(b * BATCH, (b + 1) * BATCH);
     const input = photoTokens + slice.reduce((n, c) => n + estimateImageTokens(c.image), 0) + 700;
-    const output = 30 + slice.length * 30;
-    for (const model of MODELS) {
-      const rate = PRICING[model] || { input: 5, output: 25 };
+    const output = 30 + slice.length * 30 + THINKING_ESTIMATE;
+    for (const spec of MODELS) {
+      const rate = PRICING[parseSpec(spec).model] || { input: 5, output: 25 };
       estimatedCost += (input * rate.input + output * rate.output) / 1_000_000;
     }
   }
@@ -183,7 +200,8 @@ const asBase64 = (path) => {
   return { data: readFileSync(full).toString("base64"), mimeType: mime };
 };
 
-async function judge(model, photo, candidates) {
+async function judge(spec, photo, candidates) {
+  const { model, effort } = parseSpec(spec);
   const content = [
     { type: "text", text: "IMAGE A (the photo being scanned):" },
     { type: "image", source: { type: "base64", media_type: photo.mimeType, data: photo.data } },
@@ -201,26 +219,23 @@ async function judge(model, photo, candidates) {
       "x-api-key": process.env.ANTHROPIC_API_KEY,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({
-      model,
+    body: JSON.stringify(buildClaudeRequest(model, {
       max_tokens: 250 + candidates.length * 90,
-      temperature: 0,
       messages: [{ role: "user", content }],
-    }),
+    }, { effort })),
   });
 
   if (!res.ok) {
     return { verdicts: candidates.map(() => null), usage: null, error: `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}` };
   }
   const data = await res.json();
-  const text = data.content?.[0]?.text || "";
-  let list;
-  try {
-    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-    list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.verdicts) ? parsed.verdicts : [];
-  } catch {
-    list = [];
+  const reply = readClaudeReply(data);
+  if (reply.refusal) {
+    return { verdicts: candidates.map(() => null), usage: data.usage, error: `refused (${reply.refusal})` };
   }
+  const text = reply.text || "";
+  const parsed = parseReplyJson(text);
+  let list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.verdicts) ? parsed.verdicts : [];
   if (list.length === 0) list = salvageVerdictObjects(text);
 
   const verdicts = candidates.map(() => null);
@@ -255,7 +270,7 @@ for (const testCase of cases) {
       const { verdicts, usage, error } = await judge(model, photo, slice);
       if (error) s.errors.push(`${testCase.id}: ${error}`);
       if (usage) {
-        const rate = PRICING[model] || { input: 5, output: 25 };
+        const rate = PRICING[parseSpec(model).model] || { input: 5, output: 25 };
         s.cost +=
           ((usage.input_tokens || 0) * rate.input + (usage.output_tokens || 0) * rate.output) / 1_000_000;
       }
