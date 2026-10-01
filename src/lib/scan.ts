@@ -1489,7 +1489,7 @@ async function searchShoppingWithFallbacks(
     const { value: match, index } = await firstAnswer("shopping", [
       { configured: !!process.env.SERPER_API_KEY, run: () => searchShoppingViaSerper(q, severity) },
       { configured: !!process.env.SERPAPI_KEY, run: () => searchShoppingViaSerpApi(q, severity) },
-    ]);
+    ], { onEmpty: "stop" });
     if (match) return { match, engineUsed: index === 0 ? "serper" : "serpapi" };
   }
   return null;

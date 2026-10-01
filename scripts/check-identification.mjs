@@ -487,6 +487,11 @@ const SCENARIO_LOOKALIKE = {
     "https://img.test/jug-other": "different",
   },
   expect: { titleIncludes: "Raku Pottery Pitcher", price: 32.5, confidence: "unverified", mode: "FINDER" },
+  // Serper answers every text search here with nothing. SerpApi's Shopping
+  // fallback is for when Serper FAILS, not a second opinion on an empty
+  // answer: in production it timed out at 12 seconds on all 19 such calls.
+  expectStats: (stats) => (stats.serpapiShoppingCalls > 0
+    ? [`SerpApi Shopping was called ${stats.serpapiShoppingCalls} time(s) after Serper had answered`] : []),
 };
 
 // A photo of Crocs that news sites and Wikipedia had published: Lens
@@ -519,9 +524,10 @@ const SCENARIO_REUSED_PHOTO = {
     "https://img.test/crocs-baya": "likely",
   },
   expect: { titleIncludes: "Baya", price: 34.99, confidence: "likely", mode: "FINDER" },
-  expectStats: (stats) => (stats.verified.some(v => v.includes("wiki-crocs"))
-    ? ["the Wikipedia page was sent to the gate; a page on a host that sells nothing must not be"]
-    : []),
+  expectStats: (stats) => [
+    ...(stats.verified.some(v => v.includes("wiki-crocs"))
+      ? ["the Wikipedia page was sent to the gate; a page on a host that sells nothing must not be"] : []),
+  ],
 };
 
 // A Flowlife massage gun: Lens found the brand's own product page, the gate
@@ -755,6 +761,7 @@ function installFetch(scenario, stats) {
         return jsonResponse({ visual_matches: scenario.lens });
       }
       if (engine === "google_shopping") {
+        stats.serpapiShoppingCalls++;
         if (scenario.shoppingDown) return shoppingDown();
         const rows = scenario.shopping(params.get("q") || "");
         return jsonResponse({
@@ -811,7 +818,7 @@ const { resetSpendModeCache } = await import(localModule("model-budget"));
 function freshStats() {
   return {
     visionCalls: 0, gateCalls: 0, opusGateCalls: 0, candidatesJudged: 0, faultsInjected: 0,
-    lensCalls: 0, retailerCalls: 0, imageFetches: 0, redisCalls: 0,
+    lensCalls: 0, retailerCalls: 0, imageFetches: 0, redisCalls: 0, serpapiShoppingCalls: 0,
     verified: [], models: [],
   };
 }

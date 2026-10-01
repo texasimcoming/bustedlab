@@ -205,7 +205,14 @@ export function hasFailed(layer: FailureLayer, severity?: Severity): boolean {
  */
 export async function firstAnswer<T>(
   layer: FailureLayer,
-  providers: { configured: boolean; run: () => Promise<T | null> }[]
+  providers: { configured: boolean; run: () => Promise<T | null> }[],
+  // Whether a provider that ANSWERED with nothing hands over to the next one
+  // anyway. True for Lens, where the backup is a different index and cheap.
+  // False for Shopping: the production evaluation found SerpApi's Google
+  // Shopping fallback timing out at its 12 seconds on every one of 19 calls,
+  // each one after Serper had already answered "no results" for the same
+  // query, so it cost every such scan 12 seconds and bought nothing.
+  { onEmpty = "next" }: { onEmpty?: "next" | "stop" } = {}
 ): Promise<{ value: T | null; index: number }> {
   const store = traces.getStore()?.failures;
   const start = store?.length ?? 0;
@@ -225,6 +232,7 @@ export async function firstAnswer<T>(
       settle();
       return { value, index: i };
     }
+    if (!failed && onEmpty === "stop") break;
   }
   settle();
   return { value: null, index: -1 };
