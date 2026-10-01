@@ -1,0 +1,196 @@
+{
+  "run": 1,
+  "note": "First contact: preflight and diagnose on the deployed merge of PR #4 (1f4be54).",
+  "base": "https://www.bustedlab.com",
+  "startedAt": "2026-10-01T20:21:07.650Z",
+  "steps": {
+    "preflight": {
+      "status": 200,
+      "ms": 1718,
+      "json": {
+        "ready": true,
+        "environment": "production",
+        "blockers": [],
+        "warnings": [
+          {
+            "check": "email",
+            "detail": "The Resend key is send-only, so the domain could not be checked. Confirm bustedlab.com shows as verified in Resend."
+          }
+        ],
+        "ok": [
+          "redis",
+          "checkout (lemonsqueezy, overlay)",
+          "base url",
+          "model key",
+          "search key",
+          "identity salt"
+        ],
+        "next": "GET /api/diagnose with the same token: real calls to every model and provider",
+        "limits": {
+          "dailyModelBudgetUsd": 250,
+          "paidScansPerAccountPerDay": 500,
+          "freeUncachedScansPerDay": 25000
+        }
+      },
+      "text": ""
+    },
+    "diagnose": {
+      "status": 200,
+      "ms": 5023,
+      "json": {
+        "pass": true,
+        "failing": [],
+        "ranAt": "2026-10-01T20:21:14.360Z",
+        "tookMs": 3781,
+        "spend": {
+          "mode": "full",
+          "todayUsd": 0,
+          "dailyBudgetUsd": 250
+        },
+        "cost": {
+          "claudeUsd": 0.010896,
+          "searches": {
+            "serpapiLens": 1,
+            "serper": 1
+          },
+          "note": "Claude cost is measured from this run's reported usage. Search cost is one search per provider at your plan's per-search price; the SerpApi account lookup is free."
+        },
+        "thinking": {
+          "perCallApprox": 35,
+          "note": "Average thinking tokens per call in this run. Re-price scans with: npm run cost-model -- --thinking <this number>"
+        },
+        "layers": [
+          {
+            "layer": "claude claude-opus-5-5 (gate)",
+            "pass": true,
+            "latencyMs": 3781,
+            "status": 200,
+            "detail": "answered and parsed",
+            "stopReason": "end_turn",
+            "costUsd": 0.004824,
+            "outputTokens": 52,
+            "thinkingTokensApprox": 17,
+            "maxTokens": 15340,
+            "reply": "[{\"candidate\": 1, \"match\": \"exact\", \"why\": \"Identical image: same purple textured strip with the same shape, colour and dotted surface\"}]",
+            "request": {
+              "model": "claude-opus-5-5",
+              "max_tokens": 15340,
+              "output_config": {
+                "effort": "low"
+              }
+            }
+          },
+          {
+            "layer": "claude claude-sonnet-5-5 (gate fallback, degraded gate, re-confirmation)",
+            "pass": true,
+            "latencyMs": 2018,
+            "status": 200,
+            "detail": "answered and parsed",
+            "stopReason": "end_turn",
+            "costUsd": 0.002532,
+            "outputTokens": 64,
+            "thinkingTokensApprox": 26,
+            "maxTokens": 15340,
+            "reply": "[{\"candidate\": 1, \"match\": \"exact\", \"why\": \"Candidate looks pixel-identical to IMAGE A: same woman, pose, and purple product being held to her teeth\"}]",
+            "request": {
+              "model": "claude-sonnet-5-5",
+              "max_tokens": 15340,
+              "output_config": {
+                "effort": "low"
+              }
+            }
+          },
+          {
+            "layer": "claude claude-sonnet-5-5 (first read, page text, search query)",
+            "pass": true,
+            "latencyMs": 1724,
+            "status": 200,
+            "detail": "answered and parsed",
+            "stopReason": "end_turn",
+            "costUsd": 0.00354,
+            "outputTokens": 132,
+            "thinkingTokensApprox": 61,
+            "maxTokens": 15350,
+            "reply": "```json\n{\n  \"productName\": \"purple teeth whitening strip\",\n  \"brand\": \"\",\n  \"visiblePrice\": null,\n  \"currency\": \"\",\n  \"quantity\": \"\",\n  \"category\": \"beauty\",\n  \"platform\": \"unknown\",\n  \"storeName\": \"\"",
+            "request": {
+              "model": "claude-sonnet-5-5",
+              "max_tokens": 15350,
+              "output_config": {
+                "effort": "low"
+              }
+            }
+          },
+          {
+            "layer": "blob",
+            "pass": true,
+            "latencyMs": 495,
+            "status": 200,
+            "detail": "uploaded, publicly readable, deleted"
+          },
+          {
+            "layer": "lens serpapi",
+            "pass": true,
+            "latencyMs": 3158,
+            "status": 200,
+            "detail": "40 visual matches; first: Purple Teeth Whitening Strips with Purple Gel, 28 Strips, 14 ...",
+            "matches": 40
+          },
+          {
+            "layer": "serpapi account",
+            "pass": true,
+            "latencyMs": 295,
+            "status": 200,
+            "detail": "219 searches left: top up before a traffic push",
+            "plan": "Free Plan",
+            "searchesPerMonth": 250,
+            "planSearchesLeft": 219,
+            "totalSearchesLeft": 219,
+            "thisMonthUsage": 31,
+            "rateLimitPerHour": 250
+          },
+          {
+            "layer": "serper",
+            "pass": true,
+            "latencyMs": 1082,
+            "status": 200,
+            "detail": "answered; 1 result(s)",
+            "creditsUsed": 1
+          },
+          {
+            "layer": "exchange rates",
+            "pass": true,
+            "latencyMs": 346,
+            "status": 200,
+            "detail": "rates for 2026-10-01: EUR 0.88365216, GBP 0.7549139, MAD 9.71943978, CAD 1.42483855 per USD"
+          },
+          {
+            "layer": "redis",
+            "pass": true,
+            "latencyMs": 301,
+            "status": 200,
+            "detail": "write and read"
+          },
+          {
+            "layer": "photo cap",
+            "pass": true,
+            "latencyMs": 298,
+            "status": 200,
+            "detail": "a 1170x2532 screenshot reaches the models at 725x1568"
+          }
+        ]
+      },
+      "text": ""
+    }
+  },
+  "finishedAt": "2026-10-01T20:21:14.393Z",
+  "spend": {
+    "claudeUsd": 0.010896,
+    "serpapiSearches": 1,
+    "serperSearches": 1,
+    "serpapiPerSearch": 0.01,
+    "searchUsd": 0.011,
+    "totalUsd": 0.021896,
+    "spentBeforeUsd": 0,
+    "capUsd": 25
+  }
+}

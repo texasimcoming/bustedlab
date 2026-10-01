@@ -1,0 +1,13 @@
+{
+  "capUsd": 25,
+  "runs": [
+    {
+      "run": 1,
+      "at": "2026-10-01T20:21:14.393Z",
+      "claudeUsd": 0.0109,
+      "searchUsd": 0.011,
+      "totalUsd": 0.0219
+    }
+  ],
+  "totalUsd": 0.0219
+}
