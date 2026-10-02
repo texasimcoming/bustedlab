@@ -506,15 +506,17 @@ function identifyBatches(caseId) {
     return steps.filter(st => st.step === "gate" && (st.purpose || "identify") === "identify").map(st => st.candidates || []);
   };
   let batches = fromScans(scans);
-  if (batches.length === 0 && earlier) batches = fromScans(earlier.scans);
+  // Earlier runs, latest first: the most recent engine's candidates win.
+  for (const prior of earlier) if (batches.length === 0) batches = fromScans(prior.scans);
   // Re-batched after the listing filter, eight to a call as the engine does.
   const flat = batches.flat().filter(c => isListing(c.link));
   const out = [];
   for (let i = 0; i < flat.length; i += 8) out.push(flat.slice(i, i + 8));
   return out;
 }
-const earlier = run.replayFrom && existsSync(resolve(RESULTS, run.replayFrom))
-  ? JSON.parse(readFileSync(resolve(RESULTS, run.replayFrom), "utf8")) : null;
+const earlier = [].concat(run.replayFrom || [])
+  .filter(f => existsSync(resolve(RESULTS, f)))
+  .map(f => JSON.parse(readFileSync(resolve(RESULTS, f), "utf8")));
 
 async function pool(items, limit, fn) {
   const out = new Array(items.length);
