@@ -12,8 +12,9 @@
  *                                         # what real production scans cost, from the traces
  *                                         # the evaluation recorded (scripts/production-eval.mjs)
  *
- * The product runs on two models, Claude Opus 5.5 and Claude Sonnet 5.5,
- * and both think on every call: adaptive thinking cannot be turned off, and
+ * The product runs on two models, Claude Sonnet 5.5 (first read and gate,
+ * chosen by the production evaluation) and Claude Opus 5.5 (escalation and
+ * the gate's fallback), and both think on every call: adaptive thinking cannot be turned off, and
  * effort (set to low) is the only control. Thinking is billed as output, so
  * it is the term that decides what a scan costs, and it cannot be known from
  * here: /api/diagnose reports each probe's output tokens from a real call.
@@ -93,12 +94,12 @@ const SEQUENCES = {
   cold: {
     label: "cold scan: Lens hits, wave one confirms, priced, rebrand + retailer checked",
     extract: "sonnet",
-    gate: [["opus", 6], ["opus", 2], ["opus", 2]],
+    gate: [["sonnet", 6], ["sonnet", 2], ["sonnet", 2]],
   },
   hard: {
     label: "hard scan: nothing confirms in wave one, every layer fires",
     extract: "sonnet",
-    gate: [["opus", 6], ["opus", 6], ["opus", 4], ["opus", 8]],
+    gate: [["sonnet", 6], ["sonnet", 6], ["sonnet", 4], ["sonnet", 8]],
   },
   identity: {
     label: "cached identity: another photo of a product identified in the last hour",
@@ -111,9 +112,14 @@ const SEQUENCES = {
     gate: [["sonnet", 6], ["sonnet", 2]],
   },
   fallback: {
-    label: "Opus 5.5 refusing every call (400s are not billed): Sonnet 5.5 judges",
+    label: "Sonnet 5.5 refusing every call (400s are not billed): Opus 5.5 judges",
     extract: "sonnet",
-    gate: [["sonnet", 6], ["sonnet", 2], ["sonnet", 2]],
+    gate: [["opus", 6], ["opus", 2], ["opus", 2]],
+  },
+  previous: {
+    label: "for comparison: the cold scan with the gate on Opus 5.5, as before the evaluation",
+    extract: "sonnet",
+    gate: [["opus", 6], ["opus", 2], ["opus", 2]],
   },
 };
 
@@ -139,6 +145,7 @@ const SEARCH_CALLS = {
   identity: { serpapi: 1, serper: 0 },
   degraded: { serpapi: 1, serper: 2 },
   fallback: { serpapi: 4, serper: 3 },
+  previous: { serpapi: 4, serper: 3 },
 };
 const searchCost = (name) => SEARCH_CALLS[name].serpapi * SERPAPI_PER_SEARCH + SEARCH_CALLS[name].serper * SERPER_PER_SEARCH;
 
@@ -223,6 +230,7 @@ console.log("  hard      " + SEQUENCES.hard.label);
 console.log("  identity  " + SEQUENCES.identity.label);
 console.log("  degraded  " + SEQUENCES.degraded.label);
 console.log("  fallback  " + SEQUENCES.fallback.label);
+console.log("  previous  " + SEQUENCES.previous.label);
 console.log("  result cache: the same photo or link again within 24 hours; nothing runs");
 
 // The level the budget and viral-day sections are worked at: the measured

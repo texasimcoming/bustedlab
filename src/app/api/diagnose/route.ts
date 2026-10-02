@@ -27,9 +27,9 @@ import sharp from "sharp";
  * the rules table name is available to this key, and reports today's uses of
  * the operator evaluation path (see eval-log.ts).
  *
- * What one run spends: three Claude calls (the gate on Opus 5.5 and on
- * Sonnet 5.5, each comparing a 320px sample with itself; the first read on
- * Sonnet 5.5), measured from the usage they report and returned as
+ * What one run spends: three Claude calls (the gate on Sonnet 5.5 and on
+ * its fallback Opus 5.5, each comparing a 320px sample with itself; the first
+ * read on Sonnet 5.5), measured from the usage they report and returned as
  * cost.claudeUsd: about two to six cents at list prices, depending on how
  * much the models think; one SerpApi Lens search; one Serper search credit;
  * one Blob upload and delete. The SerpApi account lookup is free. The Claude

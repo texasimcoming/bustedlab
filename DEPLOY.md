@@ -21,7 +21,7 @@ Then check that every provider actually WORKS, with real calls:
     curl -s -H "Authorization: Bearer $ANALYTICS_TOKEN" https://<domain>/api/diagnose
 
 Preflight says the keys are set; this says they are accepted. It makes one
-real call to each Claude model the engine uses (Opus 5.5 and Sonnet 5.5 with
+real call to each Claude model the engine uses (Sonnet 5.5 and Opus 5.5 with
 the gate's request, Sonnet 5.5 with the extraction request), reads the SerpApi
 account's remaining searches, runs one Serper search, does a Blob upload,
 read and delete, runs one real Lens search on a bundled sample photo, and

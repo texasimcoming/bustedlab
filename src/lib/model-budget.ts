@@ -24,9 +24,9 @@ import { Redis } from "@upstash/redis";
  *   1. This soft budget. Measured from real `usage` on every API response
  *      (thinking included: it is billed as output), not estimated. When the
  *      day's spend crosses DAILY_MODEL_BUDGET_USD the engine DEGRADES rather
- *      than failing: Sonnet 5.5 judges instead of Opus 5.5 (Opus only backs
- *      it up if Sonnet cannot answer), the rebrand and direct-retailer
- *      layers are dropped, and the gate is barred from its strongest label.
+ *      than failing: the rebrand and direct-retailer layers are dropped and
+ *      the gate (Sonnet 5.5, with Opus 5.5 only if Sonnet cannot answer) is
+ *      barred from its strongest label.
  *      A scan still answers: a match the degraded gate calls exact AND that
  *      independently carries the brand read off the photo is "likely" and
  *      can still reach a verdict; anything else is a closest match. A reused

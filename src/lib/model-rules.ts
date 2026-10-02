@@ -7,9 +7,10 @@
  * which is how a 400 on every gate call shipped and read as "nothing
  * verified".
  *
- * The product runs on exactly two models: Claude Opus 5.5 and Claude Sonnet
- * 5.5. Their request surface, from Anthropic's migration guides and the
- * effort and thinking docs as of 2026-10-01:
+ * The product runs on two models, Claude Sonnet 5.5 and Claude Opus 5.5 (which
+ * does what is chosen in MODELS in scan.ts); Claude Fable 5.1 is in the table
+ * so the evaluation can measure it. Their request surface, from Anthropic's
+ * models overview, pricing page and migration guides, checked 2026-10-01:
  *
  *   - Sampling: temperature, top_p and top_k at any non-default value are a
  *     400. They are never sent.
@@ -20,9 +21,13 @@
  *     its no-up-front-thinking setting; it is not used, by the owner's
  *     decision that thinking stays on.)
  *   - Effort: the only control over how much the model thinks. Opus 5.5
- *     defaults to medium, Sonnet 5.5 to high with recalibrated levels; both
- *     are set to low here, the lowest level, and the gate's level can be
- *     raised with GATE_EFFORT once an eval shows it is needed.
+ *     defaults to medium, Sonnet 5.5 and Fable 5.1 to high; all are set to
+ *     low here, the lowest level. Measured on the production evaluation
+ *     (run 3), Sonnet 5.5 at medium made the same identity claims as at low,
+ *     and at high it claimed fewer true matches, not more accurate ones; at
+ *     low it thought about 116 tokens a gate call. GATE_EFFORT can still
+ *     raise the gate's level without a code change if a later evaluation
+ *     shows it is needed.
  *   - max_tokens is a hard cap on thinking PLUS the answer. So every request
  *     gets the answer's own budget plus THINKING_HEADROOM tokens on top, up to
  *     MAX_TOKENS_CEILING: thinking would have to run past 15,000 tokens at low

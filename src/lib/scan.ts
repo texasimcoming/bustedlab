@@ -197,17 +197,31 @@ import { normalizeCurrency, parsePrice, toUsd } from "@/lib/fx";
 import { capForModel } from "@/lib/image-cap";
 
 // ════════════════════════════════════════════════════════════════
-// MODELS. Two, by the owner's decision: Claude Opus 5.5 and Claude Sonnet 5.5.
+// MODELS. Chosen per role from the production evaluation (evals/results,
+// run 2 and run 3), by the owner's rule: first, no wrong product shown as a
+// match; then the highest hit rate; then the lowest cost among models that
+// tie within noise.
 //
 // One decision in this file matters more than everything else in the
 // repository: whether a candidate listing is the same physical object as
-// the photo. Every number on the card is downstream of it, and a confident
-// wrong answer that goes viral is worse than no answer at all. So the gate
-// runs on the strongest model, Opus 5.5, with Sonnet 5.5 behind it.
+// the photo. Every number on the card is downstream of it. It used to run on
+// Opus 5.5 on the belief that the strongest model judges it best. Measured
+// on the labelled set, Sonnet 5.5 at low effort judged it the same: the same
+// outcome on all 19 replayed cases in run 2, and on the new four-level prompt
+// the same identity claim on every one of 188 candidates in run 3 (none
+// claimed by one model and not the other). It does so for about half the
+// cost per call and about a third faster. Fable 5.1 claimed identity a
+// little less often (more misses, no fewer wrong matches) at two and a half
+// times Opus's price, and higher effort made Sonnet more hesitant, not more
+// accurate. Twenty cases cannot separate small differences; this is a tie
+// within noise, decided on cost, and the evaluation re-measures it on every
+// run (scripts/production-eval.mjs, the "replay" step).
 //
-//   extraction, first pass     Sonnet 5.5  (reads brand, name, price, store)
-//   extraction, escalation     Opus 5.5    (a weak or failed first read)
-//   verification gate          Opus 5.5, then Sonnet 5.5 if Opus fails
+//   extraction, first pass     Sonnet 5.5  (reads brand, name, price, store;
+//                                            Opus and Fable read the same)
+//   extraction, escalation     Opus 5.5    (a weak or failed first read: a
+//                                            different model's second look)
+//   verification gate          Sonnet 5.5, then Opus 5.5 if Sonnet fails
 //   degraded gate              Sonnet 5.5  (daily budget spent: capped at
 //                                            "likely", enhancements dropped)
 //   cache-hit re-confirmation  Sonnet 5.5  (can only ACCEPT a reuse)
@@ -218,7 +232,7 @@ import { capForModel } from "@/lib/image-cap";
 // in one call with the photo sent once (BATCHING BEATS DOWNGRADING in
 // scripts/cost-model.mjs). Both always think; effort is the only control,
 // and it is set to low in model-rules.ts. GATE_EFFORT raises the gate's
-// level without a code change once an eval shows it is needed.
+// level without a code change if a later evaluation shows it is needed.
 //
 // What each request carries per model (no sampling, thinking left on,
 // effort, max_tokens with thinking room) is not decided here: it comes from
@@ -228,13 +242,15 @@ const OPUS = "claude-opus-5-5";
 const SONNET = "claude-sonnet-5-5";
 const EXTRACT_MODEL = SONNET;
 const EXTRACT_ESCALATION_MODEL = OPUS;
-const GATE_MODEL = OPUS;
+const GATE_MODEL = SONNET;
 // Next in line when the gate model refuses the request, keeps failing, or
-// declines it. A full-strength gate: it may still say "exact".
-const GATE_MODEL_FALLBACK = SONNET;
+// declines it. A different model, so one model's outage or refusal is not
+// the scan's. A full-strength gate: it may still say "exact".
+const GATE_MODEL_FALLBACK = OPUS;
 // The whole gate when the spend governor has degraded the engine. Its best
 // label is "likely". See model-budget.ts, and DEGRADED CONFIDENCE in
-// verifyCandidates.
+// verifyCandidates. With Sonnet 5.5 as the full gate too, degrading saves
+// the enhancement layers rather than a cheaper model.
 const GATE_MODEL_DEGRADED = SONNET;
 // Confirms that a cached identification matches this photo. See
 // reuseIdentification: it can only accept a reuse, never make a new one.
@@ -1928,13 +1944,13 @@ type Verified = {
 };
 type Checked = { candidate: ShoppingCandidate; result: VerificationResult; judge: string };
 
-// Who judges, in order: Opus 5.5, then Sonnet 5.5 when Opus cannot answer.
-// In degraded spend mode the order flips: Sonnet 5.5 judges, and Opus 5.5 is
-// called only if Sonnet cannot answer at all, so a budget-spent day never
-// turns a Sonnet outage into failed scans. Either way the degraded cap in
+// Who judges, in order: Sonnet 5.5, then Opus 5.5 when Sonnet cannot answer.
+// In degraded spend mode the degraded gate judges first and Opus 5.5 is
+// called only if it cannot answer at all, so a budget-spent day never turns
+// a Sonnet outage into failed scans. Either way the degraded cap in
 // settleVerdict applies.
 const gateChain = (options: GateOptions): string[] =>
-  options.mode === "degraded" ? [GATE_MODEL_DEGRADED, GATE_MODEL] : [GATE_MODEL, GATE_MODEL_FALLBACK];
+  options.mode === "degraded" ? [GATE_MODEL_DEGRADED, GATE_MODEL_FALLBACK] : [GATE_MODEL, GATE_MODEL_FALLBACK];
 
 /**
  * Judges candidates against the reference photo, in batches of up to
@@ -3382,11 +3398,12 @@ export async function diagnoseEngine(sample: { data: string; mimeType: string })
   const gate = gatePayload(sample, [sample]);
   const extraction = extractionPayload(sample.data, sample.mimeType);
   // Every model the engine uses, each in the role that matters most for it:
-  // Opus 5.5 as the gate; Sonnet 5.5 as the gate it falls back to (also the
-  // degraded gate and the cache-hit re-confirmation) and as the first read.
+  // Sonnet 5.5 as the gate (also the degraded gate and the cache-hit
+  // re-confirmation) and as the first read; Opus 5.5 as the gate it falls
+  // back to (and the extraction escalation).
   const probes: [string, FailureLayer, string, Record<string, unknown>, (t: string | null) => boolean, Effort | null][] = [
-    ["gate", "gate", GATE_MODEL, gate, isVerdict, gateEffort()],
-    ["gate fallback, degraded gate, re-confirmation", "gate", GATE_MODEL_FALLBACK, gate, isVerdict, gateEffort()],
+    ["gate, degraded gate, re-confirmation", "gate", GATE_MODEL, gate, isVerdict, gateEffort()],
+    ["gate fallback, extraction escalation", "gate", GATE_MODEL_FALLBACK, gate, isVerdict, gateEffort()],
     ["first read, page text, search query", "extraction", EXTRACT_MODEL, extraction, isExtraction, null],
   ];
 
