@@ -1,27 +1,6 @@
 {
-  "run": 3,
-  "note": "After PR #6 (four-level gate, listing titles, non-listing hosts, text identification, own-page prices, advisory price searches): re-scan the failed cases in priority order within the SerpApi reserve; replay the gate for all 20 cases on the new prompt (candidates from run 2 where this run did not scan), on all three models and Sonnet 5.5 at higher effort; extraction replays on the three models.",
-  "steps": ["preflight", "diagnose", "photos", "scan", "replay"],
-  "expectCommit": "98a69d5",
-  "serpapiReserve": 30,
-  "plan": [
-    ["crocs-clog", "verdict"],
-    ["flowlife-flowgun-air", "finder"],
-    ["switch-oled", "verdict"],
-    ["raku-pitcher", "finder"],
-    ["kitchen-spatula", "verdict"],
-    ["solar-lamps-mad", "verdict"],
-    ["flowgun-go-eur", "verdict"],
-    ["silicone-pastry-brush", "finder"],
-    ["mary-rose-spoon", "verdict"],
-    ["car-phone-holder", "finder"],
-    ["led-fidget-spinner", "verdict"],
-    ["jade-roller-gua-sha", "verdict"]
-  ],
-  "replayFrom": "run-2.json",
-  "replay": {
-    "gate": ["claude-opus-5-5@low", "claude-sonnet-5-5@low", "claude-fable-5-1@low", "claude-sonnet-5-5@medium", "claude-sonnet-5-5@high"],
-    "extract": ["claude-sonnet-5-5@low", "claude-opus-5-5@low", "claude-fable-5-1@low"]
-  },
-  "maxUsd": 8
+  "run": 4,
+  "note": "Diagnose only: confirm whether the Anthropic credit balance is still exhausted (run 3's replays started failing with 'credit balance is too low').",
+  "steps": ["preflight", "diagnose"],
+  "maxUsd": 0.2
 }

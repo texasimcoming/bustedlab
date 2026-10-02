@@ -277,7 +277,7 @@ export const ENGINE_MODELS = {
 // which knows whether another model can still answer.
 // ════════════════════════════════════════════════════════════════
 type ClaudeFailureKind =
-  | "unconfigured" | "backpressure" | "spend_cap" | "client" | "server" | "timeout" | "network"
+  | "unconfigured" | "backpressure" | "spend_cap" | "credit_exhausted" | "client" | "server" | "timeout" | "network"
   | "refusal" | "truncated" | "empty" | "unparseable";
 
 interface ClaudeOutcome {
@@ -360,13 +360,17 @@ async function callClaude(
     // The account's monthly spend cap answers 429 with error_code
     // enforced_spend_limit_reached and no retry-after; a limit set in the
     // Console answers 400 "You have reached your specified ... usage
-    // limits". Neither clears until the month turns or the limit is raised,
-    // so both are named as such in the log, where a plain rate limit or a
-    // bad request would send whoever is on call looking in the wrong place.
+    // limits"; a prepaid account with no credit left answers 400 "Your
+    // credit balance is too low". None of them clears until someone raises
+    // the limit or adds credit, so each is named as such in the log, where a
+    // plain rate limit or a bad request would send whoever is on call looking
+    // in the wrong place. The production evaluation hit the last one: every
+    // scan on the site failed from then until credit was added.
     const body = await errorBody(res);
     const spendCap = /enforced_spend_limit_reached|reached your specified (workspace )?API usage limits/i.test(body);
-    await reportModelFailure(res.status, spendCap);
-    return fail(spendCap ? "spend_cap" : failureKindForStatus(res.status), res.status, body);
+    const noCredit = /credit balance is too low/i.test(body);
+    await reportModelFailure(res.status, spendCap || noCredit);
+    return fail(spendCap ? "spend_cap" : noCredit ? "credit_exhausted" : failureKindForStatus(res.status), res.status, body);
   }
   let data: Record<string, unknown> | null = null;
   try {
@@ -1449,21 +1453,23 @@ async function searchDirectRetailer(provider: RetailerProvider, query: string): 
   }
 }
 
-// Runs every direct-retailer provider in parallel and returns the single
-// cheapest one — visual verification against the actual scanned photo
-// happens after this, one level up, exactly like every other candidate.
+// Runs every direct-retailer provider in parallel and merges what they
+// found into ONE pool, interleaved by each retailer's own relevance rank, for
+// the gate to judge. It used to keep only the retailer whose cheapest row was
+// cheapest and throw the others away before anything looked at them, so an
+// eBay page of unrelated cheap listings beat the Amazon page that carried
+// the product: price deciding identity again, one layer down. `source` names
+// the retailer of the pool's lead; the verified winner carries its own.
 async function searchAllDirectRetailers(query: string): Promise<{ match: ShoppingMatch; source: string } | null> {
-  const attempts = await Promise.all(
-    DIRECT_RETAILERS.map(async provider => {
-      const match = await searchDirectRetailer(provider, query);
-      return match ? { match, source: provider.name } : null;
-    })
-  );
-  const found = attempts.filter((a): a is { match: ShoppingMatch; source: string } => a !== null);
-  if (found.length === 0) return null;
-  return found.reduce((cheapest, current) =>
-    current.match.lowestPrice < cheapest.match.lowestPrice ? current : cheapest
-  );
+  const attempts = await Promise.all(DIRECT_RETAILERS.map(provider => searchDirectRetailer(provider, query)));
+  const pools = attempts.filter((m): m is ShoppingMatch => m !== null).map(m => m.candidates);
+  if (pools.length === 0) return null;
+  const merged: ShoppingCandidate[] = [];
+  for (let i = 0; pools.some(p => i < p.length); i++) {
+    for (const pool of pools) if (i < pool.length) merged.push({ ...pool[i], rank: merged.length });
+  }
+  const match = buildShoppingMatch(merged);
+  return match ? { match, source: match.source } : null;
 }
 
 // v9: tries progressively simpler queries instead of giving up after one.
@@ -1914,7 +1920,12 @@ function rankForVerification(candidates: ShoppingCandidate[], hints?: IdentityHi
   return scored.map(s => s.candidate);
 }
 
-type Verified = { best: ShoppingCandidate; confidence: "exact" | "likely" | "unverified" };
+type Verified = {
+  best: ShoppingCandidate;
+  confidence: "exact" | "likely" | "unverified";
+  /** The other candidates the gate put in the same tier as `best`, in rank order. */
+  tier?: ShoppingCandidate[];
+};
 type Checked = { candidate: ShoppingCandidate; result: VerificationResult; judge: string };
 
 // Who judges, in order: Opus 5.5, then Sonnet 5.5 when Opus cannot answer.
@@ -1963,6 +1974,8 @@ async function judgeCandidates(
       last = await verifyVisualMatchBatch(reference, urls, model);
       if (last.ok) return { outcome: last, judge: model };
       const kind = last.call?.kind;
+      // The account, not the model, is refusing: every model on it will.
+      if (kind === "spend_cap" || kind === "credit_exhausted") break;
       const sameModelAgain = kind === "server" || kind === "unparseable" || kind === "empty" || kind === undefined || kind === "ok";
       if (sameModelAgain && timeAllows()) {
         last = await verifyVisualMatchBatch(reference, urls, model);
@@ -2062,7 +2075,8 @@ function settleVerdictOf(checked: Checked[], ordered: ShoppingCandidate[], optio
   // failed Opus 5.5 is a full-strength gate, by the owner's decision.
   const settle = (picked: Checked, confidence: "exact" | "likely"): Verified => {
     const { candidate } = picked;
-    if (options.mode !== "degraded") return { best: candidate, confidence };
+    const tier = checked.filter(c => c.result.match === picked.result.match && c.candidate !== candidate).map(c => c.candidate);
+    if (options.mode !== "degraded") return { best: candidate, confidence, tier };
     if (brandConsistent(candidate, options.hints)) return { best: candidate, confidence: "likely" };
     return { best: candidate, confidence: "unverified" };
   };
@@ -2230,7 +2244,8 @@ export function cleanListingTitle(title: string, source = ""): string {
   let t = (title || "").replace(/\s+/g, " ").trim();
   t = t.replace(/^[A-Za-z0-9.-]*amazon\.[a-z.]+\s*:\s*/i, "");
   t = t.replace(/\s*(\.\.\.|…)\s*$/, "");
-  const site = source.toLowerCase().replace(/\.(com|net|org|co|shop|store)\b.*$/, "").trim();
+  // "galaxus.at" -> "galaxus", "Norpro Wholesale" -> "norpro".
+  const site = source.toLowerCase().trim().split(/[\s.]/)[0] || "";
   // A trailing segment that names the site: anything after " | ", or after a
   // dash when it is a domain, a marketplace, or the seller the listing came
   // from. "Apple AirPods Pro - 2nd Generation" keeps its generation.
@@ -2256,7 +2271,7 @@ async function priceVerifiedIdentity(
   confidence: "exact" | "likely",
   reference: { data: string; mimeType: string },
   gate: GateOptions
-): Promise<{ match: ShoppingMatch; engineUsed: string } | null> {
+): Promise<{ match: ShoppingMatch; engineUsed: string; confidence: "exact" | "likely" } | null> {
   const title = queryFromTitle(identified.title, identified.source);
   if (title.length < 3) return null;
   if (gate.budget && !gate.budget.allows(PRICING_SEARCH_COST_MS)) return null;
@@ -2271,10 +2286,17 @@ async function priceVerifiedIdentity(
   // Identity is already settled; this pool exists only to attach a price to
   // it, so the narrow window applies.
   const verified = await verifyCandidates(found.match, reference, { ...gate, window: VERIFY_WINDOW_PRICING, purpose: "pricing" });
-  if (rankConfidence(verified.confidence) < rankConfidence(confidence)) return null;
-  if (verified.best.price <= 0) return null;
-
-  return { match: applyVerifiedCandidate(found.match, verified), engineUsed: found.engineUsed };
+  if (verified.confidence === "unverified" || verified.best.price <= 0) return null;
+  // A price at the identification's own confidence is adopted as it is. An
+  // exact identification that only a "likely" listing can price (the same
+  // model in another colour, say) is shown as that likely listing, labeled
+  // likely, rather than as "not identified": the card then claims exactly
+  // what the price's own listing supports, and no more.
+  return {
+    match: applyVerifiedCandidate(found.match, verified),
+    engineUsed: found.engineUsed,
+    confidence: rankConfidence(verified.confidence) < rankConfidence(confidence) ? verified.confidence : confidence,
+  };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2668,6 +2690,9 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   let shopping: ShoppingMatch | null = null;
   let engineUsed = "none";
   let confidence: "exact" | "likely" | "unverified" = "unverified";
+  // The other listings the gate placed in the identified record's tier: the
+  // same product, so any of them can carry its price. See page_price below.
+  let identifiedTier: ShoppingCandidate[] = [];
   // The image every candidate is compared against. It is the scanned photo,
   // unless identification ends up running off a product photo found on the
   // seller's own page, in which case the whole verification chain stays
@@ -2717,6 +2742,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
     // actually confirmed - the exact mismatch a real scan surfaced (a
     // different colorway of the same shoe, badged as confirmed).
     confidence = verified.confidence;
+    identifiedTier = verified.tier || [];
     shopping = applyVerifiedCandidate(shopping, verified);
   }
 
@@ -2782,6 +2808,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
     if (shopping && rankConfidence(verified.confidence) <= rankConfidence(confidence)) return;
     shopping = applyVerifiedCandidate(pool, verified);
     confidence = verified.confidence;
+    identifiedTier = verified.tier || [];
     engineUsed = label;
   };
 
@@ -2807,11 +2834,31 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   // ── The identified listing's own page. Lens often finds the right listing
   //    without a price (a brand's own store is the usual case); the page
   //    states one in its structured data. ──
+  //    Up to three listings from the identified record's tier are read in
+  //    parallel (the first one tried was often a store that blocks reading,
+  //    while the brand's own page, also confirmed, was never tried); the
+  //    best-ranked one with a price becomes the record, with its own link,
+  //    title and image, so price and link still come from one listing. ──
   if (shopping && !servedFromIdentityCache && confidence !== "unverified" && shopping.lowestPrice <= 0 && budget.allows(PAGE_PRICE_COST_MS)) {
-    const own = await priceFromListingPage(shopping.productUrl);
-    traceStep("page_price", { url: shopping.productUrl.slice(0, 200), found: !!own, amount: own?.amount ?? null, currency: own?.currency ?? null });
-    if (own) {
-      shopping = { ...shopping, lowestPrice: own.usd, highestPrice: Math.max(shopping.highestPrice, own.usd) };
+    const current = shopping;
+    const seen = new Set<string>();
+    const tries = [
+      { title: current.title, imageUrl: current.imageUrl, productUrl: current.productUrl, source: current.source, productId: current.productId, price: 0, rank: -1 } as ShoppingCandidate,
+      ...identifiedTier,
+    ].filter(c => c.productUrl && !seen.has(c.productUrl) && seen.add(c.productUrl) && isListingCandidate(c)).slice(0, 3);
+    const prices = await Promise.all(tries.map(c => priceFromListingPage(c.productUrl)));
+    const hit = tries.findIndex((_, i) => prices[i]);
+    traceStep("page_price", {
+      tried: tries.map((c, i) => ({ url: c.productUrl.slice(0, 160), found: !!prices[i], amount: prices[i]?.amount ?? null, currency: prices[i]?.currency ?? null })),
+    });
+    if (hit >= 0) {
+      const own = prices[hit]!;
+      const listing = tries[hit];
+      shopping = {
+        ...current,
+        title: listing.title, imageUrl: listing.imageUrl, productUrl: listing.productUrl, source: listing.source, productId: listing.productId,
+        lowestPrice: own.usd, highestPrice: Math.max(current.highestPrice, own.usd),
+      };
       engineUsed = `${engineUsed}+priced_page`;
     }
   }
@@ -2824,9 +2871,10 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   //    separately too. ──
   if (shopping && !servedFromIdentityCache && confidence !== "unverified" && shopping.lowestPrice <= 0) {
     const priced = await priceVerifiedIdentity(shopping, confidence, reference, gate);
-    traceStep("pricing", { adopted: !!priced });
+    traceStep("pricing", { adopted: !!priced, confidence: priced?.confidence ?? null });
     if (priced) {
       shopping = priced.match;
+      confidence = priced.confidence;
       engineUsed = `${engineUsed}+priced_${priced.engineUsed}`;
     }
   }
@@ -2901,7 +2949,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
       if (retailerFound && retailerPool && retailerVerified &&
           shouldReplace(confidence, shopping.lowestPrice, retailerVerified.confidence, retailerVerified.best.price)) {
         shopping = applyVerifiedCandidate(retailerPool, retailerVerified);
-        engineUsed = `direct_${retailerFound.source.toLowerCase()}`;
+        engineUsed = `direct_${retailerVerified.best.source.toLowerCase()}`;
         confidence = retailerVerified.confidence;
       }
     }
@@ -3160,6 +3208,7 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
         const priced = await priceVerifiedIdentity(shopping, confidence, pageReference!, gate);
         if (priced) {
           shopping = priced.match;
+          confidence = priced.confidence;
           engineUsed = `${engineUsed}+priced_${priced.engineUsed}`;
         }
       }
@@ -3187,7 +3236,7 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
           // evicts a better-identified incumbent.
           if (shouldReplace(confidence, shopping.lowestPrice, retailerVerified.confidence, retailerVerified.best.price)) {
             shopping = applyVerifiedCandidate(retailerFound.match, retailerVerified);
-            engineUsed = `url_direct_${retailerFound.source.toLowerCase()}`;
+            engineUsed = `url_direct_${retailerVerified.best.source.toLowerCase()}`;
             confidence = retailerVerified.confidence;
           }
         }

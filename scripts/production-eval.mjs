@@ -188,6 +188,18 @@ async function resolveSource(src) {
       price: Number(product.variants?.[0]?.price) || null, currency: src.currency || "USD",
     };
   }
+  if (src.shopifyCollection) {
+    // The first product in a store's collection that has a photo and a price:
+    // for when a single product's handle is not known or has moved.
+    const data = await (await get(`${src.shopifyCollection.replace(/\/$/, "")}/products.json?limit=10`, { accept: "application/json" })).json();
+    const product = (data?.products || []).find(p => p.images?.[0]?.src && Number(p.variants?.[0]?.price) > 0);
+    if (!product) throw new Error(`no priced product with a photo in ${src.shopifyCollection}`);
+    const base = new URL(src.shopifyCollection).origin;
+    return {
+      imageUrl: absolute(product.images[0].src, base), title: product.title, page: `${base}/products/${product.handle}`,
+      price: Number(product.variants[0].price), currency: src.currency || "USD",
+    };
+  }
   if (src.page) {
     const html = await (await get(src.page, { accept: "text/html" })).text();
     const meta = (name) => html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${name}["'][^>]+content=["']([^"']+)["']`, "i"))?.[1]
@@ -236,6 +248,8 @@ function wrap(text, max = 34, lines = 2) {
   return out;
 }
 
+const shopHost = (page) => { try { return new URL(page).hostname.replace(/^www\./, ""); } catch { return ""; } };
+
 /** A phone screenshot of the listing: its own photo, title and asking price. */
 async function composeScreenshot(image, resolved, c) {
   const W = 1080, H = 2340;
@@ -254,7 +268,7 @@ async function composeScreenshot(image, resolved, c) {
     <text x="60" y="70" font-family="${font}" font-size="34" font-weight="bold" fill="#111">9:41</text>
     <text x="${W - 60}" y="70" text-anchor="end" font-family="${font}" font-size="30" fill="#111">5G 87%</text>
     <rect x="40" y="110" width="${W - 80}" height="80" rx="40" fill="#f1f3f4"/>
-    <text x="${W / 2}" y="163" text-anchor="middle" font-family="${font}" font-size="32" fill="#333">${escapeXml(c.screenshot.shop)}</text>
+    <text x="${W / 2}" y="163" text-anchor="middle" font-family="${font}" font-size="32" fill="#333">${escapeXml(shopHost(resolved.page) || c.screenshot.shop)}</text>
     ${title.map((line, i) => `<text x="60" y="${1330 + i * 58}" font-family="${font}" font-size="46" fill="#111">${escapeXml(line)}</text>`).join("")}
     <text x="60" y="${1330 + title.length * 58 + 90}" font-family="${font}" font-size="78" font-weight="bold" fill="#111">${escapeXml(price)}</text>
     <text x="60" y="${1330 + title.length * 58 + 160}" font-family="${font}" font-size="34" fill="#0a7d38">${escapeXml(copy.stock)} · ${escapeXml(copy.ship)}</text>
@@ -357,7 +371,8 @@ async function freeAllowanceLeft() {
 
 async function scanStep() {
   // A run made for a fix must not measure the build before it.
-  if (run.expectCommit && results.deployedCommit && !String(run.expectCommit).startsWith(results.deployedCommit)) {
+  // A missing commit is an older build than the one that reports it.
+  if (run.expectCommit && !String(run.expectCommit).startsWith(results.deployedCommit || "-")) {
     report.push(`## Scans\n\nStopped: production is running \`${results.deployedCommit}\`, not \`${run.expectCommit}\`. The deploy has not finished; push run.json again.\n`);
     stopAll = true;
     return;

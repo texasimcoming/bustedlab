@@ -414,6 +414,17 @@ section("ANTHROPIC SPEND CAP REACHED");
   check("and the scan says it could not be completed, never a silent no-match", !!result.failure, summary(result));
 }
 
+section("ANTHROPIC CREDIT BALANCE EXHAUSTED");
+{
+  const broke = { status: 400, type: "invalid_request_error", message: "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits." };
+  const { result, errors } = await scan({ gateFault: { [OPUS]: broke, [SONNET]: broke } });
+  check("a prepaid account with no credit left is named as such in the log",
+    errors.some(e => e.includes("kind=credit_exhausted")), errors.join(" | "));
+  check("the failure record says so too, for /api/stats", (result.failure?.layers || []).some(l => l.endsWith(":credit_exhausted")), summary(result));
+  check("and the gate does not walk the chain: the account refuses every model alike",
+    !errors.some(e => e.includes(`model=${SONNET}`) && e.includes("layer=gate")), errors.join(" | "));
+}
+
 // 8. A second photo of a product identified in the last hour.
 section("CACHED IDENTITY, RE-CONFIRMED ON SONNET 5.5");
 {

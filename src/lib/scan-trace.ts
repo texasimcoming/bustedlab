@@ -59,7 +59,7 @@ export interface ProviderFailure {
 export interface ScanFailure {
   /** The first layer whose failure decided it. Also the analytics reason. */
   reason: FailureLayer;
-  /** Every deciding failure, as layer:provider[:model]:status. */
+  /** Every deciding failure, as layer:provider[:model]:status[:kind when it is the account's]. */
   layers: string[];
 }
 
@@ -252,8 +252,10 @@ export function reportProviderFailure(failure: ProviderFailure): void {
 export function decideFailure(failures: ProviderFailure[], verified: boolean): ScanFailure | null {
   const deciding = failures.filter(f => f.severity === "critical" || (f.severity === "identity" && !verified));
   if (deciding.length === 0) return null;
+  // The kind rides along when it names the account rather than the call
+  // (a spend cap, no credit), so /api/stats says why at a glance.
   const layers = [...new Set(deciding.map(f =>
-    [f.layer, f.provider, f.model, String(f.status)].filter(Boolean).join(":")
+    [f.layer, f.provider, f.model, String(f.status), /spend_cap|credit_exhausted/.test(f.kind) ? f.kind : ""].filter(Boolean).join(":")
   ))];
   return { reason: deciding[0].layer, layers };
 }
