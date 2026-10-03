@@ -3,28 +3,19 @@ import { scanProduct, scanProductUrl, buildShippingNote, type ScanResult } from 
 import { resignProxyPath } from "@/lib/image-proxy";
 import {
   freeScansRemaining,
-  incrementScanCount,
-  incrementTotalScans,
   getTotalScans,
-  incrementTotalSavings,
   getTotalSavingsExposed,
-  incrementHourlyScans,
   getHourlyScans,
   isPaidUser,
   getSessionEmail,
   getGlobalScansToday,
-  incrementGlobalScans,
   GLOBAL_DAILY_CAP,
   FREE_SCANS_PER_DAY,
   PAID_DAILY_SCAN_CEILING,
   getPaidScansToday,
-  incrementPaidScanCount,
   getCachedScan,
-  setCachedScan,
   fingerprintUrl,
   fingerprintImage,
-  recordMarkup,
-  recordVerdict,
   getMaxMarkup,
   getBustedRate,
   MARKUP_FLOOR,
@@ -32,7 +23,8 @@ import {
   newScanId,
 } from "@/lib/redis";
 import { after } from "next/server";
-import { recordEvents, recordScanFailure, type EventName, type FailureReason } from "@/lib/analytics";
+import { recordScanFailure, type FailureReason } from "@/lib/analytics";
+import { countCompletedScan } from "@/lib/scan-counters";
 import { isEvaluationRequest, logEvaluationUse } from "@/lib/eval-log";
 import { summarizeTrace, type ScanTrace } from "@/lib/scan-trace";
 import { Ratelimit } from "@upstash/ratelimit";
@@ -250,9 +242,9 @@ export async function GET(req: NextRequest) {
 const INCOMPLETE_MESSAGE = "That scan could not be completed on our side. It did not use a free scan. Try again.";
 
 async function incompleteScan(
-  reason: FailureReason, layers: string[], issueBrowserId: boolean, extra: Record<string, unknown> = {}
+  reason: FailureReason, layers: string[], issueBrowserId: boolean, extra: Record<string, unknown> = {}, counted = true
 ): Promise<NextResponse> {
-  await recordScanFailure(reason, layers);
+  if (counted) await recordScanFailure(reason, layers);
   const response = NextResponse.json(
     { error: "scan_incomplete", reason, message: INCOMPLETE_MESSAGE, ...extra },
     { status: 502, headers: { "Cache-Control": "no-store" } }
@@ -271,15 +263,23 @@ async function incompleteScan(
 
 // ════════════════════════════════════════════════════════════════
 // THE OPERATOR EVALUATION PATH. A scan sent with the operator token and
-// `x-bustedlab-eval: 1` is the same scan with two differences: the FREE
-// allowance (per browser and per address) is neither checked nor counted,
-// because a labelled evaluation is forty scans from one machine; and the
-// response carries the scan's full trace (every model call with its tokens
-// and cost, every paid search, every gate decision, time per layer).
+// `x-bustedlab-eval: 1` is the same scan with three differences:
+//   - the FREE allowance (per browser and per address) is neither checked
+//     nor counted, because a labelled evaluation is many scans from one
+//     machine;
+//   - it never reaches public data: no ledger record (so no permanent page,
+//     board entry, toast or "What we catch" record), no lifetime or hourly
+//     scan counter, no verdict stats, no result cache entry a visitor could
+//     be served, and no funnel event in /api/stats;
+//   - the response carries the scan's full trace (every model call with its
+//     tokens, cache reads and cost, every paid search, every gate decision,
+//     time per layer).
 // The burst limit, the global daily cap on uncached free scans and the
 // counter behind it, and the model spend governor all apply exactly as they
-// do to anyone else. Every use is logged; see eval-log.ts. A browser never
-// sends the token, so this never changes what a visitor gets.
+// do to anyone else: an evaluation scan spends the same money. Every use is
+// logged; see eval-log.ts. A browser never sends the token, so this never
+// changes what a visitor gets. Records written before this rule are removed
+// by POST /api/eval/purge.
 // ════════════════════════════════════════════════════════════════
 
 // POST — run scan
@@ -397,7 +397,7 @@ export async function POST(req: NextRequest) {
           });
           return incompleteScan(result.failure.reason, result.failure.layers, !browserId, {
             evaluation: { failure: result.failure, trace: summary },
-          });
+          }, false);
         }
         return incompleteScan(result.failure.reason, result.failure.layers, !browserId);
       }
@@ -416,7 +416,8 @@ export async function POST(req: NextRequest) {
     // to guarantee the page they were just handed a link to actually exists.
     // ══════════════════════════════════════════════════════════════
     let scanId: string | null = null;
-    if (result.mode === "VERDICT" && result.analysis.verdict !== "UNVERIFIED") {
+    // Never for an evaluation scan: see THE OPERATOR EVALUATION PATH.
+    if (!evaluation && result.mode === "VERDICT" && result.analysis.verdict !== "UNVERIFIED") {
       scanId = newScanId();
       const stored = await recordScan({
         id: scanId,
@@ -444,74 +445,6 @@ export async function POST(req: NextRequest) {
       if (!stored) scanId = null;
     }
 
-    // ── Counters. Deferred until after the response is sent: none of them
-    //    affect what this person sees, and six sequential Redis round trips
-    //    were previously sitting between the finished scan and the render. ──
-    const wasFirstMeasurement = !servedFromCache && result.mode === "VERDICT";
-    const verdictIsBusted = result.analysis.verdict === "HIGH_MARKUP";
-    const savings = result.analysis.savings;
-    const markup = result.analysis.markup;
-
-    after(async () => {
-      // A cache hit still consumes a free scan: otherwise the same product
-      // could be rescanned forever for free.
-      if (!isPaid) {
-        // The free allowance is the one thing an evaluation scan does not
-        // touch. The global cap's counter still counts it.
-        if (!evaluation) {
-          await incrementScanCount(ip).catch(() => {});
-          if (browserId) await incrementScanCount(`browser:${browserId}`).catch(() => {});
-        }
-        if (!servedFromCache) await incrementGlobalScans().catch(() => {});
-      } else if (email) {
-        // Every scan counts against fair use, including cache hits. A
-        // ceiling that counts some scans and not others is one nobody can
-        // reason about - "I ran 600 but only 300 counted" is a support
-        // conversation with no good ending - and at 500 a day the
-        // distinction cannot matter to a real customer either way.
-        await incrementPaidScanCount(email).catch(() => {});
-      }
-      await incrementTotalScans().catch(() => {});
-      await incrementHourlyScans().catch(() => {});
-
-      // Only a genuine, visually verified VERDICT carries a real dollar
-      // amount worth accumulating. Cache hits are excluded so one viral
-      // product cannot inflate the lifetime totals by the number of people
-      // who looked at it.
-      if (wasFirstMeasurement) {
-        await recordVerdict(verdictIsBusted).catch(() => {});
-        if (savings > 0) await incrementTotalSavings(savings).catch(() => {});
-        if (markup > 0) await recordMarkup(markup).catch(() => {});
-      }
-
-      // ── Cache write. Only real, verified results are worth keeping:
-      //    caching an UNRESOLVED would pin a failure in place for 24 hours,
-      //    including for the retry the person is about to make. ──
-      if (cacheKey && !servedFromCache && result.found && result.mode === "VERDICT") {
-        const { shippingNote, ...cacheable } = result;
-        void shippingNote;
-        await setCachedScan(cacheKey, cacheable).catch(() => {});
-      }
-
-      // ── Analytics. Counted here rather than from the browser because this
-      //    is the moment the scan actually finished, which makes these two
-      //    numbers unforgeable. Every completed scan counts, including cache
-      //    hits and failures: "how many scans happened" is a different
-      //    question from "how many produced a verdict", and conflating them
-      //    hides exactly the failure rate worth watching. ──
-      const events: EventName[] = ["scan_completed"];
-      if (result.mode === "VERDICT") {
-        if (result.analysis.verdict === "HIGH_MARKUP") events.push("verdict_busted");
-        else if (result.analysis.verdict === "OVERPRICED") events.push("verdict_overpriced");
-        else if (result.analysis.verdict === "FAIR") events.push("verdict_fair");
-      } else if (result.mode === "FINDER") {
-        events.push("result_finder");
-      } else {
-        events.push("result_unresolved");
-      }
-      await recordEvents(events);
-    });
-
     const summary = evaluation && trace ? summarizeTrace(trace) : null;
     if (evaluation) {
       await logEvaluationUse("scan", {
@@ -520,6 +453,12 @@ export async function POST(req: NextRequest) {
         claudeUsd: summary?.claudeUsd ?? 0, searches: summary?.searchesByProvider ?? {},
       });
     }
+
+    // ── Counters. Deferred until after the response is sent: none of them
+    //    affect what this person sees. See countCompletedScan. ──
+    after(() => countCompletedScan({
+      result, evaluation, isPaid, email, ip, browserId, servedFromCache, cacheKey,
+    }));
     const response = NextResponse.json({
       ...result,
       scanId,
@@ -539,7 +478,9 @@ export async function POST(req: NextRequest) {
     // An exception here is this server failing, not the product being
     // unfindable, so it gets the same answer as a provider failure.
     console.error("[scan] route error:", err);
-    return incompleteScan("engine", ["engine:route"], !browserId);
+    // An evaluation scan's failure is the runner's to report, not the
+    // site's failure rate.
+    return incompleteScan("engine", ["engine:route"], !browserId, {}, !evaluation);
   }
 }
 

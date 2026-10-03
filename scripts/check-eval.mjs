@@ -1,19 +1,21 @@
 /**
- * THE OPERATOR EVALUATION PATH SKIPS ONE THING AND ONLY ONE.
+ * THE OPERATOR EVALUATION PATH SKIPS THE FREE ALLOWANCE AND NEVER REACHES
+ * PUBLIC DATA.
  *
  * An evaluation scan (operator token plus x-bustedlab-eval: 1) may run past
  * the free allowance, because a labelled evaluation is forty scans from one
  * machine. Everything else that protects the budget must still apply to it:
- * the global daily cap, and the model spend governor. Without the token, the
- * header does nothing; without the header, the token does nothing. Every use
- * is logged. The replay route (/api/eval) answers only the operator, names
- * only models in the rules table, stops while the engine is degraded and at
- * its daily limit, and logs every call.
+ * the global daily cap, and the model spend governor. It never reaches
+ * public data: no ledger record, no public counter or stats, no cached
+ * result, no funnel event. Without the token, the header does nothing;
+ * without the header, the token does nothing. Every use is logged. The
+ * replay route (/api/eval) answers only the operator, names only models in
+ * the rules table, stops while the engine is degraded and at its daily
+ * limit, and logs every call. The purge route (/api/eval/purge) removes what
+ * earlier runs wrote, once.
  *
- * Next's after() cannot run outside a request, so the counters the scan
- * route defers to it are confirmed against production by
- * scripts/production-eval.mjs (the runner's free allowance is read before
- * and after the evaluation), not here.
+ * Next's after() cannot run outside a request, so what the scan route
+ * defers to it (countCompletedScan) is run here directly.
  *
  *   node --experimental-strip-types --no-warnings scripts/check-eval.mjs
  */
@@ -87,6 +89,125 @@ section("THE SPEND GOVERNOR STILL APPLIES");
   const evalLines = source.split("\n").filter(l => /evaluation/.test(l));
   check("no evaluation branch names the spend mode, the budget or the global cap",
     !evalLines.some(l => /SpendMode|spendMode|currentSpendMode|DAILY_MODEL_BUDGET|GLOBAL_DAILY_CAP|getGlobalScansToday/.test(l)), evalLines.join("\n"));
+}
+
+section("WHAT A FINISHED SCAN COUNTS");
+{
+  const { countCompletedScan } = await importSrc("lib/scan-counters.ts");
+  const day = new Date().toISOString().slice(0, 10);
+  const verdict = {
+    mode: "VERDICT", found: true, shippingNote: "",
+    analysis: { verdict: "HIGH_MARKUP", savings: 40, markup: 300 },
+    sourceProduct: { title: "Lamp", price: 10, productUrl: "https://shop.example/lamp", imageUrl: "" },
+  };
+  const finished = { result: verdict, isPaid: false, email: null, ip: IP, browserId: BROWSER, servedFromCache: false, cacheKey: "img:check:verdict" };
+  env({ ANALYTICS_TOKEN: TOKEN }); reset();
+  await countCompletedScan({ ...finished, evaluation: false });
+  const visitorKeys = redis.keys();
+  check("a visitor's verdict counts everywhere: lifetime counter, verdict stats, savings, cache, funnel, allowance, cap",
+    ["scan:total:global", "scan:verdicts:total", "scan:savings:global", "scan:cache:img:check:verdict", "stat:scan_completed:total", `scan:global:${day}`]
+      .every(k => visitorKeys.includes(k)), visitorKeys.join(", "));
+  reset();
+  await countCompletedScan({ ...finished, evaluation: true });
+  check("an evaluation scan's verdict counts against the global free cap and nothing else",
+    JSON.stringify(redis.keys()) === JSON.stringify([`scan:global:${day}`]), redis.keys().join(", "));
+  reset();
+  await countCompletedScan({ ...finished, evaluation: true, servedFromCache: true });
+  check("and a cached evaluation scan counts nowhere at all", redis.keys().length === 0, redis.keys().join(", "));
+}
+
+section("A VERDICT REACHES THE LEDGER ONLY FROM A VISITOR");
+{
+  // A whole scan to a verdict, through the real engine: the first read sees
+  // a $60 asking price, Serper Shopping finds the lamp at $20, the gate
+  // confirms it. No Blob token, so no Lens: the shopping path identifies it.
+  const harness = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = typeof input === "string" ? input : String(input?.url || input);
+    const reply = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
+    if (url === "https://api.anthropic.com/v1/messages") {
+      const prompt = JSON.stringify(JSON.parse(init.body).messages[0].content);
+      const text = prompt.includes("Product intelligence scan")
+        ? JSON.stringify({ productName: "ceramic table lamp", brand: "Lumo", visiblePrice: 60, currency: "USD", quantity: "", category: "home",
+          platform: "instagram", storeName: "", visibleUrl: "", priceConfidence: "visible", imageQuality: "good" })
+        : prompt.includes("candidate product listing image")
+          ? JSON.stringify([{ candidate: 1, match: "exact", why: "same lamp" }])
+          : "lumo ceramic table lamp";
+      return reply({ stop_reason: "end_turn", usage: { input_tokens: 1000, output_tokens: 200 }, content: [{ type: "text", text }] });
+    }
+    if (url === "https://google.serper.dev/shopping") {
+      return reply({ shopping: [{ title: "Lumo Ceramic Table Lamp", source: "Shop", link: "https://shop.example/lamp", imageUrl: "https://images.example/lamp.jpg", price: "$20.00" }], credits: 1 });
+    }
+    if (url.startsWith("https://google.serper.dev/")) return reply({ organic: [], credits: 1 });
+    if (url.startsWith("https://images.example/")) return new Response(Buffer.from("lamp"), { status: 200, headers: { "content-type": "image/jpeg" } });
+    if (url.startsWith("https://shop.example/")) return new Response("<html></html>", { status: 200, headers: { "content-type": "text/html" } });
+    if (url.includes("currency-api")) return reply({ date: "2026-10-01", usd: { usd: 1, eur: 0.9 } });
+    return harness(input, init);
+  };
+  const run = async (headers) => {
+    const form = new FormData();
+    form.append("image", new Blob([Buffer.from(`LEDGER-PHOTO-${Math.random()}`)], { type: "image/jpeg" }), "photo.jpg");
+    form.append("intent", "verdict");
+    return call(scanRoute.POST, "/api/scan", { method: "POST", body: form, headers: { "x-forwarded-for": IP, ...headers }, cookies: { bl_bid: BROWSER } });
+  };
+  env({ ANALYTICS_TOKEN: TOKEN, ANTHROPIC_API_KEY: "sk-ant-eval-check", SERPER_API_KEY: "serper-eval-check", SERPAPI_KEY: undefined, BLOB_READ_WRITE_TOKEN: undefined });
+  reset();
+  await run({});
+  const ledger = () => redis.peek("scan:ledger");
+  check("control: a visitor's verdict is written to the ledger", ledger()?.size === 1, `${ledger()?.size ?? 0} record(s); keys: ${redis.keys().join(", ")}`);
+  reset();
+  await run(evalHeaders);
+  check("an evaluation scan's verdict is not: no record, no board entry, no permanent page",
+    !ledger()?.size && !redis.keys().some(k => k.startsWith("scan:rec:") || k.startsWith("scan:ledger") || k.startsWith("scan:trending:")),
+    redis.keys().join(", "));
+  check("and it was logged as an evaluation scan", (redis.peek("eval:recent") || []).some(e => String(e).includes('"kind":"scan"')));
+  check("and nothing about it reached the funnel in /api/stats, not even a failure", !redis.keys().some(k => k.startsWith("stat:")), redis.keys().join(", "));
+  globalThis.fetch = harness;
+}
+
+section("THE PURGE: /api/eval/purge");
+{
+  const purgeRoute = await importSrc("app/api/eval/purge/route.ts");
+  const purge = (body, headers = operator) => call(purgeRoute.POST, "/api/eval/purge", {
+    method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", ...headers },
+  });
+  env({ ANALYTICS_TOKEN: TOKEN }); reset();
+  // A record an earlier evaluation run wrote, and one a visitor wrote.
+  const ts = Date.now();
+  const record = (id, title, productKey) => ({
+    id, ts, title, category: "home", retailPrice: 62.24, wholesalePrice: 40, markup: 56, savings: 22.24,
+    verdict: "OVERPRICED", confidence: "high", matchConfidence: "exact", platform: "Shop",
+    sourceUrl: "https://shop.example/x", imageUrl: "", productKey, cached: false,
+  });
+  await lib.recordScan(record("muq0qsdh30e5c684a68a1959f81360e3", "Stanley Quencher (evaluation)", "img:eval:verdict"));
+  await lib.recordScan(record("mvisitor0000000000000000000000ab", "A visitor's lamp", "img:visitor:verdict"));
+  for (let i = 0; i < 50; i++) await lib.incrementTotalScans();
+  await lib.recordVerdict(false); await lib.recordVerdict(false);
+  await lib.incrementTotalSavings(22.24); await lib.incrementTotalSavings(10);
+  const body = { purgeId: "eval-runs-1-4", scanIds: ["muq0qsdh30e5c684a68a1959f81360e3"], counters: { scans: 48, verdicts: 1, busted: 0, savingsUsd: 22.24 } };
+
+  check("no token: 401", (await purge(body, {})).status === 401);
+  check("an id that is not a ledger id: 400", (await purge({ ...body, scanIds: ["../../etc"] })).status === 400);
+  check("negative counters: 400", (await purge({ ...body, counters: { ...body.counters, scans: -1 } })).status === 400);
+  const dry = await purge({ ...body, dryRun: true });
+  check("a dry run names what would go and changes nothing",
+    dry.json?.wouldRemove?.length === 1 && (await lib.getLedgerSize()) === 2 && (await lib.getTotalScans()) === 50, dry.text.slice(0, 300));
+  const done = await purge(body);
+  check("the purge removes the evaluation record, and only it",
+    done.status === 200 && done.json?.result?.removed?.length === 1 && (await lib.getLedgerSize()) === 1 &&
+    (await lib.getScanRecord("muq0qsdh30e5c684a68a1959f81360e3")) === null && (await lib.getScanRecord("mvisitor0000000000000000000000ab")) !== null,
+    done.text.slice(0, 400));
+  check("its board entries go with it: markup board, trending, category average, product aggregate",
+    !redis.peek("scan:ledger:markup")?.has("muq0qsdh30e5c684a68a1959f81360e3") &&
+    !redis.peek(`scan:trending:${lib.isoWeek()}`)?.has("img:eval:verdict") &&
+    redis.peek("scan:cat:home")?.get("count") === "1" && redis.peek("scan:product:img:eval:verdict") === undefined,
+    JSON.stringify({ cat: [...(redis.peek("scan:cat:home") || new Map())], trending: [...(redis.peek(`scan:trending:${lib.isoWeek()}`) || new Map())] }));
+  check("the public counters lose exactly what the evaluation scans added",
+    (await lib.getTotalScans()) === 2 && (await lib.getBustedRate()).total === 1 && Math.abs((await lib.getTotalSavingsExposed()) - 10) < 1e-9,
+    JSON.stringify(done.json?.result?.counters));
+  const again = await purge(body);
+  check("a second run with the same purgeId changes nothing", again.json?.alreadyApplied === true && (await lib.getTotalScans()) === 2, again.text.slice(0, 200));
+  check("the purge is logged", (redis.peek("eval:recent") || []).some(e => String(e).includes('"kind":"purge"')));
 }
 
 section("REPLAYS: /api/eval");

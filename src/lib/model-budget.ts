@@ -102,14 +102,15 @@ export function priceUsage(model: string, usage: ClaudeUsage | undefined): numbe
   );
 }
 
-// The number to tune. In `npm run cost-model`, at 1,000 thinking tokens a
-// call, a cold scan is about $0.105 of model spend on the full path, a scan
-// of an already-identified product about $0.032, and a degraded scan about
-// $0.048. So $250 buys roughly 2,400 cold scans on the full path, or several
-// times that when the traffic is concentrated on a few products, which is
-// what a viral moment produces. Replace those figures with measured ones:
-// /api/diagnose reports real thinking tokens per call.
-export const DAILY_MODEL_BUDGET_USD = Number(process.env.DAILY_MODEL_BUDGET_USD || 250);
+// BUDGET MODE: $2 a day unless DAILY_MODEL_BUDGET_USD says otherwise. The
+// company is self-funded and Anthropic is prepaid, so spend follows revenue:
+// raise it in the environment when revenue does. A cold scan is modelled at
+// two to three cents of model spend with the photo cached once per scan, so
+// $2 covers the free tier's 50 uncached scans a day (GLOBAL_DAILY_SCAN_CAP,
+// redis.ts) on the full path; the engine degrades only when paid scans or
+// dearer scans push the day past it, and it never refuses a scan. `npm run
+// cost-model` prints both; `--measured` prices real production traces.
+export const DAILY_MODEL_BUDGET_USD = Number(process.env.DAILY_MODEL_BUDGET_USD || 2);
 
 // How long the engine stays degraded after the API pushes back. Long enough
 // that a tripped limit is not retried into the ground, short enough that a

@@ -16,16 +16,50 @@ import sharp from "sharp";
  */
 export const MODEL_IMAGE_LONG_EDGE = 1568;
 
-export async function capForModel(image: { data: string; mimeType: string }): Promise<{ data: string; mimeType: string }> {
+/**
+ * Candidate listing images, capped at 512px. Lens and Shopping thumbnails are
+ * already smaller (about 150 to 250 tokens each in production traces), so for
+ * them nothing changes. What it bounds is the outlier: a full-size merchant
+ * photo or a product page's og:image can be 2000px and about 5,000 tokens,
+ * and the gate sends up to eight candidates a call. At 512px a candidate
+ * costs at most about 350 tokens, whatever the source sent.
+ */
+export const CANDIDATE_IMAGE_LONG_EDGE = 512;
+
+export async function capForModel(
+  image: { data: string; mimeType: string },
+  maxLongEdge: number = MODEL_IMAGE_LONG_EDGE
+): Promise<{ data: string; mimeType: string }> {
   try {
     const input = Buffer.from(image.data, "base64");
     const meta = await sharp(input).metadata();
     const longEdge = Math.max(meta.width || 0, meta.height || 0);
-    if (!longEdge || longEdge <= MODEL_IMAGE_LONG_EDGE) return image;
+    if (!longEdge || longEdge <= maxLongEdge) return image;
     const output = await sharp(input)
       .rotate()
-      .resize({ width: MODEL_IMAGE_LONG_EDGE, height: MODEL_IMAGE_LONG_EDGE, fit: "inside", withoutEnlargement: true })
+      .resize({ width: maxLongEdge, height: maxLongEdge, fit: "inside", withoutEnlargement: true })
       .jpeg({ quality: 85, mozjpeg: true })
+      .toBuffer();
+    return { data: output.toString("base64"), mimeType: "image/jpeg" };
+  } catch {
+    return image;
+  }
+}
+
+/**
+ * An image scaled to `longEdge`, up or down. Only /api/diagnose uses it: its
+ * 320px sample is about 137 image tokens, under the 512-token minimum a
+ * prompt prefix needs before Anthropic caches it, so the probes scale it up
+ * to exercise prompt caching the way a real photo does.
+ */
+export async function scaleImage(
+  image: { data: string; mimeType: string },
+  longEdge: number
+): Promise<{ data: string; mimeType: string }> {
+  try {
+    const output = await sharp(Buffer.from(image.data, "base64"))
+      .resize({ width: longEdge, height: longEdge, fit: "inside" })
+      .jpeg({ quality: 85 })
       .toBuffer();
     return { data: output.toString("base64"), mimeType: "image/jpeg" };
   } catch {

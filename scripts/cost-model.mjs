@@ -21,8 +21,9 @@
  * Until that number exists, every figure is shown at three thinking levels.
  */
 
-// ── Published rates, USD per million tokens, as of 2026-10-01 ────────────
+// ── Published rates, USD per million tokens, checked 2026-10-03 ──────────
 // https://platform.claude.com/docs/en/about-claude/pricing
+// https://platform.claude.com/docs/en/build-with-claude/prompt-caching
 // Cache write (5 minutes) is 1.25x input on both; cache read is 0.05x input
 // on Opus 5.5 and 0.1x on Sonnet 5.5 ($0.20 per million either way). Both
 // cache a prefix from 512 tokens, so the reference photo caches on both.
@@ -67,22 +68,37 @@ function price(tier, { input = 0, cacheWrite = 0, cacheRead = 0, output = 0 }) {
 
 const photoCaches = (tier) => T.referenceImage >= MODELS[tier].cacheMinimum;
 
-/** The vision extraction: one photo, one prompt, a small JSON answer, plus thinking. */
-const extract = (tier, thinking) =>
-  price(tier, { input: T.referenceImage + T.extractPrompt, output: T.extractOutput + thinking });
+// How the photo is cached, for comparison:
+//   "shared"     every call opens with the same photo prefix, so the first
+//                read writes it and every gate call on the same model reads
+//                it (THE PHOTO, ONCE PER SCAN in src/lib/scan.ts; budget mode)
+//   "gate-only"  before budget mode: the first read sent the photo uncached
+//                and the first gate wave wrote it again
+//   "none"       no prompt caching at all
+let CACHING = "shared";
 
-/**
- * One gate call covering `candidates` candidates. The reference photo is a
- * cache breakpoint: the first call on a model in a scan writes it, later
- * calls on that model read it.
- */
+/** One call carrying the photo: written, read back, or paid in full, per CACHING. */
+function photoTokens(tier, cacheState, role) {
+  if (CACHING === "none" || !photoCaches(tier) || (CACHING === "gate-only" && role === "extract")) {
+    return { input: T.referenceImage };
+  }
+  if (cacheState[tier]) return { cacheRead: T.referenceImage };
+  cacheState[tier] = true;
+  return { cacheWrite: T.referenceImage };
+}
+
+/** The vision extraction: one photo, one prompt, a small JSON answer, plus thinking. */
+function extract(tier, thinking, cacheState) {
+  const photo = photoTokens(tier, cacheState, "extract");
+  return price(tier, { ...photo, input: (photo.input || 0) + T.extractPrompt, output: T.extractOutput + thinking });
+}
+
+/** One gate call covering `candidates` candidates, the photo first. */
 function gateCall(tier, candidates, cacheState, thinking) {
   const rest = T.gatePromptBase + candidates * (T.candidateThumbnail + T.gateLabelPerCandidate);
   const output = T.gateOutputOverhead + candidates * T.gateOutputPerCandidate + thinking;
-  if (!photoCaches(tier)) return price(tier, { input: T.referenceImage + rest, output });
-  if (cacheState[tier]) return price(tier, { cacheRead: T.referenceImage, input: rest, output });
-  cacheState[tier] = true;
-  return price(tier, { cacheWrite: T.referenceImage, input: rest, output });
+  const photo = photoTokens(tier, cacheState, "gate");
+  return price(tier, { ...photo, input: (photo.input || 0) + rest, output });
 }
 
 // ── The call sequences the engine makes ──────────────────────────────────
@@ -123,31 +139,41 @@ const SEQUENCES = {
   },
 };
 
-function scanCost(name, thinking) {
+function scanCost(name, thinking, caching = CACHING) {
+  const saved = CACHING;
+  CACHING = caching;
   const seq = SEQUENCES[name];
   const cacheState = {};
-  let total = extract(seq.extract, thinking);
+  let total = extract(seq.extract, thinking, cacheState);
   for (const [tier, n] of seq.gate) total += gateCall(tier, n, cacheState, thinking);
+  CACHING = saved;
   return total;
 }
 
-// ── Search, per provider, from the public price lists as of 2026-10-01 ───
-//   SerpApi: $25/1,000, $75/5,000, $150/15,000, $275/30,000 searches a month
-//            ($0.025 to $0.009 a search). Lens, the three direct retailers
-//            (Amazon, Walmart, eBay) and merchant-link resolution run here.
-//   Serper:  prepaid credits, $50 for 50,000 down to about $0.30 per 1,000.
-//            Shopping and organic search run here first.
-const SERPAPI_PER_SEARCH = 0.01;   // the $150 / 15,000 plan
-const SERPER_PER_SEARCH = 0.001;   // the smallest credit pack
+// ── Search, budget mode (SEARCH PROVIDERS in src/lib/scan.ts) ────────────
+//   Serper:  the primary for Lens and Shopping. Prepaid credits, about $0.001
+//            each on the smallest pack, 2,500 free to start. A Shopping or
+//            organic search is one credit; a Lens search is reported as 3
+//            (a secondary source; /api/diagnose and every traced scan report
+//            the credits Serper actually charged, so --measured uses those).
+//   SerpApi: the last-resort backup, only when Serper fails and only above
+//            its reserve; free plan 250 searches a month, paid about $0.015 a
+//            search. The Amazon/Walmart/eBay sweep (three SerpApi searches)
+//            is off unless RETAILER_SWEEP=1. Normal operation spends none.
+const SERPAPI_PER_SEARCH = 0.015;
+const SERPER_PER_CREDIT = 0.001;
+const SERPER_LENS_CREDITS = 3;
+const SERPER_FREE_CREDITS = 2500;
+// Serper credits per scan: Lens, then the Shopping searches each path makes.
 const SEARCH_CALLS = {
-  cold: { serpapi: 4, serper: 3 },
-  hard: { serpapi: 4, serper: 5 },
-  identity: { serpapi: 1, serper: 0 },
-  degraded: { serpapi: 1, serper: 2 },
-  fallback: { serpapi: 4, serper: 3 },
-  previous: { serpapi: 4, serper: 3 },
+  cold: { serpapi: 0, serper: SERPER_LENS_CREDITS + 3 },
+  hard: { serpapi: 0, serper: SERPER_LENS_CREDITS + 5 },
+  identity: { serpapi: 0, serper: SERPER_LENS_CREDITS },
+  degraded: { serpapi: 0, serper: SERPER_LENS_CREDITS + 2 },
+  fallback: { serpapi: 0, serper: SERPER_LENS_CREDITS + 3 },
+  previous: { serpapi: 0, serper: SERPER_LENS_CREDITS + 3 },
 };
-const searchCost = (name) => SEARCH_CALLS[name].serpapi * SERPAPI_PER_SEARCH + SEARCH_CALLS[name].serper * SERPER_PER_SEARCH;
+const searchCost = (name) => SEARCH_CALLS[name].serpapi * SERPAPI_PER_SEARCH + SEARCH_CALLS[name].serper * SERPER_PER_CREDIT;
 
 // ── Measured: real production scans, from an evaluation results file ────
 const measuredArg = process.argv.indexOf("--measured");
@@ -169,12 +195,14 @@ if (measuredArg > 0) {
     const t = s.json.evaluation.trace;
     const g = (groups[kind(s)] = groups[kind(s)] || []);
     const serpapi = t.searchesByProvider?.serpapi || 0;
-    const serper = t.searchesByProvider?.serper || 0;
-    g.push({ model: t.claudeUsd || 0, serpapi, serper, ms: t.totalMs || 0, thinking: t.thinkingPerCall });
+    // Credits as Serper reported them; before budget mode, one per search.
+    const serper = t.creditsByProvider?.serper ?? t.searchesByProvider?.serper ?? 0;
+    g.push({ model: t.claudeUsd || 0, serpapi, serper, ms: t.totalMs || 0, thinking: t.thinkingPerCall, cache: t.cache || null });
     for (const c of t.calls || []) {
       const key = `${c.model} ${c.layer}`;
-      const e = (calls[key] = calls[key] || { n: 0, usd: 0, think: 0, ms: 0, input: 0, output: 0 });
+      const e = (calls[key] = calls[key] || { n: 0, usd: 0, think: 0, ms: 0, input: 0, output: 0, read: 0, write: 0, reading: 0 });
       e.n++; e.usd += c.costUsd || 0; e.think += c.thinkingApprox || 0; e.ms += c.ms || 0;
+      e.read += c.cacheReadTokens || 0; e.write += c.cacheWriteTokens || 0; if ((c.cacheReadTokens || 0) > 0) e.reading++;
       e.input += (c.inputTokens || 0) + (c.cacheReadTokens || 0) + (c.cacheWriteTokens || 0); e.output += c.outputTokens || 0;
     }
   }
@@ -182,18 +210,18 @@ if (measuredArg > 0) {
   const median = (xs) => { const v = [...xs].sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : 0; };
   console.log(`\nMEASURED IN PRODUCTION: ${scans.length} traced scans from ${files.join(", ")}`);
   console.log("-".repeat(78));
-  console.log(`  SerpApi priced at $${SERPAPI_PER_SEARCH} a search (the $150 / 15,000 plan), Serper at $${SERPER_PER_SEARCH}.`);
-  console.log(`  ${"scan".padEnd(16)}${"n".padStart(4)}${"model mean".padStart(12)}${"SerpApi".padStart(9)}${"Serper".padStart(8)}${"total mean".padStart(12)}${"median s".padStart(10)}${"max s".padStart(8)}`);
+  console.log(`  SerpApi priced at $${SERPAPI_PER_SEARCH} a search (paid plans), Serper at $${SERPER_PER_CREDIT} a credit.`);
+  console.log(`  ${"scan".padEnd(16)}${"n".padStart(4)}${"model mean".padStart(12)}${"SerpApi".padStart(9)}${"Serper cr".padStart(10)}${"total mean".padStart(12)}${"median s".padStart(10)}${"max s".padStart(8)}`);
   for (const [k, g] of Object.entries(groups)) {
     const model = mean(g.map(x => x.model));
     const sa = mean(g.map(x => x.serpapi));
     const se = mean(g.map(x => x.serper));
-    const total = model + sa * SERPAPI_PER_SEARCH + se * SERPER_PER_SEARCH;
-    console.log(`  ${k.padEnd(16)}${String(g.length).padStart(4)}${("$" + model.toFixed(4)).padStart(12)}${sa.toFixed(1).padStart(9)}${se.toFixed(1).padStart(8)}${("$" + total.toFixed(4)).padStart(12)}${(median(g.map(x => x.ms)) / 1000).toFixed(1).padStart(10)}${(Math.max(...g.map(x => x.ms)) / 1000).toFixed(1).padStart(8)}`);
+    const total = model + sa * SERPAPI_PER_SEARCH + se * SERPER_PER_CREDIT;
+    console.log(`  ${k.padEnd(16)}${String(g.length).padStart(4)}${("$" + model.toFixed(4)).padStart(12)}${sa.toFixed(1).padStart(9)}${se.toFixed(1).padStart(10)}${("$" + total.toFixed(4)).padStart(12)}${(median(g.map(x => x.ms)) / 1000).toFixed(1).padStart(10)}${(Math.max(...g.map(x => x.ms)) / 1000).toFixed(1).padStart(8)}`);
   }
-  console.log(`\n  ${"model and layer".padEnd(32)}${"calls".padStart(6)}${"mean $".padStart(10)}${"thinking".padStart(10)}${"input".padStart(8)}${"output".padStart(8)}${"mean s".padStart(8)}`);
+  console.log(`\n  ${"model and layer".padEnd(32)}${"calls".padStart(6)}${"mean $".padStart(10)}${"thinking".padStart(10)}${"input".padStart(8)}${"output".padStart(8)}${"mean s".padStart(8)}${"cache read".padStart(12)}${"written".padStart(9)}${"reading".padStart(9)}`);
   for (const [k, e] of Object.entries(calls).sort()) {
-    console.log(`  ${k.padEnd(32)}${String(e.n).padStart(6)}${("$" + (e.usd / e.n).toFixed(4)).padStart(10)}${Math.round(e.think / e.n).toString().padStart(10)}${Math.round(e.input / e.n).toString().padStart(8)}${Math.round(e.output / e.n).toString().padStart(8)}${(e.ms / e.n / 1000).toFixed(1).padStart(8)}`);
+    console.log(`  ${k.padEnd(32)}${String(e.n).padStart(6)}${("$" + (e.usd / e.n).toFixed(4)).padStart(10)}${Math.round(e.think / e.n).toString().padStart(10)}${Math.round(e.input / e.n).toString().padStart(8)}${Math.round(e.output / e.n).toString().padStart(8)}${(e.ms / e.n / 1000).toFixed(1).padStart(8)}${Math.round(e.read / e.n).toString().padStart(12)}${Math.round(e.write / e.n).toString().padStart(9)}${`${e.reading}/${e.n}`.padStart(9)}`);
   }
   const allThinking = Object.values(calls).reduce((a, e) => a + e.think, 0) / Math.max(1, Object.values(calls).reduce((a, e) => a + e.n, 0));
   console.log(`\n  Thinking per call, all calls: ${Math.round(allThinking)} tokens. The modelled sections below use it.\n`);
@@ -240,12 +268,22 @@ const c = (name) => scanCost(name, think);
 const thinkingShare = (c("cold") - scanCost("cold", 0)) / c("cold");
 console.log(`\n  At ${think.toLocaleString()} thinking tokens per call, thinking is ${(thinkingShare * 100).toFixed(0)}% of a cold scan's model spend.`);
 
+console.log(`\n\nPROMPT CACHE: THE PHOTO ONCE PER SCAN (thinking ${think.toLocaleString()} per call)`);
+rule();
+console.log("  The first read writes the photo to Sonnet 5.5's cache; every gate call reads it back.");
+for (const name of ["cold", "hard", "identity", "degraded"]) {
+  const shared = scanCost(name, think, "shared");
+  const gateOnly = scanCost(name, think, "gate-only");
+  const none = scanCost(name, think, "none");
+  console.log(`  ${pad(name, 10)} shared ${money(shared)}   gate-only (before) ${money(gateOnly)}   none ${money(none)}   saves ${money(gateOnly - shared)} a scan`);
+}
+
 console.log(`\n\nFULL COST PER SCAN: MODEL PLUS SEARCH (thinking ${think.toLocaleString()} per call)`);
 rule();
-console.log(`  SerpApi at $${SERPAPI_PER_SEARCH} a search, Serper at $${SERPER_PER_SEARCH}.`);
+console.log(`  Serper at $${SERPER_PER_CREDIT} a credit (a Lens search ${SERPER_LENS_CREDITS}), SerpApi only as a backup.`);
 for (const name of Object.keys(SEQUENCES)) {
   const calls = SEARCH_CALLS[name];
-  console.log(`  ${pad(name, 13)} model ${money(c(name))}  + search ${money(searchCost(name))} (${calls.serpapi} SerpApi, ${calls.serper} Serper)  = ${money(c(name) + searchCost(name))}`);
+  console.log(`  ${pad(name, 13)} model ${money(c(name))}  + search ${money(searchCost(name))} (${calls.serper} Serper credits, ${calls.serpapi} SerpApi)  = ${money(c(name) + searchCost(name))}`);
 }
 console.log(`  ${pad("result cache", 13)} $0.0000`);
 
@@ -254,33 +292,43 @@ console.log(`  ${pad("result cache", 13)} $0.0000`);
 // spend reaches it, scans keep running on the degraded path (Sonnet 5.5
 // gate, enhancement layers dropped, "likely" at most). It never refuses a
 // scan. What bounds the total is the number of uncached scans that can
-// reach the models at all: GLOBAL_DAILY_SCAN_CAP for the free tier (default
-// 25,000 a day; the 24-hour result cache does not count against it), and
-// the 500-a-day fair-use ceiling per paid account.
-const GLOBAL_DAILY_CAP = 25_000;
+// reach the models at all: GLOBAL_DAILY_SCAN_CAP for the free tier (budget
+// mode default 50 a day; the 24-hour result cache does not count against
+// it), and the 500-a-day fair-use ceiling per paid account.
+const GLOBAL_DAILY_CAP = 50;
+const DAILY_BUDGET = 2;
 const FAIR_USE_CEILING = 500;
-console.log(`\n\nWHAT DAILY_MODEL_BUDGET_USD BOUNDS (thinking ${think.toLocaleString()} per call)`);
+console.log(`\n\nBUDGET MODE: WHAT THE DEFAULTS BOUND (thinking ${think.toLocaleString()} per call)`);
 rule();
-console.log("  The budget is soft: past it, scans continue on the degraded path. Free-tier model");
-console.log(`  spend in a day is at most  budget + (cap - budget / cold) x degraded,  with`);
-console.log(`  cap = ${GLOBAL_DAILY_CAP.toLocaleString()} uncached free scans, cold = ${money(c("cold"))}, degraded = ${money(c("degraded"))}.`);
-console.log("");
-console.log(`  ${pad("budget", 10)}${pad("full-path scans", 18)}${pad("then degraded", 16)}${pad("model, worst day", 18)}model + search`);
-for (const budget of [100, 250, 500, 1000, 2000]) {
-  const full = Math.min(GLOBAL_DAILY_CAP, Math.floor(budget / c("cold")));
+console.log(`  DAILY_MODEL_BUDGET_USD $${DAILY_BUDGET} (soft: past it, scans degrade, they are not refused), GLOBAL_DAILY_SCAN_CAP ${GLOBAL_DAILY_CAP}`);
+console.log("  uncached free scans (hard: past it, visitors get the \"free capacity full today\" paywall).");
+{
+  const full = Math.min(GLOBAL_DAILY_CAP, Math.floor(DAILY_BUDGET / c("cold")));
   const rest = GLOBAL_DAILY_CAP - full;
   const model = full * c("cold") + rest * c("degraded");
-  const total = model + full * searchCost("cold") + rest * searchCost("degraded");
-  console.log(`  ${pad("$" + budget.toLocaleString(), 10)}${pad(full.toLocaleString(), 18)}${pad(rest.toLocaleString(), 16)}${pad("$" + Math.round(model).toLocaleString(), 18)}$${Math.round(total).toLocaleString()}`);
+  const search = full * searchCost("cold") + rest * searchCost("degraded");
+  console.log(`  Worst free day, ${GLOBAL_DAILY_CAP} distinct cold products: ${full} on the full path, ${rest} degraded,`);
+  console.log(`  model ${money(model)} + Serper ${money(search)} = ${money(model + search)} a day, at most ${money((model + search) * 30)} a month.`);
 }
-console.log(`\n  Worst case means every one of the ${GLOBAL_DAILY_CAP.toLocaleString()} free scans is a distinct, uncached product.`);
-console.log("  A viral day is the opposite: thousands of photos of a few products, most served by");
-console.log("  the identity cache or the result cache. Paid accounts sit outside the free cap, at");
-console.log(`  most ${FAIR_USE_CEILING} scans each a day: $${(FAIR_USE_CEILING * c("cold")).toFixed(2)} of model spend per account on the full path.`);
+console.log(`  ${pad("budget", 10)}${pad("full-path scans", 18)}then degraded, up to the cap of ${GLOBAL_DAILY_CAP}`);
+for (const budget of [2, 5, 10, 25]) {
+  const full = Math.min(GLOBAL_DAILY_CAP, Math.floor(budget / c("cold")));
+  console.log(`  ${pad("$" + budget.toLocaleString(), 10)}${pad(full.toLocaleString(), 18)}${(GLOBAL_DAILY_CAP - full).toLocaleString()}`);
+}
+console.log(`  Paid accounts sit outside the free cap, at most ${FAIR_USE_CEILING} scans each a day: $${(FAIR_USE_CEILING * c("cold")).toFixed(2)} of model spend per account on the full path.`);
+
+console.log(`\n\nPREPAID: WHAT A BALANCE BUYS (thinking ${think.toLocaleString()} per call)`);
+rule();
+console.log("  Anthropic is prepaid with auto-reload off: spend stops at the balance, and every scan fails");
+console.log("  (credit_exhausted, loud in /api/diagnose and the log) until credit is added.");
+for (const balance of [5, 25, 50]) {
+  console.log(`  ${pad("$" + balance, 6)} ${pad(Math.floor(balance / c("cold")).toLocaleString(), 6)} cold scans, or ${Math.floor(balance / c("identity")).toLocaleString()} identity-cache hits`);
+}
+console.log(`  Serper's ${SERPER_FREE_CREDITS.toLocaleString()} free credits: ${Math.floor(SERPER_FREE_CREDITS / SEARCH_CALLS.cold.serper).toLocaleString()} cold scans, or ${Math.floor(SERPER_FREE_CREDITS / SEARCH_CALLS.identity.serper).toLocaleString()} identity-cache hits.`);
 
 console.log(`\n\nA VIRAL DAY: 10,000 SCANS (thinking ${think.toLocaleString()} per call)`);
 rule();
-console.log("  The share served from cache decides whether the day is survivable.");
+console.log("  Only if the caps are raised: at the defaults, a viral day is capped at 50 uncached free scans.");
 console.log(`  ${pad("", 26)}${pad("model spend", 14)}per scan`);
 for (const [label, cost] of [
   ["all cold", c("cold")],
@@ -291,26 +339,6 @@ for (const [label, cost] of [
 ]) {
   console.log(`  ${pad(label, 26)}${pad("$" + Math.round(cost * 10000).toLocaleString(), 14)}${money(cost)}`);
 }
-
-// The Anthropic account's tier carries a MONTHLY spend cap (Start $500,
-// Build $1,000, Scale $200,000 as of 2026-10-01). At the cap every request
-// answers 429 until the 1st of the next month, whatever this application's
-// own budget says, and every scan fails. Raise the tier before traffic.
-console.log(`\n\nANTHROPIC MONTHLY SPEND CAP BY ACCOUNT TIER (thinking ${think.toLocaleString()} per call)`);
-rule();
-console.log("  At the cap, every model call answers 429 until the 1st of next month: all scans fail.");
-for (const [tier, cap] of [["Start", 500], ["Build", 1000], ["Scale", 200000]]) {
-  console.log(`  ${pad(tier, 8)} $${pad(cap.toLocaleString(), 9)} ${pad(Math.floor(cap / c("cold")).toLocaleString(), 10)} cold scans a month, or ${Math.floor(cap / c("identity")).toLocaleString()} identity-cache hits`);
-}
-console.log(`  DAILY_MODEL_BUDGET_USD of $250 allows up to $${(250 * 30).toLocaleString()} a month on the full path alone.`);
-
-console.log("\n\nSERPAPI CAPACITY: SCANS A MONTH PER PLAN");
-rule();
-console.log("  The monthly search allowance, not the bill, is the first wall a viral week hits.");
-for (const [plan, searches] of [["$75 / 5,000", 5000], ["$150 / 15,000", 15000], ["$275 / 30,000", 30000]]) {
-  console.log(`  ${pad(plan, 16)} ${pad(Math.floor(searches / SEARCH_CALLS.cold.serpapi).toLocaleString(), 8)} cold scans, or ${Math.floor(searches / SEARCH_CALLS.identity.serpapi).toLocaleString()} identity-cache hits`);
-}
-console.log("  When the allowance runs out, Lens falls back to Serper and the retailer sweep is skipped (logged).");
 
 console.log("\n\nBURN RATE: WHAT A WORKSPACE RATE LIMIT BUYS");
 rule();

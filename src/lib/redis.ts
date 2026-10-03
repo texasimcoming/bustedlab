@@ -241,14 +241,17 @@ export async function getBustedRate(): Promise<{ total: number; busted: number }
 // ════════════════════════════════════════════════════════════════
 // Global daily spend guard. Every paid API call in the scan pipeline
 // (vision, Lens, shopping, verification) costs real money, so an
-// unauthenticated flood is a direct bill. The cap is deliberately an
-// environment variable rather than a constant: the right number changes
-// with the traffic, and hardcoding a small one is how a launch that goes
-// viral ends up serving "high demand" to everyone at 500 scans.
+// unauthenticated flood is a direct bill. BUDGET MODE: 50 uncached free
+// scans a day unless GLOBAL_DAILY_SCAN_CAP says otherwise: about $1.45 a day
+// all-in (model and Serper credits) on a worst day of 50 distinct products,
+// as modelled by `npm run cost-model`. Past it, visitors get the existing
+// "free capacity full today" paywall (the 503 in the scan route). Raise it
+// in the environment when revenue pays for more.
 // Cache hits never touch this counter, so a single product going viral
-// costs one scan no matter how many people scan it.
+// costs one scan no matter how many people scan it, and paid accounts sit
+// outside it (they have the fair-use ceiling instead).
 // ════════════════════════════════════════════════════════════════
-export const GLOBAL_DAILY_CAP = Number(process.env.GLOBAL_DAILY_SCAN_CAP || 25000);
+export const GLOBAL_DAILY_CAP = Number(process.env.GLOBAL_DAILY_SCAN_CAP || 50);
 
 export async function getGlobalScansToday(): Promise<number> {
   const count = await getRedis().get(keys.globalDaily()) as number | null;
@@ -703,6 +706,83 @@ export async function getScanRecord(id: string): Promise<ScanRecord | null> {
   } catch {
     return null;
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+// EVALUATION PURGE. Operator evaluation scans are kept out of public data
+// (the scan route), but runs before that rule wrote to it. These two undo
+// it, for POST /api/eval/purge: one deletes a ledger record together with
+// everything it put on the boards, the other backs out what those scans
+// added to the public counters. Neither is reachable from a visitor's
+// request.
+// ════════════════════════════════════════════════════════════════
+
+/** Deletes one ledger record and its index, board and aggregate entries. Returns the record, or null if there was none. */
+export async function deleteScanRecord(id: string): Promise<ScanRecord | null> {
+  const record = await getScanRecord(id);
+  if (!record) return null;
+  const redis = getRedis();
+  const pipeline = redis.pipeline();
+  pipeline.del(keys.scanRecord(id));
+  pipeline.zrem(keys.recordIndex(), id);
+  pipeline.zrem(keys.bustedIndex(), id);
+  pipeline.zrem(keys.markupIndex(), id);
+  const week = keys.trendingWeek(isoWeek(new Date(record.ts)));
+  if (record.productKey) pipeline.zincrby(week, -1, record.productKey);
+  // Category averages only ever took first measurements (see recordScan).
+  if (!record.cached) {
+    const catKey = keys.categoryStats(record.category || "other");
+    pipeline.hincrby(catKey, "count", -1);
+    pipeline.hincrby(catKey, "sumMarkup", -Math.round(record.markup));
+  }
+  await pipeline.exec();
+  // A product no longer scanned this week leaves the trending board.
+  if (record.productKey) await redis.zremrangebyscore(week, "-inf", 0).catch(() => 0);
+  if (record.productKey) {
+    const key = keys.productAggregate(record.productKey);
+    const agg = parseJson<ProductAggregate>(await redis.get(key).catch(() => null));
+    if (agg && agg.count <= 1) await redis.del(key).catch(() => 0);
+    else if (agg) {
+      await redis.set(key, JSON.stringify({ ...agg, count: agg.count - 1, sumMarkup: agg.sumMarkup - record.markup })).catch(() => null);
+    }
+  }
+  return record;
+}
+
+export interface PublicCounterCorrection {
+  /** Completed scans, each of which added one to the lifetime counter. */
+  scans: number;
+  /** First-measurement verdicts, each of which added one to the verdict total. */
+  verdicts: number;
+  /** Of those, the HIGH_MARKUP ones. */
+  busted: number;
+  /** The savings those verdicts added to the "exposed" total, in USD. */
+  savingsUsd: number;
+}
+
+/**
+ * Subtracts evaluation scans from the public counters, never below zero.
+ * Returns each counter before and after. The display rules on top of them
+ * (the counter's floor and tick, the markup floor) are untouched; the
+ * highest-markup record is not, because it only moves upward and no
+ * evaluation verdict ever reached the floor it sits on.
+ */
+export async function subtractPublicCounters(c: PublicCounterCorrection): Promise<Record<string, { before: number; after: number }>> {
+  const redis = getRedis();
+  const out: Record<string, { before: number; after: number }> = {};
+  const plan: [string, string, number][] = [
+    ["scans", keys.totalScans(), c.scans],
+    ["verdicts", keys.verdictTotal(), c.verdicts],
+    ["busted", keys.bustedTotal(), c.busted],
+    ["savingsUsd", keys.totalSavingsExposed(), c.savingsUsd],
+  ];
+  for (const [name, key, amount] of plan) {
+    const before = Number(await redis.get(key)) || 0;
+    const after = Math.max(0, Math.round((before - amount) * 100) / 100);
+    if (amount > 0 && after !== before) await redis.set(key, after);
+    out[name] = { before, after: amount > 0 ? after : before };
+  }
+  return out;
 }
 
 export async function getProductAggregate(productKey: string): Promise<ProductAggregate | null> {

@@ -47,7 +47,7 @@ check("a table with no date is refused", fx.readRateTable({ usd: SAMPLE.usd }) =
 // $30. The screenshot's asking price and currency change per case.
 // ════════════════════════════════════════════════════════════════
 Object.assign(process.env, {
-  ANTHROPIC_API_KEY: "test", SERPAPI_KEY: "test", BLOB_READ_WRITE_TOKEN: "test",
+  ANTHROPIC_API_KEY: "test", SERPAPI_KEY: "test", SERPER_API_KEY: "test", BLOB_READ_WRITE_TOKEN: "test",
   UPSTASH_REDIS_REST_URL: "https://redis.test", UPSTASH_REDIS_REST_TOKEN: "test",
 });
 const store = new Map();
@@ -86,6 +86,16 @@ globalThis.fetch = async (input, init = {}) => {
     return json({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(
       Array.from({ length: count }, (_, i) => ({ candidate: i + 1, match: "exact", why: "same lamp" }))) }] });
   }
+  // Lens on Serper, the primary (SEARCH PROVIDERS in scan.ts): one match,
+  // its price a string in the listing's own currency.
+  if (url === "https://google.serper.dev/lens") {
+    return json({ organic: [{
+      title: "Lumo Ceramic Table Lamp", link: "https://shop.test/lamp", thumbnailUrl: "https://img.test/lamp", source: "Shop",
+      price: `${lensCurrency}30.00`,
+    }], credits: 3 });
+  }
+  if (url.startsWith("https://google.serper.dev/")) return json({ organic: [], shopping: [], credits: 1 });
+  if (url.startsWith("https://serpapi.com/account.json")) return json({ total_searches_left: 200 });
   if (url.startsWith("https://serpapi.com/search.json")) {
     const engine = new URL(url).searchParams.get("engine");
     if (engine === "google_lens") {

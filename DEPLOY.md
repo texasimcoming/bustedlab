@@ -60,11 +60,15 @@ Set in Vercel project settings, then redeploy:
 - `GATE_EFFORT` (optional): the verification gate's effort level, `low` by
   default. Raise it to `medium` only if `npm run eval:gate` on labelled
   photos shows the gate missing matches at `low`.
-- `DAILY_MODEL_BUDGET_USD` (optional, default 250): past it, scans run on
-  the cheaper path (Sonnet 5.5 gate, capped at "likely") instead of failing.
-  `npm run cost-model` shows what each value bounds.
-- `SERPER_API_KEY` (primary search)
-- `SERPAPI_KEY` (backup search and merchant-link resolution)
+- `DAILY_MODEL_BUDGET_USD` (optional, budget-mode default 2): past it, scans
+  run on the degraded path (enhancement layers dropped, capped at "likely")
+  instead of failing. `npm run cost-model` shows what each value bounds.
+- `SERPER_API_KEY` (primary search: Lens and Shopping)
+- `SERPAPI_KEY` (last-resort backup, used only when Serper fails)
+- `SERPAPI_RESERVE` (optional, default 20): SerpApi is not used once its
+  remaining monthly searches are at or under this.
+- `RETAILER_SWEEP` (optional, off): `1` turns on the Amazon, Walmart and eBay
+  price check, three SerpApi searches a scan.
 - `BLOB_READ_WRITE_TOKEN` (create a Blob store in the project first)
 - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
 - `IDENTITY_SALT` (any long random string; rotating it resets rate limits)
@@ -175,6 +179,8 @@ A consistently non-zero count means scans are dying mid-request.
 
 - Verified results are cached for 24 hours, keyed on the normalized URL or on
   the bytes of the uploaded image. One product going viral costs the API once.
-- `GLOBAL_DAILY_SCAN_CAP` (default 25000) caps uncached scans per day for
-  free users. Cache hits and signed-in paid users are never capped.
+- `GLOBAL_DAILY_SCAN_CAP` (budget-mode default 50) caps uncached scans per day
+  for free users; past it they see the "free capacity full today" paywall.
+  Cache hits and signed-in paid users are never capped. Evaluation scans
+  count against it.
 - Raise it before a campaign, not during one.

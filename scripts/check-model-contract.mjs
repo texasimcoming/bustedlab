@@ -187,6 +187,38 @@ const PAGE_HTML = `<html><head><title>Acme Trail Cap</title>
 
 let scenario = {};
 let anthropicBodies = [];
+// What each request read from or wrote to the simulated prompt cache, in
+// order: { model, kind: "extract" | "gate" | "other", read, write }.
+let cacheLog = [];
+let serpApiSearches = [];
+
+// ════════════════════════════════════════════════════════════════
+// A PROMPT CACHE THAT BEHAVES LIKE THE DOCUMENTED ONE. Verified 2026-10-03
+// against https://platform.claude.com/docs/en/build-with-claude/prompt-caching:
+// a hit needs an identical prefix (tools, system, then message blocks up to
+// and including the block marked cache_control), on the same model, with the
+// same thinking and effort settings (an effort change invalidates message
+// caches), and at least 512 tokens on Opus 5.5 and Sonnet 5.5. Entries are
+// per model. The photo here is a stand-in, so its size is taken as 1,500.
+// ════════════════════════════════════════════════════════════════
+const PHOTO_TOKENS = 1500;
+const cacheEntries = new Set();
+const canonicalJson = (v) => Array.isArray(v) ? `[${v.map(canonicalJson).join(",")}]`
+  : v && typeof v === "object" ? `{${Object.keys(v).sort().map(k => `${JSON.stringify(k)}:${canonicalJson(v[k])}`).join(",")}}`
+  : JSON.stringify(v);
+function simulatedCache(body) {
+  const content = Array.isArray(body.messages?.[0]?.content) ? body.messages[0].content : [];
+  const marks = content.map((b, i) => (b.cache_control ? i : -1)).filter(i => i >= 0);
+  if (marks.length === 0) return { read: 0, write: 0 };
+  const last = marks[marks.length - 1];
+  const key = canonicalJson({
+    model: canonical(body.model), thinking: body.thinking ?? null, effort: body.output_config?.effort ?? null,
+    tools: body.tools ?? null, system: body.system ?? null, prefix: content.slice(0, last + 1),
+  });
+  if (cacheEntries.has(key)) return { read: PHOTO_TOKENS, write: 0 };
+  cacheEntries.add(key);
+  return { read: 0, write: PHOTO_TOKENS };
+}
 
 function textOf(body) {
   const content = body.messages?.[0]?.content;
@@ -213,10 +245,19 @@ function simulatedReply(body, text) {
   const content = [];
   if (thinks) content.push({ type: "thinking", thinking: "", signature: "c2lnbmF0dXJl" });
   content.push({ type: "text", text });
+  const cached = simulatedCache(body);
+  const prompt = textOf(body);
+  cacheLog.push({
+    model: canonical(body.model), read: cached.read, write: cached.write,
+    kind: prompt.includes("Product intelligence scan") ? "extract" : prompt.includes("candidate product listing image") ? "gate" : "other",
+  });
   return json({
     id: "msg_contract", type: "message", role: "assistant", model: body.model,
     content, stop_reason: "end_turn", stop_sequence: null,
-    usage: { input_tokens: 1800, output_tokens: thinks ? 600 : 90 },
+    usage: {
+      input_tokens: 1800 - cached.read - cached.write, output_tokens: thinks ? 600 : 90,
+      cache_read_input_tokens: cached.read, cache_creation_input_tokens: cached.write,
+    },
   });
 }
 
@@ -264,17 +305,23 @@ globalThis.fetch = async (input, init = {}) => {
   if (url.startsWith("https://shop.test/")) {
     return new Response(PAGE_HTML, { status: 200, headers: { "content-type": "text/html" } });
   }
+  if (url.startsWith("https://serpapi.com/account.json")) return json({ total_searches_left: scenario.serpApiLeft ?? 200 });
   if (url.startsWith("https://serpapi.com/search.json")) {
     const engine = new URL(url).searchParams.get("engine");
+    serpApiSearches.push(engine);
     if (scenario.serpApiDown) return json({ error: "Your account has run out of searches." }, 429);
     if (engine === "google_lens") return json({ visual_matches: LENS });
     if (engine === "google_product") return json({ sellers_results: { online_sellers: [] } });
     return json({ organic_results: [], shopping_results: [] });
   }
-  if (url === "https://google.serper.dev/lens" && scenario.serperLens) {
-    return json({ organic: LENS.map(m => ({ title: m.title, link: m.link, imageUrl: m.thumbnail, source: m.source, price: `$${m.price.extracted_value}.00` })) });
+  if (url.startsWith("https://google.serper.dev/") && scenario.serperDown) return json({ message: "Service unavailable" }, 503);
+  if (url === "https://google.serper.dev/lens") {
+    if (scenario.serperLensEmpty) return json({ organic: [], credits: 3 });
+    // Rows in a shape this engine does not know: must fail loudly, not read as "no matches".
+    if (scenario.serperLensUnreadable) return json({ organic: LENS.map(m => ({ name: m.title, href: m.link })), credits: 3 });
+    return json({ organic: LENS.map(m => ({ title: m.title, link: m.link, thumbnailUrl: m.thumbnail, imageUrl: `${m.thumbnail}/full`, source: m.source, price: `$${m.price.extracted_value}.00` })), credits: 3 });
   }
-  if (url.startsWith("https://google.serper.dev/")) return json({ organic: [], shopping: [] });
+  if (url.startsWith("https://google.serper.dev/")) return json({ organic: [], shopping: [], credits: 1 });
   if (url.includes("currency-api")) return json({ date: "2026-10-01", usd: { usd: 1, eur: 0.9, gbp: 0.75, mad: 9.5 } });
   throw new Error(`unmocked fetch: ${url}`);
 };
@@ -288,12 +335,16 @@ const { resetSpendModeCache } = await import(localModule("model-budget"));
 async function scan(next, run) {
   scenario = next;
   anthropicBodies = [];
+  cacheLog = [];
+  serpApiSearches = [];
+  cacheEntries.clear();
+  engine.resetSerpApiBalance();
   errorLog.length = 0;
   store.clear();
   if (next.spendToday) store.set(`spend:model:${new Date().toISOString().slice(0, 10)}`, String(next.spendToday));
   resetSpendModeCache();
   const result = await (run ? run() : engine.scanProduct(PHOTO, "image/jpeg", "us", next.intent || "verdict"));
-  return { result, bodies: anthropicBodies.slice(), errors: errorLog.slice() };
+  return { result, bodies: anthropicBodies.slice(), errors: errorLog.slice(), cache: cacheLog.slice(), serpApi: serpApiSearches.slice() };
 }
 
 const summary = (r) => `${r.mode} / ${r.matchConfidence} / $${r.sourceProduct?.price} "${r.sourceProduct?.title}"` +
@@ -471,15 +522,85 @@ section("NOTHING FOUND IS NOT AN ERROR");
     !result.failure, summary(result));
 }
 
-section("A BACKUP PROVIDER ANSWERS");
+section("BUDGET MODE: SERPER FIRST, SERPAPI ONLY AS A BACKUP ABOVE ITS RESERVE");
 {
-  const { result, errors } = await scan({ serpApiDown: true, serperLens: true });
-  check("SerpApi out of searches, Serper serves Lens: the cap is still identified", result.matchConfidence === "exact" && !result.failure, summary(result));
-  check("and the SerpApi failure is still logged", errors.some(e => e.includes("provider=serpapi") && e.includes("status=429")), errors.join(" | "));
+  const { result, serpApi } = await scan({});
+  check("a clean scan identifies the cap through Serper's Lens", result.matchConfidence === "exact" && /lens_serper/.test(result.engineUsed), `${summary(result)} via ${result.engineUsed}`);
+  check("and spends no SerpApi search at all (no Lens, no Shopping, no retailer sweep)", serpApi.length === 0, serpApi.join(", "));
 }
 {
-  const { result } = await scan({ serpApiDown: true });
-  check("SerpApi down and Serper finds nothing: an honest no-match, not a failure", !result.failure && result.mode === "UNRESOLVED", summary(result));
+  const { result, errors, serpApi } = await scan({ serperDown: true });
+  check("Serper down, SerpApi above its reserve: the backup serves Lens and the cap is still identified",
+    result.matchConfidence === "exact" && !result.failure && serpApi.includes("google_lens"), `${summary(result)}; SerpApi: ${serpApi.join(", ")}`);
+  check("and the Serper failure is logged", errors.some(e => e.includes("provider=serper") && e.includes("status=503")), errors.join(" | "));
+}
+{
+  const { result, errors, serpApi } = await scan({ serperDown: true, serpApiLeft: 20 });
+  check("Serper down and SerpApi at its reserve (20 left): SerpApi is not searched", serpApi.length === 0, serpApi.join(", "));
+  check("the hold is logged, and the scan says it could not be completed rather than 'no match'",
+    errors.some(e => /serpapi held at its reserve/.test(e)) && result.failure?.reason === "lens", `${summary(result)} | ${errors.join(" | ")}`);
+}
+{
+  const { result, serpApi } = await scan({ serperLensEmpty: true });
+  check("Serper answers 'no visual matches': that is an answer, SerpApi's Lens is not asked", !serpApi.includes("google_lens"), serpApi.join(", "));
+  check("and it is an honest no-match, not a failure", !result.failure && result.mode === "UNRESOLVED", summary(result));
+}
+{
+  const { result, errors, serpApi } = await scan({ serperLensUnreadable: true });
+  check("Serper answers rows this engine cannot read: logged with the field names it sent",
+    errors.some(e => e.includes("provider=serper") && /unreadable Lens answer/.test(e) && /name,href/.test(e)), errors.join(" | "));
+  check("and treated as a failure, so the SerpApi backup answers and the cap is identified",
+    serpApi.includes("google_lens") && result.matchConfidence === "exact", `${summary(result)}; SerpApi: ${serpApi.join(", ")}`);
+}
+{
+  const { result } = await scan({ serperDown: true, serpApiDown: true });
+  check("both providers down: the scan could not be completed (never a silent no-match)", result.failure?.reason === "lens", summary(result));
+}
+
+// Prompt caching. Every call that looks at the photo opens with the same
+// two blocks (THE PHOTO, ONCE PER SCAN in scan.ts), so the first read
+// writes the photo to Sonnet 5.5's cache and every Sonnet gate call reads it.
+section("PROMPT CACHING: THE PHOTO IS PAID FOR ONCE PER SCAN");
+{
+  const { bodies, cache } = await scan({});
+  const photoBlocks = (b) => (Array.isArray(b.messages?.[0]?.content) ? b.messages[0].content.slice(0, 2) : []);
+  const extractBody = bodies.find(isExtractBody);
+  const gateBodies = bodies.filter(isGateBody);
+  const prefix = extractBody ? canonicalJson(photoBlocks(extractBody)) : "";
+  check("the first read and every gate call open with the same two blocks: the label, then the photo",
+    !!extractBody && gateBodies.length > 0 && gateBodies.every(b => canonicalJson(photoBlocks(b)) === prefix) &&
+    photoBlocks(extractBody)[0]?.type === "text" && photoBlocks(extractBody)[1]?.type === "image", `${gateBodies.length} gate call(s)`);
+  check("the photo block is the cache breakpoint (ephemeral, the 5-minute TTL)",
+    [extractBody, ...gateBodies].every(b => b && b.messages[0].content[1]?.cache_control?.type === "ephemeral" && !b.messages[0].content[1]?.cache_control?.ttl));
+  check("no request carries a system prompt or tools that would sit ahead of the photo in the prefix",
+    bodies.every(b => !("system" in b) && !("tools" in b)));
+  check("at most four cache breakpoints per request (the API's limit)",
+    bodies.every(b => (Array.isArray(b.messages?.[0]?.content) ? b.messages[0].content : []).filter(x => x.cache_control).length <= 4));
+  const sonnetEfforts = new Set(bodies.filter(b => canonical(b.model) === SONNET).map(b => b.output_config?.effort));
+  check("every Sonnet 5.5 call in the scan runs at the same effort (a different effort invalidates the cache)",
+    sonnetEfforts.size === 1, [...sonnetEfforts].join(", "));
+  const firstRead = cache.find(c => c.kind === "extract");
+  const gateCalls = cache.filter(c => c.kind === "gate" && c.model === SONNET);
+  check("the first read writes the photo to the cache", (firstRead?.write || 0) > 0, JSON.stringify(cache));
+  check("and every Sonnet 5.5 gate call in the scan reads it back instead of paying for it again",
+    gateCalls.length > 0 && gateCalls.every(c => c.read > 0 && c.write === 0), JSON.stringify(cache));
+}
+{
+  const { cache } = await scan({}, async () => {
+    await engine.scanProduct(PHOTO, "image/jpeg", "us", "verdict");
+    cacheLog.length = 0;
+    return engine.scanProduct(Buffer.from("A-SECOND-PHOTO-OF-THE-CAP").toString("base64"), "image/jpeg", "us", "verdict");
+  });
+  const confirm = cache.filter(c => c.kind === "gate");
+  check("a cached identity's re-confirmation reads the second photo from the cache its first read wrote",
+    confirm.length === 1 && confirm[0].read > 0, JSON.stringify(cache));
+}
+{
+  process.env.GATE_EFFORT = "medium";
+  const { cache } = await scan({});
+  delete process.env.GATE_EFFORT;
+  check("the simulated cache is not a rubber stamp: GATE_EFFORT=medium costs the first gate wave its read (documented)",
+    cache.filter(c => c.kind === "gate").some(c => c.read === 0), JSON.stringify(cache));
 }
 
 // 7. The reply reader and the request builder, directly.

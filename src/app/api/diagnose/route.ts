@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isOperator } from "@/lib/operator";
-import { diagnoseEngine, ENGINE_MODELS, type LayerProbe } from "@/lib/scan";
+import { diagnoseEngine, ENGINE_MODELS, SERPAPI_RESERVE, retailerSweepOn, type LayerProbe } from "@/lib/scan";
+import { GLOBAL_DAILY_CAP } from "@/lib/redis";
 import { MODEL_RULES } from "@/lib/model-rules";
 import { evaluationUsage } from "@/lib/eval-log";
 import { DIAGNOSE_SAMPLE } from "@/lib/diagnose-sample";
@@ -27,13 +28,18 @@ import sharp from "sharp";
  * the rules table name is available to this key, and reports today's uses of
  * the operator evaluation path (see eval-log.ts).
  *
- * What one run spends: three Claude calls (the gate on Sonnet 5.5 and on
- * its fallback Opus 5.5, each comparing a 320px sample with itself; the first
- * read on Sonnet 5.5), measured from the usage they report and returned as
- * cost.claudeUsd: about two to six cents at list prices, depending on how
- * much the models think; one SerpApi Lens search; one Serper search credit;
- * one Blob upload and delete. The SerpApi account lookup is free. The Claude
+ * What one run spends: three Claude calls (the first read on Sonnet 5.5,
+ * then the gate on Sonnet 5.5 and on its fallback Opus 5.5, each comparing
+ * the sample with itself), measured from the usage they report and returned
+ * as cost.claudeUsd: about two to five cents at list prices, depending on
+ * how much the models think; one Serper Lens search and one Serper Shopping
+ * search (their credits are reported); one Blob upload and delete. SerpApi
+ * is the backup and is not searched: its account lookup is free. The Claude
  * spend counts against the day's model budget like any other call.
+ *
+ * The "prompt cache" layer fails when the Sonnet gate does not read the
+ * photo back from the cache the first read wrote: see THE PHOTO, ONCE PER
+ * SCAN in scan.ts.
  *
  * Each Claude layer also reports outputTokens and thinkingTokensApprox. The
  * models always think, thinking is billed as output, and it is the number
@@ -62,12 +68,19 @@ async function serpApiAccount(): Promise<LayerProbe> {
     }
     const left = Number(body.total_searches_left ?? body.plan_searches_left);
     const known = Number.isFinite(left);
+    // SerpApi is the last-resort backup (SEARCH PROVIDERS, BUDGET MODE in
+    // scan.ts): the key answering is the pass. At or under the reserve the
+    // engine stops using it, which is said here, not failed.
     return {
-      layer: "serpapi account",
-      pass: known ? left > 0 : true,
+      layer: "serpapi account (backup)",
+      pass: true,
       latencyMs: since(started),
       status: res.status,
-      detail: known ? `${left} searches left${left < 1000 ? ": top up before a traffic push" : ""}` : "the account answered without a remaining count",
+      detail: !known ? "the account answered without a remaining count; the backup is held until it reports one"
+        : left > SERPAPI_RESERVE ? `${left} searches left; the backup may spend down to its reserve of ${SERPAPI_RESERVE}`
+        : `${left} searches left, at or under the reserve of ${SERPAPI_RESERVE}: the backup is held, so a Serper failure is not covered`,
+      reserve: SERPAPI_RESERVE,
+      backupAvailable: known && left > SERPAPI_RESERVE,
       // Selected fields only. The account payload also carries the key and
       // the account email, and neither belongs in this answer.
       plan: body.plan_name ?? null,
@@ -84,29 +97,55 @@ async function serpApiAccount(): Promise<LayerProbe> {
 
 async function serper(): Promise<LayerProbe> {
   const key = process.env.SERPER_API_KEY;
-  if (!key) return { layer: "serper", pass: false, latencyMs: 0, status: 0, detail: "SERPER_API_KEY is not set (it is the Lens and Shopping backup)" };
+  if (!key) return { layer: "serper shopping", pass: false, latencyMs: 0, status: 0, detail: "SERPER_API_KEY is not set (it is the primary Lens and Shopping provider)" };
   const started = Date.now();
   try {
-    const res = await fetch("https://google.serper.dev/search", {
+    // The engine's own Shopping request shape (searchShoppingViaSerper).
+    const res = await fetch("https://google.serper.dev/shopping", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-API-KEY": key },
-      body: JSON.stringify({ q: "ceramic table lamp", gl: "us", hl: "en", num: 1 }),
+      body: JSON.stringify({ q: "ceramic table lamp", gl: "us", hl: "en" }),
       signal: AbortSignal.timeout(8000),
     });
     const text = await res.text();
     let body: Record<string, unknown> = {};
     try { body = JSON.parse(text); } catch { /* reported below */ }
-    const ok = res.ok && Array.isArray(body.organic);
+    const ok = res.ok && Array.isArray(body.shopping);
     return {
-      layer: "serper",
+      layer: "serper shopping",
       pass: ok,
       latencyMs: since(started),
       status: res.status,
-      detail: ok ? `answered; ${(body.organic as unknown[]).length} result(s)` : text.slice(0, 300),
+      detail: ok ? `answered; ${(body.shopping as unknown[]).length} result(s)` : text.slice(0, 300),
       creditsUsed: typeof body.credits === "number" ? body.credits : null,
     };
   } catch (err) {
-    return { layer: "serper", pass: false, latencyMs: since(started), status: 0, detail: String((err as Error)?.message || err).slice(0, 300) };
+    return { layer: "serper shopping", pass: false, latencyMs: since(started), status: 0, detail: String((err as Error)?.message || err).slice(0, 300) };
+  }
+}
+
+/**
+ * Serper's remaining credits, if its account endpoint says. Reported, never
+ * failed: the endpoint is not in Serper's public docs as far as this code
+ * knows, and only numeric fields are kept (an account payload can carry an
+ * email). When it answers nothing usable, the balance is on serper.dev.
+ */
+async function serperBalance(): Promise<Record<string, unknown>> {
+  const key = process.env.SERPER_API_KEY;
+  if (!key) return { known: false, detail: "SERPER_API_KEY is not set" };
+  try {
+    const res = await fetch("https://google.serper.dev/account", {
+      headers: { "X-API-KEY": key },
+      signal: AbortSignal.timeout(6000),
+    });
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const numbers = Object.fromEntries(Object.entries(body).filter(([, v]) => typeof v === "number"));
+    const balance = ["balance", "credits", "creditsLeft", "credits_left", "remaining"].map(k => body[k]).find(v => typeof v === "number");
+    return res.ok && typeof balance === "number"
+      ? { known: true, creditsLeft: balance, fields: numbers }
+      : { known: false, status: res.status, fields: numbers, detail: "the account endpoint gave no balance; see serper.dev" };
+  } catch (err) {
+    return { known: false, detail: String((err as Error)?.message || err).slice(0, 200) };
   }
 }
 
@@ -190,7 +229,7 @@ export async function GET(req: NextRequest) {
   if (!isOperator(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const started = Date.now();
-  const [engine, models, account, backup, rates, store, cap, mode, spend, evaluation] = await Promise.all([
+  const [engine, models, account, shopping, rates, store, cap, mode, spend, evaluation, serperCredits] = await Promise.all([
     diagnoseEngine(DIAGNOSE_SAMPLE),
     modelsApi(),
     serpApiAccount(),
@@ -201,8 +240,9 @@ export async function GET(req: NextRequest) {
     currentSpendMode(),
     todayModelSpend(),
     evaluationUsage(),
+    serperBalance(),
   ]);
-  const layers = [...engine, models, account, backup, rates, store, cap];
+  const layers = [...engine, models, account, shopping, rates, store, cap];
   const claudeUsd = engine.reduce((sum, p) => sum + (typeof p.costUsd === "number" ? p.costUsd : 0), 0);
   const thinking = engine.map(p => p.thinkingTokensApprox).filter((t): t is number => typeof t === "number");
 
@@ -219,10 +259,18 @@ export async function GET(req: NextRequest) {
         environment: process.env.VERCEL_ENV || null,
       },
       spend: { mode, todayUsd: Math.round(spend * 100) / 100, dailyBudgetUsd: DAILY_MODEL_BUDGET_USD },
+      // The budget-mode limits in force, so a run shows what the env decided.
+      limits: {
+        dailyModelBudgetUsd: DAILY_MODEL_BUDGET_USD,
+        globalDailyFreeScanCap: GLOBAL_DAILY_CAP,
+        serpApiReserve: SERPAPI_RESERVE,
+        retailerSweep: retailerSweepOn(),
+      },
+      serperCredits,
       cost: {
         claudeUsd: Math.round(claudeUsd * 1_000_000) / 1_000_000,
-        searches: { serpapiLens: process.env.SERPAPI_KEY ? 1 : 0, serper: process.env.SERPER_API_KEY ? (process.env.SERPAPI_KEY ? 1 : 2) : 0 },
-        note: "Claude cost is measured from this run's reported usage. Search cost is one search per provider at your plan's per-search price; the SerpApi account lookup is free.",
+        serperCredits: layers.reduce((sum, l) => sum + (typeof l.creditsUsed === "number" ? l.creditsUsed : 0), 0),
+        note: "Claude cost is measured from this run's reported usage. Serper credits are as Serper reported them for this run's Lens and Shopping searches. SerpApi is not searched; its account lookup is free.",
       },
       thinking: {
         perCallApprox: thinking.length ? Math.round(thinking.reduce((a, b) => a + b, 0) / thinking.length) : null,

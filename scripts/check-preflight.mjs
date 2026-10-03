@@ -82,6 +82,11 @@ env({ ...READY, SERPAPI_KEY: undefined }); reset();
   const lens = await run();
   check("Lens through Serper alone is a warning, not a blocker", lens.ready && !!warning(lens, "lens") && !blocker(lens, "search key"), JSON.stringify(lens.warnings));
 }
+env({ ...READY, SERPER_API_KEY: undefined }); reset();
+{
+  const lens = await run();
+  check("SerpApi alone (no Serper primary) is a warning that names the reserve", lens.ready && /reserve/.test(warning(lens, "lens")?.detail || ""), JSON.stringify(lens.warnings));
+}
 env({ ...READY, UNSUBSCRIBE_SECRET: undefined, CRON_SECRET: undefined, BLOB_READ_WRITE_TOKEN: undefined }); reset();
 res = await run();
 check("unsubscribe secret, cron secret and blob token", res.ready && !!warning(res, "unsubscribe") && !!warning(res, "cron") && !!warning(res, "blob"));

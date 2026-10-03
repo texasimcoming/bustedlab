@@ -94,8 +94,13 @@ export async function GET(req: NextRequest) {
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     warnings.push({ check: "blob", detail: "BLOB_READ_WRITE_TOKEN is not set: photo scans cannot use reverse-image search and will match less often." });
   }
+  // Budget mode: Serper is the primary for Lens and Shopping, SerpApi the
+  // backup used only above its reserve (SEARCH PROVIDERS in scan.ts).
   if (!process.env.SERPAPI_KEY && process.env.SERPER_API_KEY) {
-    warnings.push({ check: "lens", detail: "SERPAPI_KEY is not set: reverse-image search runs only through Serper, and the direct-retailer price check is off. Run /api/diagnose to see whether Serper's Lens answers well enough." });
+    warnings.push({ check: "lens", detail: "SERPAPI_KEY is not set: there is no backup when Serper fails, and the direct-retailer price check cannot be turned on." });
+  }
+  if (process.env.SERPAPI_KEY && !process.env.SERPER_API_KEY) {
+    warnings.push({ check: "lens", detail: "SERPER_API_KEY is not set: Lens and Shopping run on SerpApi alone, and only until its remaining searches reach the reserve; after that, scans cannot search." });
   }
 
   // ── Promises the site makes.
