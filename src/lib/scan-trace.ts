@@ -88,6 +88,8 @@ export interface SearchCallRecord {
   engine: string;
   ms: number;
   status: number;
+  /** What the provider says the request used, when it says (Serper reports `credits`). */
+  credits?: number;
 }
 
 /** A decision point in the scan, for the evaluation trace. */
@@ -120,6 +122,23 @@ export function recordModelCall(call: ModelCallRecord): void {
 
 export function recordSearchCall(call: SearchCallRecord): void {
   traces.getStore()?.searches.push(call);
+}
+
+/**
+ * Puts the credits a provider reported on its latest request in this scan.
+ * Serper prices endpoints differently (a Lens search costs more than a
+ * Shopping one), so the trace carries what each request actually used.
+ */
+export function noteSearchCredits(provider: string, credits: unknown): void {
+  if (typeof credits !== "number" || !Number.isFinite(credits)) return;
+  const searches = traces.getStore()?.searches;
+  if (!searches) return;
+  for (let i = searches.length - 1; i >= 0; i--) {
+    if (searches[i].provider === provider && searches[i].credits === undefined) {
+      searches[i].credits = credits;
+      return;
+    }
+  }
 }
 
 /** Notes a decision for the evaluation trace. Bounded, and never an image. */
@@ -198,14 +217,17 @@ export function hasFailed(layer: FailureLayer, severity?: Severity): boolean {
  * results") has not cost the scan anything it can name: the layer was
  * served. So once any configured provider answers, the failures recorded
  * during this attempt in this layer stop deciding the scan (they stay in the
- * log). Without this, SerpApi running out of searches would turn every
+ * log). Without this, one provider running out of searches would turn every
  * honest "closest match" into "try again" for as long as it lasted, even
- * with Serper answering every request. An unconfigured provider is skipped
- * and is never an answer.
+ * with the other answering every request. An unconfigured provider (or a
+ * backup held at its reserve) is skipped and is never an answer.
  */
 export async function firstAnswer<T>(
   layer: FailureLayer,
-  providers: { configured: boolean; run: () => Promise<T | null> }[],
+  // `configured` may be a check run only when the provider is reached: the
+  // SerpApi backup asks whether it is still above its reserve, which is a
+  // lookup worth making only when Serper has already failed.
+  providers: { configured: boolean | (() => Promise<boolean>); run: () => Promise<T | null> }[],
   // Whether a provider that ANSWERED with nothing hands over to the next one
   // anyway. True for Lens, where the backup is a different index and cheap.
   // False for Shopping: the production evaluation found SerpApi's Google
@@ -223,7 +245,8 @@ export async function firstAnswer<T>(
   };
   for (let i = 0; i < providers.length; i++) {
     const provider = providers[i];
-    if (!provider.configured) continue;
+    const configured = typeof provider.configured === "function" ? await provider.configured() : provider.configured;
+    if (!configured) continue;
     const before = store?.length ?? 0;
     const value = await provider.run();
     const failed = !!store && store.slice(before).some(f => f.layer === layer);
@@ -281,11 +304,26 @@ export function summarizeTrace(trace: ScanTrace) {
   for (const s of trace.searches) msByLayer[`search:${s.layer}`] = (msByLayer[`search:${s.layer}`] || 0) + s.ms;
   const searchesByProvider: Record<string, number> = {};
   for (const s of trace.searches) searchesByProvider[s.provider] = (searchesByProvider[s.provider] || 0) + 1;
+  const creditsByProvider: Record<string, number> = {};
+  for (const s of trace.searches) {
+    if (typeof s.credits === "number") creditsByProvider[s.provider] = (creditsByProvider[s.provider] || 0) + s.credits;
+  }
   const thinking = trace.calls.map(c => c.thinkingApprox).filter((t): t is number => typeof t === "number");
+  // Prompt caching, as the API reported it: the photo is written once and
+  // read back by every later call on the same model in the scan.
+  const cache = {
+    readTokens: trace.calls.reduce((sum, c) => sum + (c.cacheReadTokens || 0), 0),
+    writeTokens: trace.calls.reduce((sum, c) => sum + (c.cacheWriteTokens || 0), 0),
+    uncachedInputTokens: trace.calls.reduce((sum, c) => sum + (c.inputTokens || 0), 0),
+    callsReading: trace.calls.filter(c => (c.cacheReadTokens || 0) > 0).length,
+    calls: trace.calls.length,
+  };
   return {
     totalMs: Date.now() - trace.startedAt,
     claudeUsd: Math.round(trace.calls.reduce((sum, c) => sum + (c.costUsd || 0), 0) * 1_000_000) / 1_000_000,
     searchesByProvider,
+    creditsByProvider,
+    cache,
     msByLayer,
     thinkingPerCall: thinking.length ? Math.round(thinking.reduce((a, b) => a + b, 0) / thinking.length) : null,
     calls: trace.calls,

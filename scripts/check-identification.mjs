@@ -93,6 +93,10 @@ const POLO = "Polo Ralph Lauren PH2083 Eyeglasses";
 const SCENARIO_GLASSES = {
   name: "Ralph Lauren eyeglasses (correct match unpriced)",
   intent: "finder",
+  // With the Amazon/Walmart/eBay sweep switched on (RETAILER_SWEEP=1), which
+  // is where the cheapest verified price comes from. The budget-mode default,
+  // sweep off, is SCENARIO_GLASSES_NO_SWEEP.
+  retailerSweep: true,
   vision: {
     productName: "eyeglasses", brand: "Ralph Lauren", visiblePrice: null, currency: "USD",
     quantity: "", category: "accessories", platform: "instagram", storeName: "", visibleUrl: "",
@@ -642,10 +646,24 @@ const SCENARIO_LIKELY_PRICE = {
 // A windshield tablet holder, from run 3: the retailer sweep kept only the
 // retailer whose cheapest row was cheapest (eBay, unrelated) and threw away
 // the Amazon page that carried the product, before the gate saw either.
+// The same eyeglasses with budget mode's default: no retailer sweep. The
+// identification is the same; the price is the identified listing's own.
+const SCENARIO_GLASSES_NO_SWEEP = {
+  ...SCENARIO_GLASSES,
+  name: "Ralph Lauren eyeglasses, budget mode: no retailer sweep, still identified exactly",
+  guardOnly: true,
+  retailerSweep: false,
+  expect: { titleIncludes: "PH2083", price: 118.0, confidence: "exact", platform: "FramesDirect" },
+  expectStats: (stats) => (stats.retailerCalls > 0
+    ? [`the retailer sweep ran ${stats.retailerCalls} SerpApi search(es) with RETAILER_SWEEP unset`] : []),
+};
+
 const SCENARIO_RETAILER_POOLS = {
   name: "The retailer sweep is judged across retailers, not decided by the cheapest pool",
   intent: "finder",
   guardOnly: true,
+  // The sweep is off by default (budget mode); this is the switched-on path.
+  retailerSweep: true,
   vision: {
     productName: "windshield suction tablet holder with gooseneck arm", brand: "WAOCEO", visiblePrice: null, currency: "",
     quantity: "", category: "tech", platform: "unknown", storeName: "", visibleUrl: "",
@@ -837,6 +855,9 @@ function installFetch(scenario, stats) {
       return redisResponse(body);
     }
 
+    // The SerpApi backup's free balance lookup (SEARCH PROVIDERS in scan.ts).
+    if (url.startsWith("https://serpapi.com/account.json")) return jsonResponse({ total_searches_left: 200 });
+
     if (url.startsWith("https://serpapi.com/search.json")) {
       const params = new URL(url).searchParams;
       const engine = params.get("engine");
@@ -877,7 +898,20 @@ function installFetch(scenario, stats) {
       const rows = scenario.shopping(body?.q || "");
       return jsonResponse({ shopping: rows });
     }
-    if (url === "https://google.serper.dev/lens") return jsonResponse({ organic: [] });
+    // Lens on Serper, the primary: the scenario's visual matches in the
+    // shape Serper sends (a list of rows with a thumbnail URL and a price
+    // string), so the current engine reads the same matches the pre-fix
+    // engine reads from SerpApi.
+    if (url === "https://google.serper.dev/lens") {
+      stats.lensCalls++;
+      return jsonResponse({
+        organic: scenario.lens.map(m => ({
+          title: m.title, source: m.source, link: m.link, thumbnailUrl: m.thumbnail,
+          ...(m.price ? { price: m.price.value || `$${m.price.extracted_value}`, extractedPrice: m.price.extracted_value } : {}),
+        })),
+        credits: 3,
+      });
+    }
     if (url === "https://google.serper.dev/search") return jsonResponse({ organic: [] });
     // Any other page an identified listing links to: no structured price.
     if (/^https:\/\/[^/]*\.test\//.test(url)) {
@@ -913,6 +947,7 @@ function freshStats() {
 
 async function run(engine, scenario, opts = {}) {
   const stats = freshStats();
+  process.env.RETAILER_SWEEP = scenario.retailerSweep ? "1" : "";
   installFetch(scenario, stats);
   if (!opts.keepStore) resetStore();
   if (opts.spendToday) {
@@ -973,7 +1008,7 @@ const SCENARIOS = [
   SCENARIO_UNPRICEABLE, SCENARIO_VERDICT, SCENARIO_SIMILAR_TIER,
   SCENARIO_SPIKE, SCENARIO_DEGRADED, SCENARIO_TRUNCATED, SCENARIO_CALL_FAILS,
   SCENARIO_LOOKALIKE, SCENARIO_REUSED_PHOTO, SCENARIO_PRICED_FROM_PAGE, SCENARIO_PRICE_SEARCH_DOWN,
-  SCENARIO_TIER_PAGE_PRICE, SCENARIO_LIKELY_PRICE, SCENARIO_RETAILER_POOLS,
+  SCENARIO_TIER_PAGE_PRICE, SCENARIO_LIKELY_PRICE, SCENARIO_RETAILER_POOLS, SCENARIO_GLASSES_NO_SWEEP,
 ];
 
 for (const scenario of SCENARIOS) {

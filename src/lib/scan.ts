@@ -190,11 +190,11 @@ import {
 import { buildClaudeRequest, readClaudeReply, parseReplyJson, parseEffort, type Effort } from "@/lib/model-rules";
 import {
   runTraced, decideFailure, hasFailed, firstAnswer, reportProviderFailure, recordProviderFailure, logProviderFailure, errorBody,
-  recordModelCall, searchFetch, traceStep,
+  recordModelCall, searchFetch, traceStep, noteSearchCredits,
   type FailureLayer, type ScanFailure, type Severity, type ScanTrace,
 } from "@/lib/scan-trace";
 import { normalizeCurrency, parsePrice, toUsd } from "@/lib/fx";
-import { capForModel } from "@/lib/image-cap";
+import { capForModel, scaleImage, CANDIDATE_IMAGE_LONG_EDGE } from "@/lib/image-cap";
 
 // ════════════════════════════════════════════════════════════════
 // MODELS. Chosen per role from the production evaluation (evals/results,
@@ -227,10 +227,11 @@ import { capForModel } from "@/lib/image-cap";
 //   cache-hit re-confirmation  Sonnet 5.5  (can only ACCEPT a reuse)
 //   page text, search query    Sonnet 5.5
 //
-// Both models cache a prefix from 512 tokens, so the reference photo is a
-// cached prefix on either, and the gate compares a whole wave of candidates
-// in one call with the photo sent once (BATCHING BEATS DOWNGRADING in
-// scripts/cost-model.mjs). Both always think; effort is the only control,
+// Both models cache a prefix from 512 tokens, and every call that looks at
+// the photo opens with it (see THE PHOTO, ONCE PER SCAN), so the first read
+// writes it to the cache and the gate and re-confirmation read it back. The
+// gate also compares a whole wave of candidates in one call with the photo
+// sent once (BATCHING BEATS DOWNGRADING in scripts/cost-model.mjs). Both always think; effort is the only control,
 // and it is set to low in model-rules.ts. GATE_EFFORT raises the gate's
 // level without a code change if a later evaluation shows it is needed.
 //
@@ -442,7 +443,9 @@ async function searchFailed(
   const name = (err as Error)?.name || "";
   const kind = res
     ? (status === 429 ? "backpressure" : status >= 500 ? "server" : "client")
-    : (name === "TimeoutError" || name === "AbortError" ? "timeout" : "network");
+    : name === "TimeoutError" || name === "AbortError" ? "timeout"
+    : name === "UnreadableAnswer" ? "unparseable"
+    : "network";
   const detail = res ? await errorBody(res) : String((err as Error)?.message || err || "");
   reportProviderFailure({ layer, provider, status, kind, detail, severity });
   return null;
@@ -726,6 +729,39 @@ export function buildShippingNote(sourceUrl: string, country: string): string | 
 // ════════════════════════════════════════════════════════════════
 // LAYER 1: vision extraction (Sonnet 5.5, escalating to Opus 5.5)
 // ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// THE PHOTO, ONCE PER SCAN, AS A CACHED PREFIX.
+//
+// Every call that looks at the scanned photo (the first read, each gate
+// wave, the cache-hit re-confirmation, and the Opus 5.5 escalation and
+// fallback) opens with the same two blocks: a label, then the photo marked
+// as a cache breakpoint. Prompt caching is a prefix match, so the first call
+// on a model writes the photo to the cache and every later call on that
+// model within five minutes reads it back, at $0.20 per million tokens
+// instead of $2 on Sonnet 5.5 ($4 on Opus 5.5). Sonnet 5.5 runs both the
+// first read and the gate, so a scan pays for the photo in full once, plus
+// the 25% write premium, instead of on every call. What varies between calls
+// (the instructions, the candidates) comes after it.
+//
+// Both models cache from 512 tokens (Anthropic's prompt-caching docs,
+// checked 2026-10-03); a capped photo is about 1,500. Three things keep the
+// prefix identical, and scripts/check-model-contract.mjs asserts each: the
+// same blocks in the same order, no system prompt and no tools, and the same
+// effort on every role that shares a model (an effort change invalidates the
+// cache, so GATE_EFFORT set to anything but the table's level costs the gate
+// its cache reads). /api/diagnose measures the read on every run.
+// ════════════════════════════════════════════════════════════════
+function photoPrefix(photo: { data: string; mimeType: string }): Record<string, unknown>[] {
+  return [
+    { type: "text", text: "IMAGE A (the photo being scanned):" },
+    {
+      type: "image",
+      source: { type: "base64", media_type: photo.mimeType, data: photo.data },
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+}
+
 /** The extraction request, as sent. Also what /api/diagnose sends. */
 function extractionPayload(imageBase64: string, mimeType: string): Record<string, unknown> {
   return {
@@ -733,7 +769,7 @@ function extractionPayload(imageBase64: string, mimeType: string): Record<string
     messages: [{
       role: "user",
       content: [
-        { type: "image", source: { type: "base64", media_type: mimeType, data: imageBase64 } },
+        ...photoPrefix({ data: imageBase64, mimeType }),
         {
           type: "text",
           text: `Product intelligence scan. Return ONLY JSON:
@@ -923,19 +959,9 @@ function gatePayload(
   reference: { data: string; mimeType: string },
   candidates: { data: string; mimeType: string; title?: string; source?: string }[]
 ): Record<string, unknown> {
-  const content: Record<string, unknown>[] = [
-    { type: "text", text: "IMAGE A (the photo being scanned):" },
-    {
-      type: "image",
-      source: { type: "base64", media_type: reference.mimeType, data: reference.data },
-      // The reference photo is byte-identical for every wave and every pass
-      // in a scan, so it is marked as a cache breakpoint: the first wave
-      // writes it and every later one reads it back at a fraction of the
-      // price (0.05x on Opus 5.5, 0.1x on Sonnet 5.5; both cache from 512
-      // tokens, which the photo always clears).
-      cache_control: { type: "ephemeral" },
-    },
-  ];
+  // The photo first, exactly as the first read sent it: see THE PHOTO, ONCE
+  // PER SCAN. Every wave in a scan reads it back from the cache.
+  const content: Record<string, unknown>[] = [...photoPrefix(reference)];
   candidates.forEach((image, slot) => {
     // The listing's own words, bounded and on one line. See buildBatchPrompt:
     // they can rule a candidate out or back up the images, never match alone.
@@ -970,8 +996,12 @@ async function verifyVisualMatchBatch(
   let judged = 0;
   if (candidates.length === 0) return { results, ok: false };
 
+  // Each candidate capped at 512px: see CANDIDATE_IMAGE_LONG_EDGE.
   const images = await Promise.all(
-    candidates.map(c => (c.imageUrl ? fetchImageAsBase64(c.imageUrl) : Promise.resolve(null)))
+    candidates.map(async c => {
+      const image = c.imageUrl ? await fetchImageAsBase64(c.imageUrl) : null;
+      return image ? capForModel(image, CANDIDATE_IMAGE_LONG_EDGE) : null;
+    })
   );
   const present: { index: number; image: { data: string; mimeType: string; title?: string; source?: string } }[] = [];
   images.forEach((image, index) => {
@@ -1065,7 +1095,66 @@ async function discardLensUpload(url: string | null): Promise<void> {
 }
 
 // ════════════════════════════════════════════════════════════════
-// LAYER 2: Google Lens reverse image search via SerpApi (primary)
+// SEARCH PROVIDERS, BUDGET MODE. Serper answers Lens and Shopping first: it
+// is prepaid credits at about a tenth of a cent each. SerpApi is the last
+// resort, asked only when Serper FAILED (an error, a timeout, an answer this
+// engine could not read; "nothing found" is an answer and stops there), and
+// only while the SerpApi account has more than SERPAPI_RESERVE searches left
+// this month, so a Serper outage cannot spend the free plan to zero. The
+// Amazon, Walmart and eBay sweep, three SerpApi searches a scan, is off
+// unless RETAILER_SWEEP=1.
+//
+// The remaining count comes from SerpApi's account endpoint, which is free
+// and does not count as a search. It is read at most every ten minutes per
+// instance, and the local copy is decremented as searches are spent so a
+// burst cannot overshoot. A lookup that fails holds the backup: an unknown
+// balance is not a balance above the reserve.
+// ════════════════════════════════════════════════════════════════
+export const SERPAPI_RESERVE = Number(process.env.SERPAPI_RESERVE || 20);
+const SERPAPI_BALANCE_TTL_MS = 10 * 60_000;
+let serpApiBalance: { left: number | null; at: number } | null = null;
+
+/** Test seam: forget the cached SerpApi balance. */
+export function resetSerpApiBalance(): void {
+  serpApiBalance = null;
+}
+
+async function serpApiSearchesLeft(): Promise<number | null> {
+  if (serpApiBalance && Date.now() - serpApiBalance.at < SERPAPI_BALANCE_TTL_MS) return serpApiBalance.left;
+  let left: number | null = null;
+  try {
+    const res = await fetch(`https://serpapi.com/account.json?api_key=${encodeURIComponent(process.env.SERPAPI_KEY || "")}`, {
+      signal: AbortSignal.timeout(4000),
+    });
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const n = Number(body.total_searches_left ?? body.plan_searches_left);
+    left = res.ok && Number.isFinite(n) ? n : null;
+  } catch {
+    left = null;
+  }
+  serpApiBalance = { left, at: Date.now() };
+  return left;
+}
+
+/** Whether SerpApi may spend `searches` more searches now. Logged when it may not. */
+async function serpApiAllowed(searches = 1): Promise<boolean> {
+  if (!process.env.SERPAPI_KEY) return false;
+  const left = await serpApiSearchesLeft();
+  const allowed = left !== null && left - searches >= SERPAPI_RESERVE;
+  traceStep("serpapi", { left, reserve: SERPAPI_RESERVE, searches, allowed });
+  if (!allowed) {
+    console.error(`[scan] serpapi held at its reserve: ${left === null ? "balance unknown" : `${left} searches left`}, reserve ${SERPAPI_RESERVE}`);
+  } else if (serpApiBalance && serpApiBalance.left !== null) {
+    serpApiBalance.left -= searches;
+  }
+  return allowed;
+}
+
+/** The Amazon, Walmart and eBay sweep: three SerpApi searches a scan, so off unless RETAILER_SWEEP=1. */
+export const retailerSweepOn = (): boolean => process.env.RETAILER_SWEEP === "1";
+
+// ════════════════════════════════════════════════════════════════
+// Google Lens reverse image search via SerpApi (the backup)
 // ════════════════════════════════════════════════════════════════
 // v9.1: hardcoded to the US index regardless of the requester's location.
 // The US Shopping/Lens index is by far the deepest and is where the actual
@@ -1074,13 +1163,17 @@ async function discardLensUpload(url: string | null): Promise<void> {
 // country degrades search depth without making the verdict more accurate —
 // the markup is real regardless of which country's index found the floor
 // price. Locality is handled separately via the shippingNote disclosure.
-/** Lens through SerpApi, then Serper. See firstAnswer for how failures count. */
+/**
+ * Lens through Serper, then SerpApi only if Serper failed and SerpApi is
+ * above its reserve (SEARCH PROVIDERS, BUDGET MODE). See firstAnswer for how
+ * failures count.
+ */
 async function searchLens(imageUrl: string): Promise<{ match: ShoppingMatch | null; engine: "serpapi" | "serper" | "" }> {
   const { value, index } = await firstAnswer("lens", [
-    { configured: !!process.env.SERPAPI_KEY, run: () => searchLensViaSerpApi(imageUrl) },
     { configured: !!process.env.SERPER_API_KEY, run: () => searchLensViaSerper(imageUrl) },
-  ]);
-  return { match: value, engine: index === 0 ? "serpapi" : index === 1 ? "serper" : "" };
+    { configured: () => serpApiAllowed(), run: () => searchLensViaSerpApi(imageUrl) },
+  ], { onEmpty: "stop" });
+  return { match: value, engine: index === 0 ? "serper" : index === 1 ? "serpapi" : "" };
 }
 
 async function searchLensViaSerpApi(imageUrl: string): Promise<ShoppingMatch | null> {
@@ -1175,11 +1268,28 @@ async function searchLensViaSerpApi(imageUrl: string): Promise<ShoppingMatch | n
 }
 
 // ════════════════════════════════════════════════════════════════
-// LAYER 3: Google Lens reverse image search via Serper (backup)
-// NOTE: verify exact response field names against a live Serper
-// /lens response before shipping — schema below is best-effort and
-// defensively parsed so a mismatch degrades to null, not a crash.
+// Google Lens reverse image search via Serper (the primary)
+//
+// No production scan read Serper's Lens answer before budget mode (every
+// one ran on SerpApi), so this reader is deliberately tolerant: it takes the
+// first list of results under any of the names Serper gives result lists,
+// and each row's image, link, source and price under their usual names. A
+// thumbnail is preferred to the full image: it is what the gate compares,
+// it is small, and Google's thumbnail host answers where a merchant's
+// hotlink protection may not.
+//
+// What it will not do is fail quietly. A 200 whose rows this reader cannot
+// use is a failure of this layer, logged with the field names Serper sent,
+// so a schema change shows on /api/diagnose and in the log instead of
+// reading as "no visual matches" on every scan; the SerpApi backup then
+// answers while it is above its reserve. /api/diagnose reports the live
+// shape on every run (the serper_lens trace step).
 // ════════════════════════════════════════════════════════════════
+const SERPER_RESULT_LISTS = ["organic", "visualMatches", "visual_matches", "matches", "images", "results"];
+
+const firstHttpUrl = (...values: unknown[]): string =>
+  (values.find(v => typeof v === "string" && /^https?:\/\//i.test(v)) as string | undefined) || "";
+
 async function searchLensViaSerper(imageUrl: string): Promise<ShoppingMatch | null> {
   if (!process.env.SERPER_API_KEY) return null;
 
@@ -1194,18 +1304,31 @@ async function searchLensViaSerper(imageUrl: string): Promise<ShoppingMatch | nu
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return searchFailed("lens", "serper", res, null, "identity");
-    const data = await res.json();
+    const data = (await res.json()) as Record<string, unknown>;
+    noteSearchCredits("serper", data.credits);
 
-    // Same two fixes as the SerpApi path above: an unpriced visual match
-    // is kept (it is often the best match), and the engine's own
-    // best-match-first order is preserved instead of being replaced with a
-    // price sort. A missing image is still disqualifying, because the
-    // verification gate has nothing to compare without one.
-    const raw: Record<string, unknown>[] = data.organic || data.visualMatches || data.matches || [];
+    // The known list names first; then any other top-level list of objects,
+    // so results moved to a name not listed here are reported, not missed.
+    const listKey = SERPER_RESULT_LISTS.find(k => Array.isArray(data[k]) && (data[k] as unknown[]).length > 0)
+      ?? Object.keys(data).find(k => Array.isArray(data[k]) && (data[k] as unknown[]).some(v => v && typeof v === "object"))
+      ?? null;
+    const rows = (listKey ? (data[listKey] as unknown[]) : []).filter(
+      (v): v is Record<string, unknown> => !!v && typeof v === "object"
+    );
+
+    // Same two fixes as the SerpApi reader: an unpriced visual match is kept
+    // (it is often the best match), and the engine's own best-match-first
+    // order is kept instead of a price sort. A missing image is still
+    // disqualifying, because the gate has nothing to compare without one.
     const candidates: ShoppingCandidate[] = [];
-    for (const m of raw) {
-      const imageUrl = String(m.imageUrl || m.thumbnail || "");
-      if (!imageUrl) continue;
+    const seen = new Set<string>();
+    for (const m of rows) {
+      const image = firstHttpUrl(m.thumbnailUrl, m.thumbnail, m.imageUrl, m.image);
+      if (!image) continue;
+      const productUrl = String(m.link || m.url || "");
+      const dedupeKey = productUrl || image;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
       const listed = typeof m.extractedPrice === "number"
         ? { amount: m.extractedPrice as number, currency: parsePrice(m.price).currency }
         : parsePrice(m.price);
@@ -1213,12 +1336,24 @@ async function searchLensViaSerper(imageUrl: string): Promise<ShoppingMatch | nu
         price: listed.amount > 0.5 ? listed.amount : 0,
         currency: listed.currency || undefined,
         title: String(m.title || ""),
-        imageUrl,
-        productUrl: String(m.link || m.url || ""),
+        imageUrl: image,
+        productUrl,
         source: String(m.source || m.domain || ""),
         rank: candidates.length,
       });
       if (candidates.length >= 40) break;
+    }
+    traceStep("serper_lens", {
+      list: listKey, rows: rows.length, usable: candidates.length,
+      priced: candidates.filter(c => c.price > 0).length,
+      fields: rows[0] ? Object.keys(rows[0]).slice(0, 15) : [],
+      topLevel: Object.keys(data).slice(0, 15),
+    });
+    if (rows.length > 0 && candidates.length === 0) {
+      const fields = Object.keys(rows[0]).slice(0, 15).join(",");
+      const unreadable = new Error(`unreadable Lens answer: ${rows.length} rows under "${listKey}", none with an image URL; row fields: ${fields}`);
+      unreadable.name = "UnreadableAnswer";
+      return searchFailed("lens", "serper", null, unreadable, "identity");
     }
 
     return buildShoppingMatch(await pricesInUsd(candidates));
@@ -1281,6 +1416,7 @@ async function searchShoppingViaSerper(query: string, severity: Severity = "iden
     });
     if (!res.ok) return searchFailed("shopping", "serper", res, null, severity);
     const data = await res.json();
+    noteSearchCredits("serper", data?.credits);
 
     // A text shopping search is a PRICE source, so a row with no price
     // contributes nothing here — unlike a Lens visual match, which is an
@@ -1477,6 +1613,9 @@ async function searchDirectRetailer(provider: RetailerProvider, query: string): 
 // the product: price deciding identity again, one layer down. `source` names
 // the retailer of the pool's lead; the verified winner carries its own.
 async function searchAllDirectRetailers(query: string): Promise<{ match: ShoppingMatch; source: string } | null> {
+  // Off by default, and never below the SerpApi reserve when on: see
+  // SEARCH PROVIDERS, BUDGET MODE.
+  if (!retailerSweepOn() || !(await serpApiAllowed(DIRECT_RETAILERS.length))) return null;
   const attempts = await Promise.all(DIRECT_RETAILERS.map(provider => searchDirectRetailer(provider, query)));
   const pools = attempts.filter((m): m is ShoppingMatch => m !== null).map(m => m.candidates);
   if (pools.length === 0) return null;
@@ -1510,7 +1649,7 @@ async function searchShoppingWithFallbacks(
 
     const { value: match, index } = await firstAnswer("shopping", [
       { configured: !!process.env.SERPER_API_KEY, run: () => searchShoppingViaSerper(q, severity) },
-      { configured: !!process.env.SERPAPI_KEY, run: () => searchShoppingViaSerpApi(q, severity) },
+      { configured: () => serpApiAllowed(), run: () => searchShoppingViaSerpApi(q, severity) },
     ], { onEmpty: "stop" });
     if (match) return { match, engineUsed: index === 0 ? "serper" : "serpapi" };
   }
@@ -1628,7 +1767,9 @@ async function resolveSerpApiMerchantLink(productId: string): Promise<string | n
 
 async function resolveMerchantLink(url: string, productId?: string): Promise<{ url: string; isDirect: boolean }> {
   if (url && !isGoogleDomain(url)) return { url, isDirect: true };
-  if (productId) {
+  // Only SerpApi's results carry a product id, so this runs only after
+  // Serper failed, and only above the reserve.
+  if (productId && await serpApiAllowed()) {
     const resolved = await resolveSerpApiMerchantLink(productId);
     if (resolved) return { url: resolved, isDirect: true };
   }
@@ -1683,6 +1824,7 @@ async function searchOrganicViaSerper(query: string): Promise<string[]> {
     });
     if (!res.ok) { await searchFailed("shopping", "serper", res, null, "identity"); return []; }
     const data = await res.json();
+    noteSearchCredits("serper", data?.credits);
     const organic: Record<string, unknown>[] = data.organic || [];
     return organic.map(r => String(r.link || "")).filter(Boolean);
   } catch (err) {
@@ -1719,8 +1861,8 @@ async function findStoreProductUrl(storeName: string, brand: string, productName
 
   const { value: found } = await firstAnswer("shopping", [
     { configured: !!process.env.SERPER_API_KEY, run: async () => { const l = await searchOrganicViaSerper(query); return l.length ? l : null; } },
-    { configured: !!process.env.SERPAPI_KEY, run: async () => { const l = await searchOrganicViaSerpApi(query); return l.length ? l : null; } },
-  ]);
+    { configured: () => serpApiAllowed(), run: async () => { const l = await searchOrganicViaSerpApi(query); return l.length ? l : null; } },
+  ], { onEmpty: "stop" });
   const links = found || [];
 
   const candidate = links.find(l => !isExcludedSearchDomain(l));
@@ -2902,7 +3044,9 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   //    so the product gets searched once more with the brand stripped and
   //    described only by its generic features.
   //
-  //    Direct retailer: Google's Shopping graph structurally
+  //    Direct retailer (off unless RETAILER_SWEEP=1, since it costs three
+  //    SerpApi searches a scan; see SEARCH PROVIDERS, BUDGET MODE):
+  //    Google's Shopping graph structurally
   //    under-represents several major retailers' own catalogs — a niche or
   //    smaller-brand product frequently shows up there only via the
   //    brand's own paid listing, with a genuinely cheaper Amazon, Walmart
@@ -2951,6 +3095,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
     traceStep("alternatives", {
       retailerQuery: retailerQuery.slice(0, 120), unbranded: unbrandedPool?.candidates.length ?? 0,
       retailer: retailerPool?.candidates.length ?? 0, retailerSource: retailerFound?.source ?? null,
+      retailerSweep: retailerSweepOn(),
     });
     if ((unbrandedPool || retailerPool) && budget.allows(VERIFY_WAVE_COST_MS)) {
       const [unbrandedVerified, retailerVerified] = await verifyPools(
@@ -3383,6 +3528,48 @@ export interface LayerProbe {
 }
 
 const roundUsd = (n: number) => Math.round(n * 1_000_000) / 1_000_000;
+const hostOf = (url: string) => { try { return new URL(url).hostname; } catch { return ""; } };
+// The diagnose photo's long edge: enough image tokens to clear the 512-token
+// caching minimum, so the probes exercise prompt caching.
+const DIAGNOSE_PHOTO_EDGE = 768;
+
+/**
+ * The Lens layer as /api/diagnose reports it: Serper, the primary, on a
+ * public image URL, with the shape of its live answer (the list it used, the
+ * field names on a row, the top-level keys) and the credits it reported.
+ * SerpApi, the backup, is not searched here: its account lookup in the
+ * diagnose route is free, a search is not.
+ */
+export async function probeSerperLens(url: string): Promise<LayerProbe> {
+  if (!process.env.SERPER_API_KEY) {
+    return { layer: "lens serper", pass: false, latencyMs: 0, status: 0, detail: "SERPER_API_KEY is not set: Lens has no primary provider" };
+  }
+  const started = Date.now();
+  const lens = await runTraced(() => searchLensViaSerper(url));
+  const failure = lens.failures[0];
+  const candidates = lens.value?.candidates || [];
+  const shape = (lens.trace.steps.find(st => st.step === "serper_lens") || {}) as Record<string, unknown>;
+  const credits = lens.trace.searches.find(x => x.provider === "serper")?.credits ?? null;
+  // Usable means the gate could judge it and the card could link it: an
+  // image URL and a listing link.
+  const usable = candidates.filter(c => c.imageUrl && c.productUrl).length;
+  const priced = candidates.filter(c => c.price > 0).length;
+  return {
+    layer: "lens serper",
+    pass: !failure,
+    latencyMs: Date.now() - started,
+    status: failure?.status ?? 200,
+    detail: failure ? `${failure.kind}: ${failure.detail}`
+      : candidates.length ? `${candidates.length} visual matches, ${usable} usable (image and link), ${priced} priced; first: ${candidates[0]?.title?.slice(0, 80) || "(untitled)"}`
+      : "the call succeeded but returned no visual matches",
+    matches: candidates.length,
+    usable,
+    priced,
+    creditsUsed: credits,
+    responseShape: { list: shape.list ?? null, rows: shape.rows ?? 0, rowFields: shape.fields ?? [], topLevel: shape.topLevel ?? [] },
+    sample: candidates.slice(0, 3).map(c => ({ title: c.title.slice(0, 80), source: c.source, price: c.price || null, imageHost: hostOf(c.imageUrl) })),
+  };
+}
 
 export async function diagnoseEngine(sample: { data: string; mimeType: string }): Promise<LayerProbe[]> {
   const isExtraction = (text: string | null) => {
@@ -3394,22 +3581,24 @@ export async function diagnoseEngine(sample: { data: string; mimeType: string })
     const list = Array.isArray(parsed) ? parsed : salvageVerdictObjects(text || "");
     return list.some(entry => coerceVerdict(entry) !== null);
   };
-  // The photo compared with itself: a working gate answers "exact".
-  const gate = gatePayload(sample, [sample]);
-  const extraction = extractionPayload(sample.data, sample.mimeType);
-  // Every model the engine uses, each in the role that matters most for it:
-  // Sonnet 5.5 as the gate (also the degraded gate and the cache-hit
-  // re-confirmation) and as the first read; Opus 5.5 as the gate it falls
-  // back to (and the extraction escalation).
-  const probes: [string, FailureLayer, string, Record<string, unknown>, (t: string | null) => boolean, Effort | null][] = [
-    ["gate, degraded gate, re-confirmation", "gate", GATE_MODEL, gate, isVerdict, gateEffort()],
-    ["gate fallback, extraction escalation", "gate", GATE_MODEL_FALLBACK, gate, isVerdict, gateEffort()],
-    ["first read, page text, search query", "extraction", EXTRACT_MODEL, extraction, isExtraction, null],
-  ];
+  // The sample is 320px, about 137 image tokens: under the 512-token minimum
+  // a prefix needs before it caches. Scaled to 768px it is about 790, so the
+  // probes cache the photo the way a real scan does (THE PHOTO, ONCE PER
+  // SCAN). The gate compares it with the original sample: a working gate
+  // answers "exact".
+  const photo = await scaleImage(sample, DIAGNOSE_PHOTO_EDGE);
+  const gate = gatePayload(photo, [sample]);
+  const extraction = extractionPayload(photo.data, photo.mimeType);
 
-  const claude = Promise.all(probes.map(async ([role, layer, model, payload, accept, effort]): Promise<LayerProbe> => {
+  const probe = async (
+    role: string, layer: FailureLayer, model: string, payload: Record<string, unknown>,
+    accept: (t: string | null) => boolean, effort: Effort | null
+  ): Promise<LayerProbe & { cacheReadTokens: number; cacheWriteTokens: number; ok: boolean }> => {
     const started = Date.now();
-    const call = await callClaude(layer, model, payload, layer === "gate" ? GATE_TIMEOUT_MS : EXTRACT_TIMEOUT_MS, { effort });
+    const { value: call, trace } = await runTraced(() =>
+      callClaude(layer, model, payload, layer === "gate" ? GATE_TIMEOUT_MS : EXTRACT_TIMEOUT_MS, { effort })
+    );
+    const usage = trace.calls[0];
     const parsed = call.ok && accept(call.text);
     const { messages, ...shape } = buildClaudeRequest(model, payload, { effort });
     void messages;
@@ -3421,6 +3610,7 @@ export async function diagnoseEngine(sample: { data: string; mimeType: string })
     return {
       layer: `claude ${model} (${role})`,
       pass: parsed && !call.truncated,
+      ok: call.ok,
       latencyMs: Date.now() - started,
       status: call.status,
       detail: parsed ? (call.truncated ? "answered, but stopped at max_tokens: thinking needs more room" : "answered and parsed")
@@ -3430,11 +3620,49 @@ export async function diagnoseEngine(sample: { data: string; mimeType: string })
       costUsd: roundUsd(call.costUsd || 0),
       outputTokens: call.outputTokens ?? null,
       thinkingTokensApprox: thinkingTokens,
+      inputTokens: usage?.inputTokens ?? null,
+      cacheReadTokens: usage?.cacheReadTokens ?? 0,
+      cacheWriteTokens: usage?.cacheWriteTokens ?? 0,
       maxTokens: shape.max_tokens,
       reply: call.ok ? (call.text || "").slice(0, 200) : null,
       request: shape,
     };
-  }));
+  };
+
+  // Every model the engine uses, each in the role that matters most for it:
+  // Sonnet 5.5 as the first read and as the gate (also the degraded gate and
+  // the cache-hit re-confirmation); Opus 5.5 as the gate it falls back to
+  // (and the extraction escalation). The order is the point: the first read
+  // writes the photo to Sonnet's cache, and the Sonnet gate, which starts
+  // after it has answered, must read it back. That read is the standing
+  // proof that prompt caching works in production, and the "prompt cache"
+  // layer fails when it does not happen, because a cache that silently
+  // stops hitting raises the cost of every scan without any other symptom.
+  const claude = (async (): Promise<LayerProbe[]> => {
+    const [firstRead, fallback] = await Promise.all([
+      probe("first read, page text, search query", "extraction", EXTRACT_MODEL, extraction, isExtraction, null),
+      probe("gate fallback, extraction escalation", "gate", GATE_MODEL_FALLBACK, gate, isVerdict, gateEffort()),
+    ]);
+    const gateProbe = await probe("gate, degraded gate, re-confirmation", "gate", GATE_MODEL, gate, isVerdict, gateEffort());
+    const measured = firstRead.ok && gateProbe.ok;
+    const cache: LayerProbe = {
+      layer: "prompt cache",
+      pass: measured && gateProbe.cacheReadTokens > 0,
+      latencyMs: 0,
+      status: measured ? 200 : 0,
+      detail: !measured
+        ? "not measured: the first read or the gate call failed (see those layers)"
+        : gateProbe.cacheReadTokens > 0
+          ? `the ${GATE_MODEL} gate read ${gateProbe.cacheReadTokens} tokens of the photo from the cache the first read wrote (${firstRead.cacheWriteTokens} written)`
+          : `the ${GATE_MODEL} gate read nothing from the cache (the first read wrote ${firstRead.cacheWriteTokens}): every call pays for the photo in full. ` +
+            "Check that the first read and the gate open with the same photo blocks and run at the same effort (GATE_EFFORT).",
+      firstReadWriteTokens: firstRead.cacheWriteTokens,
+      gateReadTokens: gateProbe.cacheReadTokens,
+      gateWriteTokens: gateProbe.cacheWriteTokens,
+    };
+    const strip = ({ ok, ...rest }: LayerProbe & { ok: boolean }): LayerProbe => { void ok; return rest; };
+    return [strip(gateProbe), strip(fallback), strip(firstRead), cache];
+  })();
 
   const lensAndBlob = (async (): Promise<LayerProbe[]> => {
     const out: LayerProbe[] = [];
@@ -3454,25 +3682,7 @@ export async function diagnoseEngine(sample: { data: string; mimeType: string })
     } catch { /* reported below */ }
     const uploadMs = Date.now() - started;
 
-    const engine = process.env.SERPAPI_KEY ? "serpapi" : process.env.SERPER_API_KEY ? "serper" : "";
-    if (!engine) {
-      out.push({ layer: "lens", pass: false, latencyMs: 0, status: 0, detail: "neither SERPAPI_KEY nor SERPER_API_KEY is set" });
-    } else {
-      const lensStarted = Date.now();
-      const lens = await runTraced(() => (engine === "serpapi" ? searchLensViaSerpApi(url) : searchLensViaSerper(url)));
-      const failure = lens.failures[0];
-      const matches = lens.value?.candidates.length ?? 0;
-      out.push({
-        layer: `lens ${engine}`,
-        pass: !failure,
-        latencyMs: Date.now() - lensStarted,
-        status: failure?.status ?? 200,
-        detail: failure ? `${failure.kind}: ${failure.detail}`
-          : matches ? `${matches} visual matches; first: ${lens.value?.candidates[0]?.title?.slice(0, 80) || "(untitled)"}`
-          : "the call succeeded but returned no visual matches",
-        matches,
-      });
-    }
+    out.push(await probeSerperLens(url));
 
     const deleteStarted = Date.now();
     let deleted = true;

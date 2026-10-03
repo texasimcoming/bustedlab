@@ -160,6 +160,16 @@ function runRedisCommand(args) {
       return String(next);
     }
     case "ZCARD": return live(key)?.value.size ?? 0;
+    case "ZREMRANGEBYSCORE": {
+      const entry = live(key);
+      if (!entry) return 0;
+      const bound = (v) => (String(v) === "+inf" ? Infinity : String(v) === "-inf" ? -Infinity : Number(v));
+      const [lo, hi] = [bound(rest[0]), bound(rest[1])];
+      let n = 0;
+      for (const [m, score] of [...entry.value.entries()]) if (score >= lo && score <= hi) { entry.value.delete(m); n++; }
+      return n;
+    }
+    case "HGET": return live(key)?.value.get(String(rest[0])) ?? null;
     case "ZRANGE": {
       // Rank ranges, and BYSCORE with LIMIT, as the Upstash client sends them.
       const [start, stop, ...opts] = rest;

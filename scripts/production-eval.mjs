@@ -14,10 +14,19 @@
  *              scans (operator token + x-bustedlab-eval), classified
  *   replay     the candidates each scan's gate saw, replayed on every model
  *              and effort in run.replay.gate; extraction on run.replay.extract
+ *   purge      removes what earlier evaluation runs wrote to public data
+ *              (POST /api/eval/purge): the ledger record ids and the counter
+ *              amounts are computed here from the raw responses committed
+ *              in evals/results/run-*.json, so what goes is auditable. Once
+ *              per run.purgeId; a repeat changes nothing.
  *
- * run.cases limits the run to some case ids. run.serpapiReserve (default 30)
- * stops scanning before the SerpApi account drops below that many searches,
- * so an evaluation never leaves real visitors without Lens.
+ * run.cases limits the run to some case ids; run.plan sets the exact
+ * [case, intent] list. run.scanCapUsd is a hard cap on the scan step's own
+ * spend, all-in (Claude as measured, Serper credits as reported, SerpApi
+ * searches at the plan's price): a scan that could cross it is not started.
+ * run.requireDiagnosePass stops the scans when diagnose did not pass.
+ * SerpApi is the engine's backup and the engine keeps it above its own
+ * reserve (SEARCH PROVIDERS in src/lib/scan.ts).
  *
  * Every step talks to production with the operator token from the
  * ANALYTICS_TOKEN secret. The token is never written: every byte this script
@@ -27,7 +36,7 @@
  * SPEND_CAP_USD, using the ledger committed in evals/results/ledger.json. A
  * step that would cross either stops before it starts.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -36,9 +45,11 @@ const REPO = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const BASE = (process.env.BASE_URL || "https://www.bustedlab.com").replace(/\/$/, "");
 const TOKEN = process.env.ANALYTICS_TOKEN || "";
 const SPEND_CAP_USD = 25;
-// Serper bills about a tenth of a cent per search. SerpApi's per-search price
-// depends on the plan, so it is worked out from the account diagnose reports.
-const SERPER_PER_SEARCH = 0.001;
+// Serper bills about a tenth of a cent per credit; a Shopping search is one
+// credit, a Lens search reports its own (trace creditsByProvider). SerpApi's
+// per-search price depends on the plan, so it is worked out from the account
+// diagnose reports.
+const SERPER_PER_CREDIT = 0.001;
 const SERPAPI_PER_SEARCH_DEFAULT = 0.01;
 
 const RESULTS = resolve(REPO, "evals/results");
@@ -64,8 +75,15 @@ function redact(text) {
 const log = (...parts) => console.log(redact(parts.map(p => (typeof p === "string" ? p : JSON.stringify(p))).join(" ")));
 
 // ── spend ────────────────────────────────────────────────────────────────
-const spend = { claudeUsd: 0, serpapiSearches: 0, serperSearches: 0, serpapiPerSearch: SERPAPI_PER_SEARCH_DEFAULT };
-const searchUsd = () => spend.serpapiSearches * spend.serpapiPerSearch + spend.serperSearches * SERPER_PER_SEARCH;
+const spend = { claudeUsd: 0, serpapiSearches: 0, serperCredits: 0, serpapiPerSearch: SERPAPI_PER_SEARCH_DEFAULT };
+const searchUsd = () => spend.serpapiSearches * spend.serpapiPerSearch + spend.serperCredits * SERPER_PER_CREDIT;
+/** One traced scan's all-in cost: Claude as measured, Serper credits as reported, SerpApi at the plan's price. */
+function scanCost(trace) {
+  const serperCredits = Number(trace?.creditsByProvider?.serper ?? trace?.searchesByProvider?.serper) || 0;
+  const serpapi = Number(trace?.searchesByProvider?.serpapi) || 0;
+  const claude = Number(trace?.claudeUsd) || 0;
+  return { claude, serperCredits, serpapi, usd: claude + serperCredits * SERPER_PER_CREDIT + serpapi * spend.serpapiPerSearch };
+}
 const runUsd = () => spend.claudeUsd + searchUsd();
 const canSpend = (nextUsd) => runUsd() + nextUsd <= runCap;
 
@@ -119,16 +137,18 @@ async function diagnose() {
     return;
   }
   spend.claudeUsd += Number(d.cost?.claudeUsd) || 0;
-  spend.serpapiSearches += Number(d.cost?.searches?.serpapiLens) || 0;
-  spend.serperSearches += Number(d.cost?.searches?.serper) || 0;
-  const account = d.layers.find(l => l.layer === "serpapi account");
+  spend.serperCredits += Number(d.cost?.serperCredits) || 0;
+  const account = d.layers.find(l => l.layer.startsWith("serpapi account"));
   const perMonth = Number(account?.searchesPerMonth);
   // The free plan's searches cost nothing; a paid plan's cost its price over its allowance.
   const plans = { 250: 0, 1000: 25, 5000: 75, 15000: 150, 30000: 275 };
   if (perMonth in plans) spend.serpapiPerSearch = plans[perMonth] / perMonth;
   results.deployedCommit = d.deployment?.commit || null;
   report.push(`Production is running commit \`${d.deployment?.commit || "unknown"}\` (${d.deployment?.environment || "unknown"}).`);
-  report.push(`Pass: **${d.pass}**. Failing: ${(d.failing || []).join(", ") || "none"}. Spend mode: ${d.spend?.mode}, today $${d.spend?.todayUsd} of $${d.spend?.dailyBudgetUsd}. This run's Claude cost: $${d.cost?.claudeUsd}. Thinking per call: ${d.thinking?.perCallApprox ?? "n/a"}.`);
+  report.push(`Pass: **${d.pass}**. Failing: ${(d.failing || []).join(", ") || "none"}. Spend mode: ${d.spend?.mode}, today $${d.spend?.todayUsd} of $${d.spend?.dailyBudgetUsd}. This run's Claude cost: $${d.cost?.claudeUsd}; Serper credits: ${d.cost?.serperCredits ?? "n/a"}. Thinking per call: ${d.thinking?.perCallApprox ?? "n/a"}.`);
+  report.push(`Limits in force: ${JSON.stringify(d.limits || null)}. Serper credits left: ${d.serperCredits?.known ? d.serperCredits.creditsLeft : `unknown (${d.serperCredits?.detail || "no answer"})`}.`);
+  const lens = d.layers.find(l => l.layer === "lens serper");
+  if (lens) report.push(`Serper Lens: ${lens.matches ?? 0} matches, ${lens.usable ?? 0} usable, ${lens.priced ?? 0} priced, ${lens.creditsUsed ?? "?"} credits; response shape ${JSON.stringify(lens.responseShape || null)}; sample ${JSON.stringify(lens.sample || [])}.`);
   report.push("", "| layer | pass | status | ms | detail |", "|---|---|---|---|---|");
   for (const l of d.layers) {
     report.push(`| ${l.layer} | ${l.pass ? "pass" : "FAIL"} | ${l.status} | ${l.latencyMs} | ${String(l.detail || "").replace(/\|/g, "/").replace(/\n/g, " ").slice(0, 400)} |`);
@@ -382,11 +402,20 @@ async function scanStep() {
     report.push(`## Scans\n\nStopped: the evaluation path is not live on ${BASE} yet (POST /api/eval answered ${probe.status}). The deploy may still be building.\n`);
     return;
   }
+  if (run.requireDiagnosePass && results.steps.diagnose?.json?.pass !== true) {
+    report.push(`## Scans\n\nStopped: diagnose did not pass (failing: ${(results.steps.diagnose?.json?.failing || ["no answer"]).join(", ")}). Nothing was scanned.\n`);
+    return;
+  }
   const intents = run.intents || ["verdict", "finder"];
-  const reserve = Number(run.serpapiReserve ?? 30);
-  const account = results.steps.diagnose?.json?.layers?.find(l => l.layer === "serpapi account");
+  const account = results.steps.diagnose?.json?.layers?.find(l => l.layer.startsWith("serpapi account"));
   let serpapiLeft = Number(account?.totalSearchesLeft);
-  if (!Number.isFinite(serpapiLeft)) serpapiLeft = Number(run.serpapiLeft ?? 0);
+  if (!Number.isFinite(serpapiLeft)) serpapiLeft = null;
+  // The scan step's own hard cap, all-in. A scan is started only if even an
+  // expensive one (the dearest seen so far times 1.5, at least 10 cents)
+  // cannot cross it.
+  const scanCap = Number(run.scanCapUsd) || Infinity;
+  let scanSpent = 0;
+  let dearest = 0;
   const allowanceBefore = await freeAllowanceLeft();
   let stopped = "";
   // run.plan, when given, is the exact list and order of [case, intent] to
@@ -398,17 +427,21 @@ async function scanStep() {
     const photo = photos.get(c.id);
     if (!photo) { scans.push({ caseId: c.id, intent: "-", status: 0, classification: { label: "error", detail: "no photo" } }); continue; }
     for (const intent of caseIntents) {
-      if (serpapiLeft - 6 < reserve) { stopped = `SerpApi reserve reached (${serpapiLeft} searches left, reserve ${reserve})`; break; }
-      if (!canSpend(0.3)) { stopped = "the spend cap for this run was reached"; break; }
+      const next = Math.max(0.10, dearest * 1.5);
+      if (scanSpent + next > scanCap) { stopped = `the scan step's cap of $${scanCap.toFixed(2)} could be crossed by the next scan ($${scanSpent.toFixed(4)} spent)`; break; }
+      if (!canSpend(next)) { stopped = "the spend cap for this run was reached"; break; }
       log(`scan ${c.id} ${intent}`);
       const res = await evalScan(photo, intent);
       const trace = res.json?.evaluation?.trace;
-      spend.claudeUsd += Number(trace?.claudeUsd) || 0;
-      const serpapi = Number(trace?.searchesByProvider?.serpapi) || 0;
-      spend.serpapiSearches += serpapi;
-      spend.serperSearches += Number(trace?.searchesByProvider?.serper) || 0;
-      serpapiLeft -= serpapi;
-      scans.push({ caseId: c.id, intent, status: res.status, ms: res.ms, json: res.json, text: res.text, classification: classify(c, res) });
+      const cost = scanCost(trace);
+      spend.claudeUsd += cost.claude;
+      spend.serpapiSearches += cost.serpapi;
+      spend.serperCredits += cost.serperCredits;
+      scanSpent += cost.usd;
+      dearest = Math.max(dearest, cost.usd);
+      if (serpapiLeft !== null) serpapiLeft -= cost.serpapi;
+      scans.push({ caseId: c.id, intent, status: res.status, ms: res.ms, json: res.json, text: res.text, classification: classify(c, res), costUsd: +cost.usd.toFixed(6) });
+      if (scanSpent >= scanCap) { stopped = `the scan step's cap of $${scanCap.toFixed(2)} was reached`; break; }
       await sleep(3000);
     }
     if (stopped) break;
@@ -417,19 +450,22 @@ async function scanStep() {
   results.scans = scans.map(s => ({ ...s, text: s.text || undefined }));
   results.freeAllowance = { before: allowanceBefore, after: allowanceAfter };
   results.serpapiLeftAfter = serpapiLeft;
-  scanReport(stopped, allowanceBefore, allowanceAfter, serpapiLeft);
+  results.scanSpendUsd = +scanSpent.toFixed(6);
+  scanReport(stopped, allowanceBefore, allowanceAfter, serpapiLeft, scanSpent, scanCap);
 }
 
-function scanReport(stopped, before, after, serpapiLeft) {
+function scanReport(stopped, before, after, serpapiLeft, scanSpent = 0, scanCap = Infinity) {
   report.push("## Scans\n");
   if (stopped) report.push(`Stopped early: ${stopped}.\n`);
-  report.push(`Free allowance seen from this runner's address: ${before} before, ${after} after (an evaluation scan must not use it). SerpApi searches left after: ${serpapiLeft}.\n`);
-  report.push("| case | kind | intent | class | confidence | mode | engine | shown | ms | $ model | serpapi |", "|---|---|---|---|---|---|---|---|---|---|---|");
+  report.push(`Free allowance seen from this runner's address: ${before} before, ${after} after (an evaluation scan must not use it). SerpApi searches left after: ${serpapiLeft ?? "unknown"}.`);
+  report.push(`Scan step spend, all-in: $${scanSpent.toFixed(4)}${Number.isFinite(scanCap) ? ` of its $${scanCap.toFixed(2)} cap` : ""}.\n`);
+  report.push("| case | kind | intent | class | confidence | mode | engine | shown | ms | $ all-in | $ model | Serper credits | SerpApi | cache read / written | calls reading |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const s of scans) {
     const c = CASES.find(x => x.id === s.caseId);
     const r = s.json || {};
     const t = r.evaluation?.trace || {};
-    report.push(`| ${s.caseId} | ${c?.kind || ""} | ${s.intent} | **${s.classification.label}**${s.classification.detail ? ` (${escapeMd(s.classification.detail).slice(0, 80)})` : ""} | ${r.matchConfidence || ""} | ${r.mode || r.error || ""} | ${r.engineUsed || ""} | ${escapeMd(r.sourceProduct?.title || "").slice(0, 60)} | ${s.ms ?? ""} | ${t.claudeUsd ?? ""} | ${t.searchesByProvider?.serpapi ?? ""} |`);
+    const cost = scanCost(t);
+    report.push(`| ${s.caseId} | ${c?.kind || ""} | ${s.intent} | **${s.classification.label}**${s.classification.detail ? ` (${escapeMd(s.classification.detail).slice(0, 80)})` : ""} | ${r.matchConfidence || ""} | ${r.mode || r.error || ""} | ${r.engineUsed || ""} | ${escapeMd(r.sourceProduct?.title || "").slice(0, 60)} | ${s.ms ?? ""} | ${cost.usd.toFixed(4)} | ${t.claudeUsd ?? ""} | ${cost.serperCredits} | ${cost.serpapi} | ${t.cache ? `${t.cache.readTokens} / ${t.cache.writeTokens}` : ""} | ${t.cache ? `${t.cache.callsReading} of ${t.cache.calls}` : ""} |`);
   }
   const counts = {};
   for (const s of scans) counts[s.classification.label] = (counts[s.classification.label] || 0) + 1;
@@ -642,7 +678,59 @@ function replayReport(gate, extract) {
   report.push("");
 }
 
-const STEPS = { preflight, diagnose, photos: photosStep, scan: scanStep, replay: replayStep };
+// ── purge ────────────────────────────────────────────────────────────────
+// What earlier evaluation runs wrote to public data, from their own raw
+// responses: every completed scan added one to the lifetime counter; every
+// uncached VERDICT added one to the verdict total (and to the busted total
+// when HIGH_MARKUP) and its savings to the "exposed" total; every scanId is a
+// ledger record. The same rules countCompletedScan applies to a visitor.
+function evaluationFootprint() {
+  const files = readdirSync(RESULTS).filter(f => /^run-\d+\.json$/.test(f) && f !== `run-${run.run}.json`).sort();
+  const scanIds = [];
+  const counters = { scans: 0, verdicts: 0, busted: 0, savingsUsd: 0 };
+  for (const f of files) {
+    const r = JSON.parse(readFileSync(resolve(RESULTS, f), "utf8"));
+    for (const s of r.scans || []) {
+      if (s.status !== 200 || !s.json) continue;
+      counters.scans++;
+      const j = s.json;
+      if (!j.evaluation?.cached && j.mode === "VERDICT") {
+        counters.verdicts++;
+        if (j.analysis?.verdict === "HIGH_MARKUP") counters.busted++;
+        if (j.analysis?.savings > 0) counters.savingsUsd += j.analysis.savings;
+      }
+      if (j.scanId) scanIds.push(j.scanId);
+    }
+  }
+  counters.savingsUsd = Math.round(counters.savingsUsd * 100) / 100;
+  return { files, scanIds, counters };
+}
+
+async function purgeStep() {
+  report.push("## Purge of earlier evaluation data\n");
+  if (run.expectCommit && !String(run.expectCommit).startsWith(results.deployedCommit || "-")) {
+    report.push(`Stopped: production is running \`${results.deployedCommit}\`, not \`${run.expectCommit}\`, which has the purge route.\n`);
+    return;
+  }
+  const footprint = evaluationFootprint();
+  const purgeId = run.purgeId || `eval-runs-before-${run.run}`;
+  report.push(`From ${footprint.files.join(", ")}: ${footprint.scanIds.length} ledger record(s) (${footprint.scanIds.join(", ") || "none"}); counters ${JSON.stringify(footprint.counters)}. Purge id \`${purgeId}\`.`);
+  const r = await operator("/api/eval/purge", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ purgeId, scanIds: footprint.scanIds, counters: footprint.counters }),
+  }, 60_000);
+  results.steps.purge = { request: { purgeId, ...footprint }, status: r.status, json: r.json, text: r.text };
+  if (r.status !== 200) {
+    report.push(`The purge answered HTTP ${r.status}: ${r.text || JSON.stringify(r.json)}\n`);
+    return;
+  }
+  const out = r.json?.result || {};
+  report.push(r.json?.alreadyApplied ? "Already applied by an earlier run; nothing changed now." : "Applied.");
+  report.push(`Removed ${(out.removed || []).length} ledger record(s): ${(out.removed || []).map(x => `${x.id} "${x.title}" (${x.verdict})`).join("; ") || "none"}. Not found: ${(out.notFound || []).join(", ") || "none"}.`);
+  report.push(`Counters before and after: ${JSON.stringify(out.counters || {})}.\n`);
+}
+
+const STEPS = { preflight, diagnose, photos: photosStep, scan: scanStep, replay: replayStep, purge: purgeStep };
 
 // ── main ─────────────────────────────────────────────────────────────────
 if (!TOKEN) {

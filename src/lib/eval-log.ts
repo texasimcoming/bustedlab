@@ -8,18 +8,21 @@ import { isOperator } from "@/lib/operator";
  * Two things answer the operator token (ANALYTICS_TOKEN) and spend money:
  *
  *   - An evaluation scan: POST /api/scan with the token and the
- *     `x-bustedlab-eval: 1` header. It is the real scan with one difference:
+ *     `x-bustedlab-eval: 1` header. It is the real scan with two differences:
  *     it does not check or count the FREE allowance (two scans per browser a
  *     day, forty per address), because a labelled evaluation run from one
- *     machine is forty scans from one address. Everything that protects the
- *     budget still applies to it: the burst limit, the global daily cap on
- *     uncached free scans (and the counter behind it), and the model spend
- *     governor inside the engine.
+ *     machine is forty scans from one address; and it never reaches public
+ *     data (no ledger record, public counter, stats or cached result).
+ *     Everything that protects the budget still applies to it: the burst
+ *     limit, the global daily cap on uncached free scans (and the counter
+ *     behind it), and the model spend governor inside the engine.
  *   - A replay: POST /api/eval runs one extraction or one gate call on a
  *     named model, so models and effort levels can be compared on the same
  *     photos and candidates without repeating the searches. It refuses to run
  *     while the engine is degraded (the day's budget belongs to visitors
  *     then) and past EVAL_DAILY_REPLAYS calls a day.
+ *   - A purge: POST /api/eval/purge removes what evaluation runs wrote to
+ *     public data before evaluation scans were kept out of it, once.
  *
  * Every use is logged: one console line in the runtime log and an entry in
  * a short Redis list that /api/diagnose shows under `evaluation`, with
@@ -38,7 +41,7 @@ function getRedis(): Redis {
   return _redis;
 }
 
-export type EvaluationKind = "scan" | "replay";
+export type EvaluationKind = "scan" | "replay" | "purge";
 
 /** The header that, with the operator token, makes a scan an evaluation scan. */
 export const EVAL_HEADER = "x-bustedlab-eval";
