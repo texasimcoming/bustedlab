@@ -11,6 +11,8 @@ interface ScanResult {
   shippingNote?: string;
   /** Present once the verdict has a permanent record in the ledger. */
   scanId?: string | null;
+  /** What a "wrong product" report is filed against: the ledger id, or a reference for this answer. */
+  scanRef?: string;
   mode: CardMode;
   matchConfidence: MatchConfidence;
   priceSource: "screenshot" | "estimated" | "shopping";
@@ -57,6 +59,22 @@ export default function ResultsPage({
   // The result screen actually rendered: the step between the server
   // finishing a scan and anyone seeing it.
   useEffect(() => { track("result_shown"); }, []);
+  // "Wrong product? Tell us": one report per result, recorded against the
+  // scan (see /api/wrong-product). The link stays outside the card, so it is
+  // never in a saved or shared image.
+  const [reported, setReported] = useState(false);
+  const reportWrongProduct = () => {
+    if (reported) return;
+    setReported(true);
+    const scanRef = result.scanId || result.scanRef;
+    if (!scanRef) return;
+    fetch("/api/wrong-product", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scanId: scanRef, mode, confidence: matchConfidence }),
+      keepalive: true,
+    }).catch(() => {});
+  };
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const { sourceProduct: sp, analysis: an, mode, matchConfidence } = result;
@@ -301,6 +319,20 @@ export default function ResultsPage({
         <div style={{ marginBottom: "12px" }}>
           <VerdictCard data={verdictData} animate={true} compact={isMobile} cardRef={cardRef} sound />
         </div>
+
+        <p style={{ textAlign: "center", margin: "-4px 0 12px", fontSize: "12px", lineHeight: "1.5", position: "relative", zIndex: 1 }}>
+          {reported ? (
+            <span style={{ color: "rgba(238,238,246,0.45)" }} role="status">Thanks, noted.</span>
+          ) : (
+            <button
+              type="button"
+              onClick={reportWrongProduct}
+              style={{ background: "none", border: "none", padding: "4px 2px", cursor: "pointer", fontSize: "12px", color: "rgba(238,238,246,0.45)", textDecoration: "underline", fontFamily: "var(--font-sans), sans-serif" }}
+            >
+              Wrong product? Tell us
+            </button>
+          )}
+        </p>
 
         {isUnresolved ? (
           <div style={{ textAlign: "center", padding: "8px 4px 20px", fontSize: "13px", color: "rgba(238,238,246,0.45)", lineHeight: "1.6" }}>

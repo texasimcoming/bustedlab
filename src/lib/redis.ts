@@ -242,9 +242,10 @@ export async function getBustedRate(): Promise<{ total: number; busted: number }
 // Global daily spend guard. Every paid API call in the scan pipeline
 // (vision, Lens, shopping, verification) costs real money, so an
 // unauthenticated flood is a direct bill. BUDGET MODE: 50 uncached free
-// scans a day unless GLOBAL_DAILY_SCAN_CAP says otherwise: about $1.45 a day
+// scans a day unless GLOBAL_DAILY_SCAN_CAP says otherwise: about $1.60 a day
 // all-in (model and Serper credits) on a worst day of 50 distinct products,
-// as modelled by `npm run cost-model`. Past it, visitors get the existing
+// at the $0.032 a scan measured in production (evals/results/run-5.md;
+// `npm run cost-model` models it at $0.028). Past it, visitors get the existing
 // "free capacity full today" paywall (the 503 in the scan route). Raise it
 // in the environment when revenue pays for more.
 // Cache hits never touch this counter, so a single product going viral

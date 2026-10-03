@@ -462,6 +462,10 @@ export async function POST(req: NextRequest) {
     const response = NextResponse.json({
       ...result,
       scanId,
+      // What "Wrong product? Tell us" reports against: the ledger id when the
+      // verdict has one, otherwise a fresh reference for this answer. Nothing
+      // is stored under it unless a report arrives (/api/wrong-product).
+      scanRef: scanId || newScanId(),
       ...(evaluation ? { evaluation: { cached: servedFromCache, ms: Date.now() - started, trace: summary } } : {}),
     });
     if (!browserId) {

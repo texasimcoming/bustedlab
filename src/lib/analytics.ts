@@ -229,6 +229,84 @@ export async function readScanFailures(days = 30): Promise<FailureBreakdown> {
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+// "WRONG PRODUCT?" REPORTS. A person telling us the product we showed is not
+// the one in their photo: a free ground-truth label for the identification
+// engine. One report per scan (the first one counts), recorded as the scan's
+// id, the result's mode and match confidence, and the time. Nothing about the
+// person: the route's rate limit uses the same one-way hash of the address as
+// every other limit, and that hash is not stored here. The list is bounded.
+// ════════════════════════════════════════════════════════════════
+export const REPORT_MODES = ["VERDICT", "FINDER", "UNRESOLVED"] as const;
+export const REPORT_CONFIDENCES = ["exact", "likely", "unverified"] as const;
+export type WrongProductReport = {
+  scanId: string;
+  mode: (typeof REPORT_MODES)[number];
+  confidence: (typeof REPORT_CONFIDENCES)[number];
+};
+const WRONG_PRODUCT_KEPT = 500;
+const wrongKeys = {
+  seen: (scanId: string) => `wrong:seen:${scanId}`,
+  day: (day: string) => `stat:wrong_product:${day}`,
+  total: "stat:wrong_product:total",
+  by: (mode: string, confidence: string) => `stat:wrong_product:by:${mode}:${confidence}`,
+  recent: "stat:wrong_product:recent",
+};
+const WRONG_SEEN_SECONDS = 60 * 60 * 24 * 90;
+
+/** Records a report unless this scan already has one. Returns whether it counted. Never throws. */
+export async function recordWrongProduct(report: WrongProductReport, date = new Date()): Promise<boolean> {
+  try {
+    const redis = getRedis();
+    const first = await redis.set(wrongKeys.seen(report.scanId), "1", { nx: true, ex: WRONG_SEEN_SECONDS });
+    if (!first) return false;
+    const day = dayKey(date);
+    const pipeline = redis.pipeline();
+    pipeline.incr(wrongKeys.day(day));
+    pipeline.expire(wrongKeys.day(day), DAY_TTL_SECONDS);
+    pipeline.incr(wrongKeys.total);
+    pipeline.incr(wrongKeys.by(report.mode, report.confidence));
+    pipeline.lpush(wrongKeys.recent, JSON.stringify({ ...report, at: date.toISOString() }));
+    pipeline.ltrim(wrongKeys.recent, 0, WRONG_PRODUCT_KEPT - 1);
+    await pipeline.exec();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export interface WrongProductBreakdown {
+  windowTotal: number;
+  total: number;
+  /** Lifetime, by "<mode> <confidence>", e.g. "FINDER exact". */
+  byResult: Record<string, number>;
+  recent: (WrongProductReport & { at: string })[];
+}
+
+export async function readWrongProduct(days = 30): Promise<WrongProductBreakdown> {
+  const window = lastNDays(days);
+  const combos = REPORT_MODES.flatMap(m => REPORT_CONFIDENCES.map(c => [m, c] as const));
+  try {
+    const redis = getRedis();
+    const [dayValues, total, byValues, recent] = await Promise.all([
+      redis.mget<(number | null)[]>(...window.map(d => wrongKeys.day(d))),
+      redis.get<number | null>(wrongKeys.total),
+      redis.mget<(number | null)[]>(...combos.map(([m, c]) => wrongKeys.by(m, c))),
+      redis.lrange<unknown>(wrongKeys.recent, 0, 49),
+    ]);
+    const byResult: Record<string, number> = {};
+    combos.forEach(([m, c], i) => { const n = Number(byValues[i] ?? 0) || 0; if (n) byResult[`${m} ${c}`] = n; });
+    return {
+      windowTotal: dayValues.reduce((sum: number, v) => sum + (Number(v ?? 0) || 0), 0),
+      total: Number(total ?? 0) || 0,
+      byResult,
+      recent: (recent || []).map(e => (typeof e === "string" ? JSON.parse(e) : e) as WrongProductBreakdown["recent"][number]),
+    };
+  } catch {
+    return { windowTotal: 0, total: 0, byResult: {}, recent: [] };
+  }
+}
+
 export interface EventSeries {
   event: EventName;
   total: number;
