@@ -1,12 +1,6 @@
 {
-  "run": 2,
-  "note": "Labelled set on production (after PR #5): 20 cases on both intents, then the gate and extraction replayed on Opus 5.5, Sonnet 5.5 and Fable 5.1, plus Opus 5.5 at medium effort.",
-  "steps": ["preflight", "diagnose", "photos", "scan", "replay"],
-  "intents": ["verdict", "finder"],
-  "serpapiReserve": 30,
-  "replay": {
-    "gate": ["claude-opus-5-5@low", "claude-sonnet-5-5@low", "claude-fable-5-1@low", "claude-opus-5-5@medium"],
-    "extract": ["claude-sonnet-5-5@low", "claude-opus-5-5@low", "claude-fable-5-1@low"]
-  },
-  "maxUsd": 16
+  "run": 4,
+  "note": "Diagnose only: confirm whether the Anthropic credit balance is still exhausted (run 3's replays started failing with 'credit balance is too low').",
+  "steps": ["preflight", "diagnose"],
+  "maxUsd": 0.2
 }

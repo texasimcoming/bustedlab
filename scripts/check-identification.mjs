@@ -487,6 +487,11 @@ const SCENARIO_LOOKALIKE = {
     "https://img.test/jug-other": "different",
   },
   expect: { titleIncludes: "Raku Pottery Pitcher", price: 32.5, confidence: "unverified", mode: "FINDER" },
+  // Serper answers every text search here with nothing. SerpApi's Shopping
+  // fallback is for when Serper FAILS, not a second opinion on an empty
+  // answer: in production it timed out at 12 seconds on all 19 such calls.
+  expectStats: (stats) => (stats.serpapiShoppingCalls > 0
+    ? [`SerpApi Shopping was called ${stats.serpapiShoppingCalls} time(s) after Serper had answered`] : []),
 };
 
 // A photo of Crocs that news sites and Wikipedia had published: Lens
@@ -519,9 +524,10 @@ const SCENARIO_REUSED_PHOTO = {
     "https://img.test/crocs-baya": "likely",
   },
   expect: { titleIncludes: "Baya", price: 34.99, confidence: "likely", mode: "FINDER" },
-  expectStats: (stats) => (stats.verified.some(v => v.includes("wiki-crocs"))
-    ? ["the Wikipedia page was sent to the gate; a page on a host that sells nothing must not be"]
-    : []),
+  expectStats: (stats) => [
+    ...(stats.verified.some(v => v.includes("wiki-crocs"))
+      ? ["the Wikipedia page was sent to the gate; a page on a host that sells nothing must not be"] : []),
+  ],
 };
 
 // A Flowlife massage gun: Lens found the brand's own product page, the gate
@@ -576,6 +582,87 @@ const SCENARIO_PRICE_SEARCH_DOWN = {
   amazon: () => [],
   verdicts: { "https://img.test/gua-sha": "exact" },
   expect: { titleIncludes: "not identified", price: 0, mode: "UNRESOLVED", failure: false },
+};
+
+
+// The Flowlife gun again, from run 3: the confirmed record Lens returned was
+// a store that will not be read (Galaxus), and the brand's own page, also
+// confirmed exact, was never tried. Every confirmed listing in the tier is a
+// candidate for the price, best-ranked first, and the one that prices
+// becomes the record.
+const SCENARIO_TIER_PAGE_PRICE = {
+  name: "Any confirmed listing's own page can price the product",
+  intent: "finder",
+  guardOnly: true,
+  vision: {
+    productName: "black mini percussion massage gun", brand: "", visiblePrice: null, currency: "",
+    quantity: "", category: "fitness", platform: "unknown", storeName: "", visibleUrl: "",
+    priceConfidence: "none", imageQuality: "good",
+  },
+  lens: [
+    { title: "Flowlife Flowgun Air - buy at Galaxus", source: "galaxus.test", link: "https://galaxus.test/flowgun-air", thumbnail: "https://img.test/galaxus" },
+    { title: "Flowgun Air – Lightweight Percussive Massage Gun | Flowlife", source: "Flowlife", link: "https://flowlife.test/en-GB/product/flowgun-air", thumbnail: "https://img.test/flowgun-air" },
+  ],
+  pages: {
+    "https://galaxus.test/flowgun-air": 403,
+    "https://flowlife.test/en-GB/product/flowgun-air":
+      '<html><head><script type="application/ld+json">{"@type":"Product","name":"Flowgun Air","offers":{"price":"99.00","priceCurrency":"GBP"}}</script></head></html>',
+  },
+  shopping: () => [],
+  amazon: () => [],
+  verdicts: { "https://img.test/galaxus": "exact", "https://img.test/flowgun-air": "exact" },
+  expect: { titleIncludes: "Lightweight Percussive", price: 132, confidence: "exact", mode: "FINDER" },
+};
+
+// A Norpro basting brush, from run 3: confirmed exact on the maker's
+// wholesale page, which states no price; the pricing search found the same
+// model in blue, which the gate rightly called "likely". That used to be
+// thrown away and the scan said "not identified". It is now shown as what
+// it is: a likely match, at that listing's price.
+const SCENARIO_LIKELY_PRICE = {
+  name: "An exact identity only a likely listing can price is shown as likely",
+  intent: "finder",
+  guardOnly: true,
+  vision: {
+    productName: "red silicone basting brush with clear handle", brand: "Norpro", visiblePrice: null, currency: "",
+    quantity: "", category: "home", platform: "unknown", storeName: "", visibleUrl: "",
+    priceConfidence: "none", imageQuality: "good",
+  },
+  lens: [
+    { title: "2018R SILICONE BASTING / PASTRY BRUSH-RED - Norpro, Inc.", source: "Norpro Wholesale", link: "https://norpro.test/2018r", thumbnail: "https://img.test/norpro-red" },
+  ],
+  shopping: (q) => (/basting/i.test(q)
+    ? [{ title: "Norpro Silicone Basting/Pastry Brush 2018 Blue", source: "Target", link: "https://target.test/norpro-blue", imageUrl: "https://img.test/norpro-blue", price: "$4.99" }]
+    : []),
+  amazon: () => [],
+  verdicts: { "https://img.test/norpro-red": "exact", "https://img.test/norpro-blue": "likely" },
+  expect: { titleIncludes: "Norpro Silicone Basting/Pastry Brush 2018 Blue", price: 4.99, confidence: "likely", mode: "FINDER" },
+};
+
+// A windshield tablet holder, from run 3: the retailer sweep kept only the
+// retailer whose cheapest row was cheapest (eBay, unrelated) and threw away
+// the Amazon page that carried the product, before the gate saw either.
+const SCENARIO_RETAILER_POOLS = {
+  name: "The retailer sweep is judged across retailers, not decided by the cheapest pool",
+  intent: "finder",
+  guardOnly: true,
+  vision: {
+    productName: "windshield suction tablet holder with gooseneck arm", brand: "WAOCEO", visiblePrice: null, currency: "",
+    quantity: "", category: "tech", platform: "unknown", storeName: "", visibleUrl: "",
+    priceConfidence: "none", imageQuality: "good",
+  },
+  lens: [
+    { title: "WAOCEO Tablet Holder Car Mount for Windshield", source: "Amazon.co.uk", link: "https://amazon.test/uk/waoceo", thumbnail: "https://img.test/waoceo-uk", price: { value: "$45.00", extracted_value: 45.0, currency: "$" } },
+  ],
+  shopping: () => [],
+  amazon: () => [{ title: "WAOCEO Tablet Holder Car Mount for Windshield, Gooseneck", link: "https://amazon.test/waoceo", thumbnail: "https://img.test/waoceo-us", extracted_price: 27.99 }],
+  ebay: () => [{ title: "WAOCEO windshield tablet holder car mount gooseneck", link: "https://ebay.test/cheap-mount", thumbnail: "https://img.test/cheap-mount", price: { extracted: 9.99 } }],
+  verdicts: {
+    "https://img.test/waoceo-uk": "exact",
+    "https://img.test/waoceo-us": "exact",
+    "https://img.test/cheap-mount": "different",
+  },
+  expect: { titleIncludes: "WAOCEO Tablet Holder Car Mount for Windshield, Gooseneck", price: 27.99, confidence: "exact", mode: "FINDER" },
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -660,6 +747,9 @@ function installFetch(scenario, stats) {
       return imageResponse(url);
     }
 
+    if (scenario.pages?.[url] === 403) {
+      return { ok: false, status: 403, headers: { get: () => "text/html" }, text: async () => "blocked", json: async () => ({}) };
+    }
     if (scenario.pages?.[url]) {
       const html = scenario.pages[url];
       return { ok: true, status: 200, headers: { get: (k) => (String(k).toLowerCase() === "content-type" ? "text/html" : null) },
@@ -755,6 +845,7 @@ function installFetch(scenario, stats) {
         return jsonResponse({ visual_matches: scenario.lens });
       }
       if (engine === "google_shopping") {
+        stats.serpapiShoppingCalls++;
         if (scenario.shoppingDown) return shoppingDown();
         const rows = scenario.shopping(params.get("q") || "");
         return jsonResponse({
@@ -768,7 +859,11 @@ function installFetch(scenario, stats) {
         stats.retailerCalls++;
         return jsonResponse({ organic_results: scenario.amazon(params.get("k") || "") });
       }
-      if (engine === "walmart" || engine === "ebay") {
+      if (engine === "ebay") {
+        stats.retailerCalls++;
+        return jsonResponse({ organic_results: scenario.ebay ? scenario.ebay(params.get("_nkw") || "") : [] });
+      }
+      if (engine === "walmart") {
         stats.retailerCalls++;
         return jsonResponse({ organic_results: [] });
       }
@@ -811,7 +906,7 @@ const { resetSpendModeCache } = await import(localModule("model-budget"));
 function freshStats() {
   return {
     visionCalls: 0, gateCalls: 0, opusGateCalls: 0, candidatesJudged: 0, faultsInjected: 0,
-    lensCalls: 0, retailerCalls: 0, imageFetches: 0, redisCalls: 0,
+    lensCalls: 0, retailerCalls: 0, imageFetches: 0, redisCalls: 0, serpapiShoppingCalls: 0,
     verified: [], models: [],
   };
 }
@@ -878,6 +973,7 @@ const SCENARIOS = [
   SCENARIO_UNPRICEABLE, SCENARIO_VERDICT, SCENARIO_SIMILAR_TIER,
   SCENARIO_SPIKE, SCENARIO_DEGRADED, SCENARIO_TRUNCATED, SCENARIO_CALL_FAILS,
   SCENARIO_LOOKALIKE, SCENARIO_REUSED_PHOTO, SCENARIO_PRICED_FROM_PAGE, SCENARIO_PRICE_SEARCH_DOWN,
+  SCENARIO_TIER_PAGE_PRICE, SCENARIO_LIKELY_PRICE, SCENARIO_RETAILER_POOLS,
 ];
 
 for (const scenario of SCENARIOS) {

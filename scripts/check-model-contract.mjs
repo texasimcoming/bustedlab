@@ -16,9 +16,10 @@
  * checks stub api.anthropic.com with a server that accepts anything, which is
  * why none of them could see it.
  *
- * Since then the owner has settled the models: Claude Opus 5.5 and Claude
- * Sonnet 5.5, nothing else, in every path that identifies or verifies a
- * product. Both always think, and max_tokens covers thinking plus the
+ * The models are Claude Opus 5.5 and Claude Sonnet 5.5, nothing else, in
+ * every path that identifies or verifies a product, with each role's model
+ * chosen by the production evaluation (Sonnet 5.5 judges, Opus 5.5 backs it
+ * up; see MODELS in src/lib/scan.ts). Both always think, and max_tokens covers thinking plus the
  * answer, so this check also proves that the thinking room on every call
  * leaves the JSON answer intact, and that a call whose thinking used the
  * whole budget is handed to the next model rather than read as "no match". This one stubs it with a server that applies
@@ -319,7 +320,8 @@ section("IMAGE SCAN, FULL MODE");
   const { result, bodies } = await scan({});
   auditBodies("image scan", bodies);
   check("the first read ran on Sonnet 5.5", bodies.some(b => canonical(b.model) === SONNET && isExtractBody(b)), models(bodies));
-  check("the gate ran on Opus 5.5", bodies.some(b => canonical(b.model) === OPUS && isGateBody(b)), models(bodies));
+  check("the gate ran on Sonnet 5.5, the model the evaluation chose for it", bodies.some(b => canonical(b.model) === SONNET && isGateBody(b)) &&
+    !bodies.some(b => canonical(b.model) === OPUS && isGateBody(b)), models(bodies));
   check("the photo is identified: exact match, the olive cap at $20, a verdict", result.matchConfidence === "exact" && result.sourceProduct.price === 20 && result.mode === "VERDICT", summary(result));
 }
 
@@ -372,12 +374,12 @@ section("REPLIES THAT OPEN WITH A THINKING BLOCK");
 // 6. Thinking eats the whole output budget on the gate model.
 section("THINKING THAT EATS THE OUTPUT BUDGET");
 {
-  const { result, bodies, errors } = await scan({ thinkingEatsBudget: { [OPUS]: true } });
-  const opusGateCalls = bodies.filter(b => canonical(b.model) === OPUS && isGateBody(b)).length;
+  const { result, bodies, errors } = await scan({ thinkingEatsBudget: { [SONNET]: true } });
+  const sonnetGateCalls = bodies.filter(b => canonical(b.model) === SONNET && isGateBody(b)).length;
   check("a gate reply that is all thinking (stop_reason max_tokens, no text) is not read as no match",
     result.matchConfidence === "exact" && !result.failure, summary(result));
-  check("it is handed to Sonnet 5.5, not repeated on Opus 5.5 where it would stop in the same place",
-    bodies.some(b => canonical(b.model) === SONNET && isGateBody(b)) && opusGateCalls === 1, `${opusGateCalls} Opus gate call(s); ${models(bodies)}`);
+  check("it is handed to Opus 5.5, not repeated on Sonnet 5.5 where it would stop in the same place",
+    bodies.some(b => canonical(b.model) === OPUS && isGateBody(b)) && sonnetGateCalls === 1, `${sonnetGateCalls} Sonnet gate call(s); ${models(bodies)}`);
   check("and logged as truncated", errors.some(e => e.includes("kind=truncated")), errors.join(" | "));
 }
 
@@ -385,11 +387,11 @@ section("THINKING THAT EATS THE OUTPUT BUDGET");
 section("GATE FALLBACK");
 {
   const fault = { status: 400, type: "invalid_request_error", message: "simulated: model rejected the request" };
-  const { result, bodies, errors } = await scan({ gateFault: { [OPUS]: fault } });
+  const { result, bodies, errors } = await scan({ gateFault: { [SONNET]: fault } });
   auditBodies("fallback scan", bodies);
-  check("a 400 from Opus 5.5 falls back to Sonnet 5.5", bodies.some(b => canonical(b.model) === SONNET && isGateBody(b)), models(bodies));
+  check("a 400 from Sonnet 5.5 falls back to Opus 5.5", bodies.some(b => canonical(b.model) === OPUS && isGateBody(b)), models(bodies));
   check("which is a full-strength gate: the cap is still an exact match and a verdict", result.matchConfidence === "exact" && result.mode === "VERDICT", summary(result));
-  const logged = errors.find(e => e.includes(OPUS) && e.includes("400"));
+  const logged = errors.find(e => e.includes(SONNET) && e.includes("400"));
   check("the failure is logged with layer, model, status and the error body", !!logged && /gate/.test(logged) && logged.includes("simulated"), errors.join(" | ") || "nothing logged");
   check("the log never carries the API key or the photo",
     !errors.some(e => e.includes(API_KEY) || e.includes(PHOTO)), "a secret or the image reached the log");
@@ -412,6 +414,17 @@ section("ANTHROPIC SPEND CAP REACHED");
   check("the account's monthly spend cap is named as such in the log, not as a rate limit",
     errors.some(e => e.includes("kind=spend_cap")), errors.join(" | "));
   check("and the scan says it could not be completed, never a silent no-match", !!result.failure, summary(result));
+}
+
+section("ANTHROPIC CREDIT BALANCE EXHAUSTED");
+{
+  const broke = { status: 400, type: "invalid_request_error", message: "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits." };
+  const { result, errors } = await scan({ gateFault: { [OPUS]: broke, [SONNET]: broke } });
+  check("a prepaid account with no credit left is named as such in the log",
+    errors.some(e => e.includes("kind=credit_exhausted")), errors.join(" | "));
+  check("the failure record says so too, for /api/stats", (result.failure?.layers || []).some(l => l.endsWith(":credit_exhausted")), summary(result));
+  check("and the gate does not walk the chain: the account refuses every model alike",
+    !errors.some(e => e.includes(`model=${OPUS}`) && e.includes("layer=gate")), errors.join(" | "));
 }
 
 // 8. A second photo of a product identified in the last hour.

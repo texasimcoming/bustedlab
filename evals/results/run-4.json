@@ -1,0 +1,448 @@
+{
+  "run": 4,
+  "note": "Diagnose only: confirm whether the Anthropic credit balance is still exhausted (run 3's replays started failing with 'credit balance is too low').",
+  "base": "https://www.bustedlab.com",
+  "startedAt": "2026-10-02T13:21:16.965Z",
+  "steps": {
+    "preflight": {
+      "status": 200,
+      "ms": 1686,
+      "json": {
+        "ready": true,
+        "environment": "production",
+        "blockers": [],
+        "warnings": [
+          {
+            "check": "email",
+            "detail": "The Resend key is send-only, so the domain could not be checked. Confirm bustedlab.com shows as verified in Resend."
+          }
+        ],
+        "ok": [
+          "redis",
+          "checkout (lemonsqueezy, overlay)",
+          "base url",
+          "model key",
+          "search key",
+          "identity salt"
+        ],
+        "next": "GET /api/diagnose with the same token: real calls to every model and provider",
+        "limits": {
+          "dailyModelBudgetUsd": 250,
+          "paidScansPerAccountPerDay": 500,
+          "freeUncachedScansPerDay": 25000
+        }
+      },
+      "text": ""
+    },
+    "diagnose": {
+      "status": 200,
+      "ms": 4761,
+      "json": {
+        "pass": false,
+        "failing": [
+          "claude claude-opus-5-5 (gate)",
+          "claude claude-sonnet-5-5 (gate fallback, degraded gate, re-confirmation)",
+          "claude claude-sonnet-5-5 (first read, page text, search query)"
+        ],
+        "ranAt": "2026-10-02T13:21:23.373Z",
+        "tookMs": 3549,
+        "deployment": {
+          "commit": "98a69d5",
+          "environment": "production"
+        },
+        "spend": {
+          "mode": "full",
+          "todayUsd": 0,
+          "dailyBudgetUsd": 250
+        },
+        "cost": {
+          "claudeUsd": 0,
+          "searches": {
+            "serpapiLens": 1,
+            "serper": 1
+          },
+          "note": "Claude cost is measured from this run's reported usage. Search cost is one search per provider at your plan's per-search price; the SerpApi account lookup is free."
+        },
+        "thinking": {
+          "perCallApprox": null,
+          "note": "Average thinking tokens per call in this run. Re-price scans with: npm run cost-model -- --thinking <this number>"
+        },
+        "layers": [
+          {
+            "layer": "claude claude-opus-5-5 (gate)",
+            "pass": false,
+            "latencyMs": 641,
+            "status": 400,
+            "detail": "client: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfdUoEzJsq31g6yWDqvRj\"}",
+            "stopReason": null,
+            "costUsd": 0,
+            "outputTokens": null,
+            "thinkingTokensApprox": null,
+            "maxTokens": 15340,
+            "reply": null,
+            "request": {
+              "model": "claude-opus-5-5",
+              "max_tokens": 15340,
+              "output_config": {
+                "effort": "low"
+              }
+            }
+          },
+          {
+            "layer": "claude claude-sonnet-5-5 (gate fallback, degraded gate, re-confirmation)",
+            "pass": false,
+            "latencyMs": 562,
+            "status": 400,
+            "detail": "client: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfdUoFCTz2DM1D56QUS2y\"}",
+            "stopReason": null,
+            "costUsd": 0,
+            "outputTokens": null,
+            "thinkingTokensApprox": null,
+            "maxTokens": 15340,
+            "reply": null,
+            "request": {
+              "model": "claude-sonnet-5-5",
+              "max_tokens": 15340,
+              "output_config": {
+                "effort": "low"
+              }
+            }
+          },
+          {
+            "layer": "claude claude-sonnet-5-5 (first read, page text, search query)",
+            "pass": false,
+            "latencyMs": 577,
+            "status": 400,
+            "detail": "client: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfdUoEkRTmS8gGrCZFuw5\"}",
+            "stopReason": null,
+            "costUsd": 0,
+            "outputTokens": null,
+            "thinkingTokensApprox": null,
+            "maxTokens": 15350,
+            "reply": null,
+            "request": {
+              "model": "claude-sonnet-5-5",
+              "max_tokens": 15350,
+              "output_config": {
+                "effort": "low"
+              }
+            }
+          },
+          {
+            "layer": "blob",
+            "pass": true,
+            "latencyMs": 662,
+            "status": 200,
+            "detail": "uploaded, publicly readable, deleted"
+          },
+          {
+            "layer": "lens serpapi",
+            "pass": true,
+            "latencyMs": 2867,
+            "status": 200,
+            "detail": "40 visual matches; first: Purple Teeth Whitening Strips with Purple Gel, 28 Strips, 14 ...",
+            "matches": 40
+          },
+          {
+            "layer": "models api",
+            "pass": true,
+            "latencyMs": 596,
+            "status": 200,
+            "detail": "claude-sonnet-5-5 available, claude-opus-5-5 available, claude-fable-5-1 available",
+            "models": {
+              "claude-sonnet-5-5": {
+                "status": 200,
+                "displayName": "Claude Sonnet 5.5",
+                "maxTokens": 128000
+              },
+              "claude-fable-5-1": {
+                "status": 200,
+                "displayName": "Claude Fable 5.1",
+                "maxTokens": 128000
+              },
+              "claude-opus-5-5": {
+                "status": 200,
+                "displayName": "Claude Opus 5.5",
+                "maxTokens": 128000
+              }
+            }
+          },
+          {
+            "layer": "serpapi account",
+            "pass": true,
+            "latencyMs": 421,
+            "status": 200,
+            "detail": "37 searches left: top up before a traffic push",
+            "plan": "Free Plan",
+            "searchesPerMonth": 250,
+            "planSearchesLeft": 37,
+            "totalSearchesLeft": 37,
+            "thisMonthUsage": 213,
+            "rateLimitPerHour": 250
+          },
+          {
+            "layer": "serper",
+            "pass": true,
+            "latencyMs": 1582,
+            "status": 200,
+            "detail": "answered; 1 result(s)",
+            "creditsUsed": 1
+          },
+          {
+            "layer": "exchange rates",
+            "pass": true,
+            "latencyMs": 519,
+            "status": 200,
+            "detail": "rates for 2026-10-01: EUR 0.88365216, GBP 0.7549139, MAD 9.71943978, CAD 1.42483855 per USD"
+          },
+          {
+            "layer": "redis",
+            "pass": true,
+            "latencyMs": 471,
+            "status": 200,
+            "detail": "write and read"
+          },
+          {
+            "layer": "photo cap",
+            "pass": true,
+            "latencyMs": 415,
+            "status": 200,
+            "detail": "a 1170x2532 screenshot reaches the models at 725x1568"
+          }
+        ],
+        "evaluation": {
+          "today": {
+            "scans": 0,
+            "replays": 0
+          },
+          "replayLimit": 600,
+          "recent": [
+            {
+              "at": "2026-10-01T21:36:12.460Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-fable-5-1",
+              "effort": "low",
+              "ok": false,
+              "ms": 378,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:12.437Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 379,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:12.050Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-sonnet-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 287,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:11.848Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-sonnet-5-5",
+              "effort": "high",
+              "ok": false,
+              "ms": 332,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:11.822Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-fable-5-1",
+              "effort": "low",
+              "ok": false,
+              "ms": 810,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:11.484Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-sonnet-5-5",
+              "effort": "medium",
+              "ok": false,
+              "ms": 361,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:11.278Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-sonnet-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 345,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:10.892Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 332,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:10.781Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-fable-5-1",
+              "effort": "low",
+              "ok": false,
+              "ms": 1877,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:10.709Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-fable-5-1",
+              "effort": "low",
+              "ok": false,
+              "ms": 277,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:10.327Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 295,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:10.146Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-sonnet-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 293,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:09.805Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-sonnet-5-5",
+              "effort": "high",
+              "ok": false,
+              "ms": 296,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:09.552Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-sonnet-5-5",
+              "effort": "medium",
+              "ok": false,
+              "ms": 354,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:09.249Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-sonnet-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 317,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:08.947Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 354,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:08.664Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 624,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:08.605Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-fable-5-1",
+              "effort": "low",
+              "ok": false,
+              "ms": 783,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:08.298Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-sonnet-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 735,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:07.472Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 303,
+              "claudeUsd": 0
+            }
+          ]
+        }
+      },
+      "text": ""
+    }
+  },
+  "deployedCommit": "98a69d5",
+  "finishedAt": "2026-10-02T13:21:23.413Z",
+  "spend": {
+    "claudeUsd": 0,
+    "serpapiSearches": 1,
+    "serperSearches": 1,
+    "serpapiPerSearch": 0,
+    "searchUsd": 0.001,
+    "totalUsd": 0.001,
+    "spentBeforeUsd": 6.1924,
+    "capUsd": 25
+  }
+}

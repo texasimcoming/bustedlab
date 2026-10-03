@@ -59,7 +59,7 @@ export interface ProviderFailure {
 export interface ScanFailure {
   /** The first layer whose failure decided it. Also the analytics reason. */
   reason: FailureLayer;
-  /** Every deciding failure, as layer:provider[:model]:status. */
+  /** Every deciding failure, as layer:provider[:model]:status[:kind when it is the account's]. */
   layers: string[];
 }
 
@@ -205,7 +205,14 @@ export function hasFailed(layer: FailureLayer, severity?: Severity): boolean {
  */
 export async function firstAnswer<T>(
   layer: FailureLayer,
-  providers: { configured: boolean; run: () => Promise<T | null> }[]
+  providers: { configured: boolean; run: () => Promise<T | null> }[],
+  // Whether a provider that ANSWERED with nothing hands over to the next one
+  // anyway. True for Lens, where the backup is a different index and cheap.
+  // False for Shopping: the production evaluation found SerpApi's Google
+  // Shopping fallback timing out at its 12 seconds on every one of 19 calls,
+  // each one after Serper had already answered "no results" for the same
+  // query, so it cost every such scan 12 seconds and bought nothing.
+  { onEmpty = "next" }: { onEmpty?: "next" | "stop" } = {}
 ): Promise<{ value: T | null; index: number }> {
   const store = traces.getStore()?.failures;
   const start = store?.length ?? 0;
@@ -225,6 +232,7 @@ export async function firstAnswer<T>(
       settle();
       return { value, index: i };
     }
+    if (!failed && onEmpty === "stop") break;
   }
   settle();
   return { value: null, index: -1 };
@@ -244,8 +252,10 @@ export function reportProviderFailure(failure: ProviderFailure): void {
 export function decideFailure(failures: ProviderFailure[], verified: boolean): ScanFailure | null {
   const deciding = failures.filter(f => f.severity === "critical" || (f.severity === "identity" && !verified));
   if (deciding.length === 0) return null;
+  // The kind rides along when it names the account rather than the call
+  // (a spend cap, no credit), so /api/stats says why at a glance.
   const layers = [...new Set(deciding.map(f =>
-    [f.layer, f.provider, f.model, String(f.status)].filter(Boolean).join(":")
+    [f.layer, f.provider, f.model, String(f.status), /spend_cap|credit_exhausted/.test(f.kind) ? f.kind : ""].filter(Boolean).join(":")
   ))];
   return { reason: deciding[0].layer, layers };
 }

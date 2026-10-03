@@ -384,14 +384,15 @@
       "expectCurrency": "EUR"
     },
     {
-      "id": "solar-lamps-mad",
-      "kind": "screenshot, dirham price, unbranded generic",
+      "id": "moroccan-lamp-mad",
+      "kind": "screenshot, dirham price, store lamp",
       "source": [
         {
-          "page": "https://kelvins.ma/products/pack-4-lampes-led-solaires"
+          "shopifyCollection": "https://kelvins.ma/collections/luminaire-decoratif",
+          "currency": "MAD"
         },
         {
-          "shopify": "https://kelvins.ma/products/pack-4-lampes-led-solaires",
+          "shopifyCollection": "https://light-deco.ma/collections/lampadaire-luminairesaumaroc",
           "currency": "MAD"
         }
       ],
@@ -399,19 +400,21 @@
         "locale": "ma",
         "shop": "kelvins.ma"
       },
-      "findable": true,
+      "findable": "unknown",
       "brand": "",
       "identity": {
         "any": [
-          "solar",
-          "solaire",
           "lamp",
           "lampe",
+          "lampadaire",
           "light",
-          "lumière"
+          "luminaire",
+          "applique",
+          "suspension"
         ]
       },
-      "expectCurrency": "MAD"
+      "expectCurrency": "MAD",
+      "note": "A Moroccan store's decorative lamp at its real dirham price. Whether the identical item is listed elsewhere is unknown, so a lookalike or no-match is honest; the test is that 'DH' is read as dirhams and converted before any comparison."
     }
   ]
 }
