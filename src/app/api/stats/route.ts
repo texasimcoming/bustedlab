@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildFunnel, readEvents, readScanFailures, CLIENT_EVENTS } from "@/lib/analytics";
+import { buildFunnel, readEvents, readScanFailures, readWrongProduct, CLIENT_EVENTS } from "@/lib/analytics";
 import { getLedgerSize, readCspViolations } from "@/lib/redis";
 import { isOperator } from "@/lib/operator";
 
@@ -25,11 +25,12 @@ export async function GET(req: NextRequest) {
   const requested = Number(req.nextUrl.searchParams.get("days") || 30);
   const days = Math.min(Math.max(Number.isFinite(requested) ? requested : 30, 1), 120);
 
-  const [series, ledgerSize, csp, failures] = await Promise.all([
+  const [series, ledgerSize, csp, failures, wrongProduct] = await Promise.all([
     readEvents(days),
     getLedgerSize().catch(() => 0),
     readCspViolations(days).catch(() => []),
     readScanFailures(days),
+    readWrongProduct(days),
   ]);
 
   return NextResponse.json(
@@ -48,6 +49,11 @@ export async function GET(req: NextRequest) {
       // Claude API problem; "lens" or "shopping" a search provider one. The
       // browser-side scan_failed (timeouts) is in the funnel, not here.
       failures,
+      // "Wrong product? Tell us" reports: one per scan, by the result's mode
+      // and match confidence, plus the last fifty. Ground-truth labels for
+      // the identification engine; a report is the person's word, rate
+      // limited, not proof.
+      wrongProduct,
       window: buildFunnel(series, "window"),
       lifetime: buildFunnel(series, "total"),
       series: series.map(s => ({

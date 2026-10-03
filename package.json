@@ -25,9 +25,10 @@
     "check:currency": "node --experimental-strip-types --no-warnings scripts/check-currency.mjs",
     "check:diagnose": "node --experimental-strip-types --no-warnings scripts/check-diagnose.mjs",
     "check:eval": "node --experimental-strip-types --no-warnings scripts/check-eval.mjs",
+    "check:wrong-product": "node --experimental-strip-types --no-warnings scripts/check-wrong-product.mjs",
     "cost-model": "node --experimental-strip-types --no-warnings scripts/cost-model.mjs",
     "eval:gate": "node --experimental-strip-types --no-warnings scripts/eval-gate.mjs",
-    "check": "tsc --noEmit && eslint . && npm run check:verdicts && npm run check:identification && npm run check:net-guard && npm run check:fair-use && npm run check:webhook && npm run check:access && npm run check:notify && npm run check:csp && npm run check:preflight && npm run check:free-tier && npm run check:catches && npm run check:funnel && npm run check:content && npm run check:model-contract && npm run check:scan-failure && npm run check:currency && npm run check:diagnose && npm run check:eval"
+    "check": "tsc --noEmit && eslint . && npm run check:verdicts && npm run check:identification && npm run check:net-guard && npm run check:fair-use && npm run check:webhook && npm run check:access && npm run check:notify && npm run check:csp && npm run check:preflight && npm run check:free-tier && npm run check:catches && npm run check:funnel && npm run check:content && npm run check:model-contract && npm run check:scan-failure && npm run check:currency && npm run check:diagnose && npm run check:eval && npm run check:wrong-product"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",

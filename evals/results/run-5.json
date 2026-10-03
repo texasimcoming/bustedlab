@@ -1,0 +1,3681 @@
+{
+  "run": 5,
+  "note": "Budget mode (PR #8, merge 49e4ebe): diagnose on the merge commit, the one-time purge of earlier evaluation data, then six scans under a hard $0.60 all-in cap.",
+  "base": "https://www.bustedlab.com",
+  "startedAt": "2026-10-03T17:22:30.118Z",
+  "steps": {
+    "preflight": {
+      "status": 200,
+      "ms": 379,
+      "json": {
+        "ready": true,
+        "environment": "production",
+        "blockers": [],
+        "warnings": [
+          {
+            "check": "email",
+            "detail": "The Resend key is send-only, so the domain could not be checked. Confirm bustedlab.com shows as verified in Resend."
+          }
+        ],
+        "ok": [
+          "redis",
+          "checkout (lemonsqueezy, overlay)",
+          "base url",
+          "model key",
+          "search key",
+          "identity salt"
+        ],
+        "next": "GET /api/diagnose with the same token: real calls to every model and provider",
+        "limits": {
+          "dailyModelBudgetUsd": 2,
+          "paidScansPerAccountPerDay": 500,
+          "freeUncachedScansPerDay": 50
+        }
+      },
+      "text": ""
+    },
+    "diagnose": {
+      "status": 200,
+      "ms": 6291,
+      "json": {
+        "pass": true,
+        "failing": [],
+        "ranAt": "2026-10-03T17:22:37.309Z",
+        "tookMs": 5813,
+        "deployment": {
+          "commit": "49e4ebe",
+          "environment": "production"
+        },
+        "spend": {
+          "mode": "full",
+          "todayUsd": 0,
+          "dailyBudgetUsd": 2
+        },
+        "limits": {
+          "dailyModelBudgetUsd": 2,
+          "globalDailyFreeScanCap": 50,
+          "serpApiReserve": 20,
+          "retailerSweep": false
+        },
+        "serperCredits": {
+          "known": true,
+          "creditsLeft": 2362,
+          "fields": {
+            "balance": 2362,
+            "rateLimit": 5
+          }
+        },
+        "cost": {
+          "claudeUsd": 0.020226,
+          "serperCredits": 5,
+          "note": "Claude cost is measured from this run's reported usage. Serper credits are as Serper reported them for this run's Lens and Shopping searches. SerpApi is not searched; its account lookup is free."
+        },
+        "thinking": {
+          "perCallApprox": 75,
+          "note": "Average thinking tokens per call in this run. Re-price scans with: npm run cost-model -- --thinking <this number>"
+        },
+        "layers": [
+          {
+            "layer": "claude claude-sonnet-5-5 (gate, degraded gate, re-confirmation)",
+            "pass": true,
+            "latencyMs": 1656,
+            "status": 200,
+            "detail": "answered and parsed",
+            "stopReason": "end_turn",
+            "costUsd": 0.002921,
+            "outputTokens": 55,
+            "thinkingTokensApprox": 19,
+            "inputTokens": 1105,
+            "cacheReadTokens": 806,
+            "cacheWriteTokens": 0,
+            "maxTokens": 15340,
+            "reply": "[{\"candidate\": 1, \"match\": \"exact\", \"why\": \"Same photo and same purple textured whitening strip shown; no conflicting title or brand markings\"}]",
+            "request": {
+              "model": "claude-sonnet-5-5",
+              "max_tokens": 15340,
+              "output_config": {
+                "effort": "low"
+              }
+            }
+          },
+          {
+            "layer": "claude claude-opus-5-5 (gate fallback, extraction escalation)",
+            "pass": true,
+            "latencyMs": 4005,
+            "status": 200,
+            "detail": "answered and parsed",
+            "stopReason": "end_turn",
+            "costUsd": 0.01205,
+            "outputTokens": 180,
+            "thinkingTokensApprox": 144,
+            "inputTokens": 1105,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 806,
+            "maxTokens": 15340,
+            "reply": "[{\"candidate\": 1, \"match\": \"exact\", \"why\": \"Identical purple textured whitening strip, same shape and colour; same image, lower resolution\"}]",
+            "request": {
+              "model": "claude-opus-5-5",
+              "max_tokens": 15340,
+              "output_config": {
+                "effort": "low"
+              }
+            }
+          },
+          {
+            "layer": "claude claude-sonnet-5-5 (first read, page text, search query)",
+            "pass": true,
+            "latencyMs": 2225,
+            "status": 200,
+            "detail": "answered and parsed",
+            "stopReason": "end_turn",
+            "costUsd": 0.005255,
+            "outputTokens": 132,
+            "thinkingTokensApprox": 61,
+            "inputTokens": 960,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 806,
+            "maxTokens": 15350,
+            "reply": "```json\n{\n  \"productName\": \"purple teeth whitening strip\",\n  \"brand\": \"\",\n  \"visiblePrice\": null,\n  \"currency\": \"\",\n  \"quantity\": \"\",\n  \"category\": \"beauty\",\n  \"platform\": \"unknown\",\n  \"storeName\": \"\"",
+            "request": {
+              "model": "claude-sonnet-5-5",
+              "max_tokens": 15350,
+              "output_config": {
+                "effort": "low"
+              }
+            }
+          },
+          {
+            "layer": "prompt cache",
+            "pass": true,
+            "latencyMs": 0,
+            "status": 200,
+            "detail": "the claude-sonnet-5-5 gate read 806 tokens of the photo from the cache the first read wrote (806 written)",
+            "firstReadWriteTokens": 806,
+            "gateReadTokens": 806,
+            "gateWriteTokens": 0
+          },
+          {
+            "layer": "blob",
+            "pass": true,
+            "latencyMs": 495,
+            "status": 200,
+            "detail": "uploaded, publicly readable, deleted"
+          },
+          {
+            "layer": "lens serper",
+            "pass": true,
+            "latencyMs": 2101,
+            "status": 200,
+            "detail": "the call succeeded but returned no visual matches",
+            "matches": 0,
+            "usable": 0,
+            "priced": 0,
+            "creditsUsed": 3,
+            "responseShape": {
+              "list": null,
+              "rows": 0,
+              "rowFields": [],
+              "topLevel": [
+                "searchParameters",
+                "organic",
+                "credits"
+              ]
+            },
+            "sample": []
+          },
+          {
+            "layer": "models api",
+            "pass": true,
+            "latencyMs": 506,
+            "status": 200,
+            "detail": "claude-sonnet-5-5 available, claude-opus-5-5 available, claude-fable-5-1 available",
+            "models": {
+              "claude-opus-5-5": {
+                "status": 200,
+                "displayName": "Claude Opus 5.5",
+                "maxTokens": 128000
+              },
+              "claude-sonnet-5-5": {
+                "status": 200,
+                "displayName": "Claude Sonnet 5.5",
+                "maxTokens": 128000
+              },
+              "claude-fable-5-1": {
+                "status": 200,
+                "displayName": "Claude Fable 5.1",
+                "maxTokens": 128000
+              }
+            }
+          },
+          {
+            "layer": "serpapi account (backup)",
+            "pass": true,
+            "latencyMs": 374,
+            "status": 200,
+            "detail": "36 searches left; the backup may spend down to its reserve of 20",
+            "reserve": 20,
+            "backupAvailable": true,
+            "plan": "Free Plan",
+            "searchesPerMonth": 250,
+            "planSearchesLeft": 36,
+            "totalSearchesLeft": 36,
+            "thisMonthUsage": 214,
+            "rateLimitPerHour": 250
+          },
+          {
+            "layer": "serper shopping",
+            "pass": true,
+            "latencyMs": 1149,
+            "status": 200,
+            "detail": "answered; 40 result(s)",
+            "creditsUsed": 2
+          },
+          {
+            "layer": "exchange rates",
+            "pass": true,
+            "latencyMs": 403,
+            "status": 200,
+            "detail": "rates for 2026-10-03: EUR 0.88862607, GBP 0.75533999, MAD 9.93526897, CAD 1.42505585 per USD"
+          },
+          {
+            "layer": "redis",
+            "pass": true,
+            "latencyMs": 352,
+            "status": 200,
+            "detail": "write and read"
+          },
+          {
+            "layer": "photo cap",
+            "pass": true,
+            "latencyMs": 335,
+            "status": 200,
+            "detail": "a 1170x2532 screenshot reaches the models at 725x1568"
+          }
+        ],
+        "evaluation": {
+          "today": {
+            "scans": 0,
+            "replays": 0
+          },
+          "replayLimit": 600,
+          "recent": [
+            {
+              "at": "2026-10-01T21:36:12.460Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-fable-5-1",
+              "effort": "low",
+              "ok": false,
+              "ms": 378,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:12.437Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 379,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:12.050Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-sonnet-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 287,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:11.848Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-sonnet-5-5",
+              "effort": "high",
+              "ok": false,
+              "ms": 332,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:11.822Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-fable-5-1",
+              "effort": "low",
+              "ok": false,
+              "ms": 810,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:11.484Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-sonnet-5-5",
+              "effort": "medium",
+              "ok": false,
+              "ms": 361,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:11.278Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-sonnet-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 345,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:10.892Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 332,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:10.781Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-fable-5-1",
+              "effort": "low",
+              "ok": false,
+              "ms": 1877,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:10.709Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-fable-5-1",
+              "effort": "low",
+              "ok": false,
+              "ms": 277,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:10.327Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 295,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:10.146Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-sonnet-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 293,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:09.805Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-sonnet-5-5",
+              "effort": "high",
+              "ok": false,
+              "ms": 296,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:09.552Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-sonnet-5-5",
+              "effort": "medium",
+              "ok": false,
+              "ms": 354,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:09.249Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-sonnet-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 317,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:08.947Z",
+              "kind": "client",
+              "op": "gate",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 354,
+              "claudeUsd": 0,
+              "candidates": 6
+            },
+            {
+              "at": "2026-10-01T21:36:08.664Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 624,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:08.605Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-fable-5-1",
+              "effort": "low",
+              "ok": false,
+              "ms": 783,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:08.298Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-sonnet-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 735,
+              "claudeUsd": 0
+            },
+            {
+              "at": "2026-10-01T21:36:07.472Z",
+              "kind": "client",
+              "op": "extract",
+              "model": "claude-opus-5-5",
+              "effort": "low",
+              "ok": false,
+              "ms": 303,
+              "claudeUsd": 0
+            }
+          ]
+        }
+      },
+      "text": ""
+    },
+    "purge": {
+      "request": {
+        "purgeId": "eval-runs-1-4",
+        "files": [
+          "run-1.json",
+          "run-2.json",
+          "run-3.json",
+          "run-4.json"
+        ],
+        "scanIds": [
+          "muq0qsdh30e5c684a68a1959f81360e3"
+        ],
+        "counters": {
+          "scans": 48,
+          "verdicts": 1,
+          "busted": 0,
+          "savingsUsd": 22.24
+        }
+      },
+      "status": 200,
+      "json": {
+        "purgeId": "eval-runs-1-4",
+        "alreadyApplied": false,
+        "result": {
+          "removed": [
+            {
+              "id": "muq0qsdh30e5c684a68a1959f81360e3",
+              "title": "Stanley The Quencher H2.0 Flowstate™ 40-Ounce Tumbler ...",
+              "verdict": "OVERPRICED",
+              "ts": 1790888450597
+            }
+          ],
+          "notFound": [],
+          "counters": {
+            "scans": {
+              "before": 65,
+              "after": 17
+            },
+            "verdicts": {
+              "before": 2,
+              "after": 1
+            },
+            "busted": {
+              "before": 0,
+              "after": 0
+            },
+            "savingsUsd": {
+              "before": 32.19,
+              "after": 9.95
+            }
+          },
+          "at": "2026-10-03T17:22:37.471Z"
+        }
+      },
+      "text": ""
+    }
+  },
+  "waitedFor": {
+    "path": "/api/eval/purge",
+    "wanted": 400,
+    "got": 400
+  },
+  "deployedCommit": "49e4ebe",
+  "photos": {
+    "yellowstone-cowboy-hat": {
+      "source": {
+        "shopify": "https://yellowstonetvshop.com/products/yellowstone-fur-single-hat"
+      },
+      "page": "https://yellowstonetvshop.com/products/yellowstone-fur-single-hat",
+      "title": "Yellowstone x Bailey Cowboy Western 10x Hat",
+      "license": "",
+      "author": "",
+      "description": "",
+      "askingPrice": null,
+      "width": 1500,
+      "height": 1500,
+      "bytes": 124687,
+      "sha256": "1ceaf752766b216d"
+    },
+    "flowlife-flowgun-air": {
+      "source": {
+        "page": "https://www.flowlife.com/en-GB/product/flowgun-air"
+      },
+      "page": "https://www.flowlife.com/en-GB/product/flowgun-air",
+      "title": "Flowgun Air – Percussive Therapy Massage Gun | Flowlife",
+      "license": "",
+      "author": "",
+      "description": "",
+      "askingPrice": null,
+      "width": 480,
+      "height": 600,
+      "bytes": 12469,
+      "sha256": "81b7e2d665947415"
+    },
+    "airpods-pro-2": {
+      "source": {
+        "commons": "AirPods Pro 2.jpg"
+      },
+      "page": "https://commons.wikimedia.org/wiki/File:AirPods_Pro_2.jpg",
+      "title": "AirPods Pro 2.jpg",
+      "license": "CC BY-SA 4.0",
+      "author": "— aconcagua ( talk )",
+      "description": "AirPods Pro",
+      "askingPrice": null,
+      "width": 2000,
+      "height": 1501,
+      "bytes": 417578,
+      "sha256": "8162916296dffe1d"
+    },
+    "silicone-pastry-brush": {
+      "source": {
+        "commons": "Kitchen-Silicone-Brush.jpg"
+      },
+      "page": "https://commons.wikimedia.org/wiki/File:Kitchen-Silicone-Brush.jpg",
+      "title": "Kitchen-Silicone-Brush.jpg",
+      "license": "Public domain",
+      "author": "Evan-Amos",
+      "description": "A silicone pastry brush",
+      "askingPrice": null,
+      "width": 2000,
+      "height": 903,
+      "bytes": 83624,
+      "sha256": "7fa525384edfaa5c"
+    },
+    "car-phone-holder": {
+      "source": {
+        "commons": "Car universal holder for smartphones and phablets, Oude Pekela (2018) 01.jpg"
+      },
+      "page": "https://commons.wikimedia.org/wiki/File:Car_universal_holder_for_smartphones_and_phablets,_Oude_Pekela_(2018)_01.jpg",
+      "title": "Car universal holder for smartphones and phablets, Oude Pekela (2018) 01.jpg",
+      "license": "CC BY-SA 4.0",
+      "author": "Donald Trung Quoc Don (Chữ Hán: 徵國單) - Wikimedia Commons . ( Want to use this image? )",
+      "description": "A clamp arm placed inside of an automobile to hold smartphones or phablets attached to the front window of an automobile.",
+      "askingPrice": null,
+      "width": 1125,
+      "height": 2000,
+      "bytes": 243817,
+      "sha256": "7cc003573b2529de"
+    },
+    "stanley-quencher-eur": {
+      "source": {
+        "shopify": "https://eu.stanley1913.com/fr/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+        "currency": "EUR"
+      },
+      "page": "https://eu.stanley1913.com/fr/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+      "title": "Quencher® H2.0 FlowState™ Tumbler | 1.18L",
+      "license": "",
+      "author": "",
+      "description": "",
+      "askingPrice": {
+        "amount": 55,
+        "currency": "EUR"
+      },
+      "width": 1080,
+      "height": 2340,
+      "bytes": 98583,
+      "sha256": "e4b48ed89b5d7ab0"
+    }
+  },
+  "scans": [
+    {
+      "caseId": "yellowstone-cowboy-hat",
+      "intent": "verdict",
+      "status": 200,
+      "ms": 13995,
+      "json": {
+        "found": true,
+        "mode": "FINDER",
+        "priceSource": "estimated",
+        "engineUsed": "lens_serper+priced_page",
+        "matchConfidence": "likely",
+        "category": "accessories",
+        "sourceProduct": {
+          "title": "Cuernos Chuecos 6X Oscar Black Felt Cowboy Hat",
+          "price": 179.99,
+          "currency": "USD",
+          "imageUrl": "/api/proxy-image?url=https%3A%2F%2Fencrypted-tbn3.gstatic.com%2Fimages%3Fq%3Dtbn%3AANd9GcS29xsTPjcF5z6eYWm5K8RfDu_iogq1xVBmL_uBpRezIiPHI2Cr&s=997749d790dcecf390a3da48011ebf03",
+          "productUrl": "https://www.vaqueroboots.com/products/cuernos-chuecos-6x-traditional-western-felt-hat",
+          "affiliateUrl": "https://www.vaqueroboots.com/products/cuernos-chuecos-6x-traditional-western-felt-hat",
+          "linkIsDirect": true,
+          "platform": "Vaquero Boots"
+        },
+        "analysis": {
+          "retailEstimate": 179.99,
+          "retailSource": "estimated",
+          "markup": 0,
+          "verdict": "UNVERIFIED",
+          "savings": 0,
+          "savingsPercent": 0,
+          "confidence": "medium"
+        },
+        "scanId": null,
+        "evaluation": {
+          "cached": false,
+          "ms": 12917,
+          "trace": {
+            "totalMs": 12805,
+            "claudeUsd": 0.025484,
+            "searchesByProvider": {
+              "serper": 1
+            },
+            "creditsByProvider": {
+              "serper": 3
+            },
+            "cache": {
+              "readTokens": 5876,
+              "writeTokens": 2938,
+              "uncachedInputTokens": 4587,
+              "callsReading": 2,
+              "calls": 3
+            },
+            "msByLayer": {
+              "model:extraction": 2300,
+              "model:gate": 8043,
+              "search:lens": 1705
+            },
+            "thinkingPerCall": 94,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2300,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 960,
+                "outputTokens": 141,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 2938,
+                "costUsd": 0.010675,
+                "stopReason": "end_turn",
+                "thinkingApprox": 64
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3942,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1816,
+                "outputTokens": 315,
+                "cacheReadTokens": 2938,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0073696000000000005,
+                "stopReason": "end_turn",
+                "thinkingApprox": 105
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 4101,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1811,
+                "outputTokens": 323,
+                "cacheReadTokens": 2938,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0074396,
+                "stopReason": "end_turn",
+                "thinkingApprox": 114
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 1705,
+                "status": 200,
+                "credits": 3
+              }
+            ],
+            "failures": [],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 2321,
+                "brand": "",
+                "productName": "black felt cowboy hat with gold concho band",
+                "visiblePrice": null,
+                "currency": "",
+                "quantity": "1 unit",
+                "category": "accessories",
+                "storeName": "",
+                "visibleUrl": "",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 4148,
+                "list": "organic",
+                "rows": 46,
+                "usable": 40,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 4205,
+                "engine": "serper",
+                "candidates": 40,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "El Patron 7242 Premier 30X Cowboy Hat | Stetson",
+                    "source": "Stetson",
+                    "price": 0,
+                    "link": "https://stetson.com/products/el-patron-72-premier-30x-cowboy-hat-black",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQnjvz5ZiEkCSCjUIhHTtnslzQ_11vSAGdqw_11IaeH25Awv61u"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Bullhide El Avionado - (6x) Wool Felt Cowboy Hat | Hatcountry – HatCountry",
+                    "source": "HatCountry",
+                    "price": 0,
+                    "link": "https://www.hatcountry.com/products/bullhide-el-avionado-6x-wool-felt-cowboy-hat",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSbDE-Xj9q3D2kywYIbKDQrE_QhXDanSf-RFr94f-ptxGNmwHYh"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Cuernos Chuecos 6X Oscar Black Felt Cowboy Hat",
+                    "source": "Vaquero Boots",
+                    "price": 0,
+                    "link": "https://www.vaqueroboots.com/products/cuernos-chuecos-6x-traditional-western-felt-hat",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcS29xsTPjcF5z6eYWm5K8RfDu_iogq1xVBmL_uBpRezIiPHI2Cr"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "SERRATELLI 6X AMAPOLA BEAVER BLACK FELT HAT COWBOY HAT | Genuine Leather Cowboy Boots and Hats — Zapateria Guadalajara",
+                    "source": "Zapateria Guadalajara",
+                    "price": 0,
+                    "link": "https://zapateriaguadalajara.com/products/serratelli-6x-amapola-beaver-felt-hat",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTd7hTTUtk5pnTXqOCxp0XFi4Y8adlLfH1DSSV-WjtZ1I8BxDT6"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "High Point 6X Cowboy Hat | Stetson",
+                    "source": "Stetson",
+                    "price": 0,
+                    "link": "https://stetson.com/products/highpoint-6x-cowboy-hat-sfhipt-7740-black",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQADxWBwuIyX6OccEUJ6eNVf0khTdTviWshvYosau3fjlE655CE"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Larry Mahan Mens 30X Opulento Felt Hat In Black - Shop Now",
+                    "source": "Starr Western Wear",
+                    "price": 0,
+                    "link": "https://starrwesternwear.com/products/larry-mahan-mens-30x-opulento-black-felt-hat",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT65yDqvJWUrRaCZkuJLb0_UEO42SuYx7c5E8n6djCIJmi0Prcx"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "Stetson® 4X Duncan Black Felt Hat 4 1/4\" BRIM With Free Hat Brush | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/326142304241",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRW0OPD9yivatO_LhuW3cJWMrEDoYdRtpqF8DDPRt_nP1bTNtqa"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "CF1M030240-KING-BLK-100-BEAVER – Alcala's Western Wear",
+                    "source": "Alcala's Western Wear",
+                    "price": 0,
+                    "link": "https://alcalas.com/products/cf1m030240-king-blk-100-beaver",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRxOPjDBC9clKwnNApxzjUpnNv4AD2a3IBjtxWvDdIu-3gctQbH"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "Serratelli Hat Company 6X Amapola Beaver Felt – The Little Ranch",
+                    "source": "The Little Ranch Boots",
+                    "price": 0,
+                    "link": "https://thelittleranchny.com/es/products/copy-of-serratelli-hat-company-100x-beaver-felt-comandant-cowboy-hat",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT4kz5f3wCmlbW0LxvJJf3mskEEdPB2FF62_bGXwyeCYwvX8-x6"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Sinaloa 50X Bandoleros Men's Felt Hat – MexWest",
+                    "source": "MexWest",
+                    "price": 0,
+                    "link": "https://mexwest.com/products/sinaloa-50x-silverton-hat",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRC6GhU7QCBAqyvjn2FiZxasumXL5shF7CnWToCeg_x1e4t3ctu"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "Texana Tombstone 50X Sinaloa Style Beaver Hair Black",
+                    "source": "Caballo Bronco",
+                    "price": 0,
+                    "link": "https://caballobronco.com/en/products/texana-tombstone-50x-de-pelo-de-castor-estilo-sinaloa-color-negro",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQ9N3ANx7qTBFWLR_ry5mQjQe9VkS8poHTkXbe1o83sweenZi-q"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Stetson Oak Ridge Black Wool Cowboy Hat SWOAKR-7242 – Wild Bill's Western Store",
+                    "source": "Wild Bill's Western Store",
+                    "price": 0,
+                    "link": "https://wildbillswestern.com/products/swoakr-7242-oak-ridge",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSzQZrBCYjQ8U2rP_IWt7RaYVVf3IFEPnkH539Z04SqH4zlQugY"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 4219,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 8243,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "El Patron 7242 Premier 30X Cowboy Hat | Stetson",
+                    "source": "Stetson",
+                    "price": 0,
+                    "link": "https://stetson.com/products/el-patron-72-premier-30x-cowboy-hat-black",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQnjvz5ZiEkCSCjUIhHTtnslzQ_11vSAGdqw_11IaeH25Awv61u",
+                    "match": "similar",
+                    "why": "Stetson black cowboy hat with a similar shape, but no gold concho and a different crown/brim; the model can't be tied to the one in A"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Bullhide El Avionado - (6x) Wool Felt Cowboy Hat | Hatcountry – HatCountry",
+                    "source": "HatCountry",
+                    "price": 0,
+                    "link": "https://www.hatcountry.com/products/bullhide-el-avionado-6x-wool-felt-cowboy-hat",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSbDE-Xj9q3D2kywYIbKDQrE_QhXDanSf-RFr94f-ptxGNmwHYh",
+                    "match": "different",
+                    "why": "Shorter crown, rounded curved brim and a different band with conchos; a different style"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Cuernos Chuecos 6X Oscar Black Felt Cowboy Hat",
+                    "source": "Vaquero Boots",
+                    "price": 0,
+                    "link": "https://www.vaqueroboots.com/products/cuernos-chuecos-6x-traditional-western-felt-hat",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcS29xsTPjcF5z6eYWm5K8RfDu_iogq1xVBmL_uBpRezIiPHI2Cr",
+                    "match": "likely",
+                    "why": "Same pinched front crown, wide flat brim with upturned sides, thin band and small gold concho; the exact model can't be confirmed"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "SERRATELLI 6X AMAPOLA BEAVER BLACK FELT HAT COWBOY HAT | Genuine Leather Cowboy Boots and Hats — Zapateria Guadalajara",
+                    "source": "Zapateria Guadalajara",
+                    "price": 0,
+                    "link": "https://zapateriaguadalajara.com/products/serratelli-6x-amapola-beaver-felt-hat",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTd7hTTUtk5pnTXqOCxp0XFi4Y8adlLfH1DSSV-WjtZ1I8BxDT6",
+                    "match": "similar",
+                    "why": "Black felt cowboy hat with a gold emblem, but the crown and brim shapes differ and the brand can't be tied to A"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "High Point 6X Cowboy Hat | Stetson",
+                    "source": "Stetson",
+                    "price": 0,
+                    "link": "https://stetson.com/products/highpoint-6x-cowboy-hat-sfhipt-7740-black",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQADxWBwuIyX6OccEUJ6eNVf0khTdTviWshvYosau3fjlE655CE",
+                    "match": "different",
+                    "why": "Different shape with a curved brim and braided band"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Larry Mahan Mens 30X Opulento Felt Hat In Black - Shop Now",
+                    "source": "Starr Western Wear",
+                    "price": 0,
+                    "link": "https://starrwesternwear.com/products/larry-mahan-mens-30x-opulento-black-felt-hat",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT65yDqvJWUrRaCZkuJLb0_UEO42SuYx7c5E8n6djCIJmi0Prcx",
+                    "match": "different",
+                    "why": "Different brim curve and a band with multiple gold conchos"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 12420,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 6,
+                    "title": "Stetson® 4X Duncan Black Felt Hat 4 1/4\" BRIM With Free Hat Brush | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/326142304241",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRW0OPD9yivatO_LhuW3cJWMrEDoYdRtpqF8DDPRt_nP1bTNtqa",
+                    "match": "similar",
+                    "why": "Stetson black felt cowboy hat, but crown shape and band differ and no matching small gold concho is visible"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "CF1M030240-KING-BLK-100-BEAVER – Alcala's Western Wear",
+                    "source": "Alcala's Western Wear",
+                    "price": 0,
+                    "link": "https://alcalas.com/products/cf1m030240-king-blk-100-beaver",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRxOPjDBC9clKwnNApxzjUpnNv4AD2a3IBjtxWvDdIu-3gctQbH",
+                    "match": "similar",
+                    "why": "Black cowboy hat with a gold concho, but the brim is flatter and the crown shape differs"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "Serratelli Hat Company 6X Amapola Beaver Felt – The Little Ranch",
+                    "source": "The Little Ranch Boots",
+                    "price": 0,
+                    "link": "https://thelittleranchny.com/es/products/copy-of-serratelli-hat-company-100x-beaver-felt-comandant-cowboy-hat",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT4kz5f3wCmlbW0LxvJJf3mskEEdPB2FF62_bGXwyeCYwvX8-x6",
+                    "match": "likely",
+                    "why": "Same crown pinch, wide brim with upturned sides and small gold concho at the right of the band; brand cannot be confirmed"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Sinaloa 50X Bandoleros Men's Felt Hat – MexWest",
+                    "source": "MexWest",
+                    "price": 0,
+                    "link": "https://mexwest.com/products/sinaloa-50x-silverton-hat",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRC6GhU7QCBAqyvjn2FiZxasumXL5shF7CnWToCeg_x1e4t3ctu",
+                    "match": "different",
+                    "why": "Brim is shaped differently, the crown is rounder and the band is a braided cord"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "Texana Tombstone 50X Sinaloa Style Beaver Hair Black",
+                    "source": "Caballo Bronco",
+                    "price": 0,
+                    "link": "https://caballobronco.com/en/products/texana-tombstone-50x-de-pelo-de-castor-estilo-sinaloa-color-negro",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQ9N3ANx7qTBFWLR_ry5mQjQe9VkS8poHTkXbe1o83sweenZi-q",
+                    "match": "similar",
+                    "why": "Black felt hat, but the brim curve and crown differ and the concho is not visible"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Stetson Oak Ridge Black Wool Cowboy Hat SWOAKR-7242 – Wild Bill's Western Store",
+                    "source": "Wild Bill's Western Store",
+                    "price": 0,
+                    "link": "https://wildbillswestern.com/products/swoakr-7242-oak-ridge",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSzQZrBCYjQ8U2rP_IWt7RaYVVf3IFEPnkH539Z04SqH4zlQugY",
+                    "match": "similar",
+                    "why": "Stetson wool hat with a different crown and brim shape; a wool hat rather than a fur-felt one"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 12420,
+                "purpose": "identify",
+                "confidence": "likely",
+                "rank": 2,
+                "title": "Cuernos Chuecos 6X Oscar Black Felt Cowboy Hat",
+                "source": "Vaquero Boots",
+                "price": 0,
+                "link": "https://www.vaqueroboots.com/products/cuernos-chuecos-6x-traditional-western-felt-hat",
+                "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcS29xsTPjcF5z6eYWm5K8RfDu_iogq1xVBmL_uBpRezIiPHI2Cr"
+              },
+              {
+                "step": "page_price",
+                "at": 12803,
+                "tried": [
+                  {
+                    "url": "https://www.vaqueroboots.com/products/cuernos-chuecos-6x-traditional-western-felt-hat",
+                    "found": true,
+                    "amount": 179.99,
+                    "currency": "USD"
+                  },
+                  {
+                    "url": "https://thelittleranchny.com/es/products/copy-of-serratelli-hat-company-100x-beaver-felt-comandant-cowboy-hat",
+                    "found": true,
+                    "amount": 369.95,
+                    "currency": "USD"
+                  }
+                ]
+              },
+              {
+                "step": "alternatives",
+                "at": 12804,
+                "retailerQuery": "Cuernos Chuecos 6X Oscar Black Felt Cowboy Hat",
+                "unbranded": 0,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "identified",
+                "at": 12804,
+                "engineUsed": "lens_serper+priced_page",
+                "confidence": "likely",
+                "title": "Cuernos Chuecos 6X Oscar Black Felt Cowboy Hat",
+                "priced": true
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "WRONG",
+        "detail": "shown as likely: Cuernos Chuecos 6X Oscar Black Felt Cowboy Hat"
+      },
+      "costUsd": 0.028484
+    },
+    {
+      "caseId": "airpods-pro-2",
+      "intent": "verdict",
+      "status": 200,
+      "ms": 28918,
+      "json": {
+        "found": true,
+        "mode": "FINDER",
+        "priceSource": "estimated",
+        "engineUsed": "unbranded_serper",
+        "matchConfidence": "exact",
+        "category": "tech",
+        "sourceProduct": {
+          "title": "Apple AirPods Pro White with Magsafe Charging Case In Ear Headphones MLWK3AM/A",
+          "price": 253,
+          "currency": "USD",
+          "imageUrl": "/api/proxy-image?url=https%3A%2F%2Fencrypted-tbn0.gstatic.com%2Fshopping%3Fq%3Dtbn%3AANd9GcSDNDA7txeqW-Myg-KWR0KYc4bhXupKhwemLCM-O2hF9nSQB73O1qPadKh73c1Mnlo7svgqKoTFD4CLDLTGMcZyFzxwvMuTFirNSRphJtE&s=55c7325eb62990b338cd46adaaee63cd",
+          "productUrl": "https://www.google.com/search?ibp=oshop&q=Apple+AirPods+Pro+wireless+earbuds+with+silicone+ear+tips+tech+1+pair+*&prds=localAnnotatedOfferId:1,catalogid:16009161307122264238,gpcid:7653949458363387390,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+          "affiliateUrl": "https://www.google.com/search?ibp=oshop&q=Apple+AirPods+Pro+wireless+earbuds+with+silicone+ear+tips+tech+1+pair+*&prds=localAnnotatedOfferId:1,catalogid:16009161307122264238,gpcid:7653949458363387390,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+          "linkIsDirect": false,
+          "platform": "Walmart"
+        },
+        "analysis": {
+          "retailEstimate": 292.95,
+          "retailSource": "estimated",
+          "markup": 16,
+          "verdict": "UNVERIFIED",
+          "savings": 39.95,
+          "savingsPercent": 14,
+          "confidence": "high"
+        },
+        "scanId": null,
+        "evaluation": {
+          "cached": false,
+          "ms": 28571,
+          "trace": {
+            "totalMs": 28448,
+            "claudeUsd": 0.043683,
+            "searchesByProvider": {
+              "serper": 3
+            },
+            "creditsByProvider": {
+              "serper": 7
+            },
+            "cache": {
+              "readTokens": 9720,
+              "writeTokens": 2430,
+              "uncachedInputTokens": 7517,
+              "callsReading": 4,
+              "calls": 5
+            },
+            "msByLayer": {
+              "model:extraction": 2224,
+              "model:gate": 19783,
+              "search:lens": 2125,
+              "search:shopping": 3352
+            },
+            "thinkingPerCall": 160,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2224,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 960,
+                "outputTokens": 153,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 2430,
+                "costUsd": 0.009525,
+                "stopReason": "end_turn",
+                "thinkingApprox": 73
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3939,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1820,
+                "outputTokens": 366,
+                "cacheReadTokens": 2430,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.007786,
+                "stopReason": "end_turn",
+                "thinkingApprox": 137
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 7455,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1833,
+                "outputTokens": 778,
+                "cacheReadTokens": 2430,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.011932,
+                "stopReason": "end_turn",
+                "thinkingApprox": 285
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 4875,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1515,
+                "outputTokens": 482,
+                "cacheReadTokens": 2430,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.008336,
+                "stopReason": "end_turn",
+                "thinkingApprox": 187
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3514,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1389,
+                "outputTokens": 284,
+                "cacheReadTokens": 2430,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.006104,
+                "stopReason": "end_turn",
+                "thinkingApprox": 116
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 2125,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 1627,
+                "status": 200,
+                "credits": 2
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 1725,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 2558,
+                "brand": "Apple",
+                "productName": "Apple AirPods Pro wireless earbuds with silicone ear tips",
+                "visiblePrice": null,
+                "currency": "",
+                "quantity": "1 pair",
+                "category": "tech",
+                "storeName": "",
+                "visibleUrl": "",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 4806,
+                "list": "organic",
+                "rows": 59,
+                "usable": 40,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 4849,
+                "engine": "serper",
+                "candidates": 40,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "オーディオ機器 AirPods pro第二世代 本体 ワイヤレスイヤホン ホワイト",
+                    "source": "plancherultime.com",
+                    "price": 0,
+                    "link": "https://www.plancherultime.com/?v=6345181290027",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSVwH9wyEo7VlkqI69Pf52OM4Gyp0RqL_q5T-Eq_kxO8POobCvw"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Buy Apple Airpods Pro 1st Gen LEFT Side Airpod Only - Original Apple Airpods Pro 1st",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/114297836968",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSHSwAjEKzqrfu9bsmAGEfOCc-OTAtKLj_WUleMl1_dtuX5aEuV"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Is this earbud authentic? [Vinted] : r/AreMyAirpodsAuthentic",
+                    "source": "Reddit",
+                    "price": 0,
+                    "link": "https://www.reddit.com/r/AreMyAirpodsAuthentic/comments/1jct6na/is_this_earbud_authentic_vinted/",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQX2TmBS9CXFh9IL8eUNq0iElUCPH7hZ95m436QLTQyMJwPsLwM"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Original Apple AirPods Pro - LEFT Side AirPods Only (A2084) OEM *A GRADE* | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/277076752744",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRvWzFb6FmGhmNUCit64BN3ra2ampoMIpTODk9lXTZS_zCrGaqN"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "AirPods Pro 3rd Gen Left Earbud Replacement A3064 – Genuine Apple | Fair Grade | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/366352995408",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXAFNom64xpqaheYwMUG6-QCRSxV4MK_UUfQugakIxz3FL_pxZ"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Original Apple AirPods Pro 1st Generation - LEFT Side Only (A2084) - Very Good | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com.hk/itm/203375633706",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSFibtQ42noApj71a4BAJWGs1AmPA3NAjVhsHHY696SsSbtDvQ-"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "NEW Apple AirPods Pro 1st Generation with MagSafe Wireless Charging Case for Sale in Citrus Heights, CA - OfferUp",
+                    "source": "OfferUp",
+                    "price": 0,
+                    "link": "https://offerup.com/item/detail/5bbfa9a6-d2fd-3124-ab38-a91137b89138",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTdgC-WUBRtA00Tzgt7i2mUdSFRPoQnNio9BqZjkU5am-QecJwn"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Apple Refurbished Excellent AirPods Pro 3rd Gen Left Replacement AirPod (A3064) White - Best Buy",
+                    "source": "Best Buy",
+                    "price": 0,
+                    "link": "https://www.bestbuy.com/product/apple-airpods-pro-3rd-gen-left-replacement-airpod-a3064-white/JJGWTXQHYK/sku/12826485",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSEoxdxNZBlJC-Sa4BcHjPOWLzFr9p2NFgU_4lD4TJKxFE2ONOa"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "Corn True Wireless Stereo Pro Earbuds, 360 mAh, White - EB015",
+                    "source": "راية",
+                    "price": 0,
+                    "link": "https://www.rayashop.com/en/corn-true-wireless-stereo-pro-earbuds-white-eb015-1298",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRo4Hkl12SW3_G5oCGsSQwutbVO4BfSkvnIL-g_2HS1uikgkK80"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Apple Airpod Pro Replacement Left Airpod 2nd Generation Right Airpod AirPods Pro (2nd Gen) Right Ear",
+                    "source": "koendegraaf.nl",
+                    "price": 0,
+                    "link": "https://www.koendegraaf.nl/product-similar-image/?12700639050910",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRzjkYgYSTi7mZTCPKotfjFhnEkMXcG1PnfiHyvebsmgheDNlSZ"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "Apple AirPods Pro 3 (3rd Gen) Original OEM Replacement Earbud Pod A3063 - Right | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/227019813899",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTy7FfQZQJqVg9lZHsnNgBCTW5hqyLN5m9pCulWKhF8VjazMWBh"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Apple AirPods Left Side replacement Earphone 2nd generation – Afashionistastore",
+                    "source": "Afashionistastore",
+                    "price": 0,
+                    "link": "https://afashionistastore.com/fr/products/apple-airpods-left-side-replacement-earphone-2nd-generation",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRDkCR81P93Zj2rn5gbnWiWF_y8hhgVvzty_8un3UvDWohehi6Z"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 4876,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 8912,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 1,
+                    "title": "Buy Apple Airpods Pro 1st Gen LEFT Side Airpod Only - Original Apple Airpods Pro 1st",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/114297836968",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSHSwAjEKzqrfu9bsmAGEfOCc-OTAtKLj_WUleMl1_dtuX5aEuV",
+                    "match": "likely",
+                    "why": "AirPods Pro 1st gen earbud with the same stem, vent and silicone tip; the listing is for the left side, which is consistent but hard to confirm from the image"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Original Apple AirPods Pro - LEFT Side AirPods Only (A2084) OEM *A GRADE* | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/277076752744",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRvWzFb6FmGhmNUCit64BN3ra2ampoMIpTODk9lXTZS_zCrGaqN",
+                    "match": "likely",
+                    "why": "AirPods Pro 1st gen (A2084), same shape and tip; the left side cannot be confirmed from the image alone"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "AirPods Pro 3rd Gen Left Earbud Replacement A3064 – Genuine Apple | Fair Grade | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/366352995408",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXAFNom64xpqaheYwMUG6-QCRSxV4MK_UUfQugakIxz3FL_pxZ",
+                    "match": "different",
+                    "why": "Title says AirPods Pro 3rd gen (A3064), and the image shows a different design with extra vents"
+                  },
+                  {
+                    "rank": 0,
+                    "title": "オーディオ機器 AirPods pro第二世代 本体 ワイヤレスイヤホン ホワイト",
+                    "source": "plancherultime.com",
+                    "price": 0,
+                    "link": "https://www.plancherultime.com/?v=6345181290027",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSVwH9wyEo7VlkqI69Pf52OM4Gyp0RqL_q5T-Eq_kxO8POobCvw",
+                    "match": "different",
+                    "why": "Title says AirPods Pro 2nd gen; the image has a different stem and a different tip"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Original Apple AirPods Pro 1st Generation - LEFT Side Only (A2084) - Very Good | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com.hk/itm/203375633706",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSFibtQ42noApj71a4BAJWGs1AmPA3NAjVhsHHY696SsSbtDvQ-",
+                    "match": "likely",
+                    "why": "AirPods Pro 1st gen left earbud, same shape and sensor; the exact unit cannot be confirmed"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "NEW Apple AirPods Pro 1st Generation with MagSafe Wireless Charging Case for Sale in Citrus Heights, CA - OfferUp",
+                    "source": "OfferUp",
+                    "price": 0,
+                    "link": "https://offerup.com/item/detail/5bbfa9a6-d2fd-3124-ab38-a91137b89138",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTdgC-WUBRtA00Tzgt7i2mUdSFRPoQnNio9BqZjkU5am-QecJwn",
+                    "match": "similar",
+                    "why": "Pair of AirPods Pro shown, but the listing is for the whole set with a case, and the earbud pair looks like a newer model"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 16465,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 7,
+                    "title": "Apple Refurbished Excellent AirPods Pro 3rd Gen Left Replacement AirPod (A3064) White - Best Buy",
+                    "source": "Best Buy",
+                    "price": 0,
+                    "link": "https://www.bestbuy.com/product/apple-airpods-pro-3rd-gen-left-replacement-airpod-a3064-white/JJGWTXQHYK/sku/12826485",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSEoxdxNZBlJC-Sa4BcHjPOWLzFr9p2NFgU_4lD4TJKxFE2ONOa",
+                    "match": "different",
+                    "why": "Title says 3rd Gen A3064, a different model"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Apple Airpod Pro Replacement Left Airpod 2nd Generation Right Airpod AirPods Pro (2nd Gen) Right Ear",
+                    "source": "koendegraaf.nl",
+                    "price": 0,
+                    "link": "https://www.koendegraaf.nl/product-similar-image/?12700639050910",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRzjkYgYSTi7mZTCPKotfjFhnEkMXcG1PnfiHyvebsmgheDNlSZ",
+                    "match": "similar",
+                    "why": "Pro-style bud, but generation unclear from title and image"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "Apple AirPods Pro 3 (3rd Gen) Original OEM Replacement Earbud Pod A3063 - Right | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/227019813899",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTy7FfQZQJqVg9lZHsnNgBCTW5hqyLN5m9pCulWKhF8VjazMWBh",
+                    "match": "different",
+                    "why": "Title names AirPods Pro 3, a different generation"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Apple AirPods Left Side replacement Earphone 2nd generation – Afashionistastore",
+                    "source": "Afashionistastore",
+                    "price": 0,
+                    "link": "https://afashionistastore.com/fr/products/apple-airpods-left-side-replacement-earphone-2nd-generation",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRDkCR81P93Zj2rn5gbnWiWF_y8hhgVvzty_8un3UvDWohehi6Z",
+                    "match": "similar",
+                    "why": "Vague title, generation unconfirmed"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "Corn True Wireless Stereo Pro Earbuds, 360 mAh, White - EB015",
+                    "source": "راية",
+                    "price": 0,
+                    "link": "https://www.rayashop.com/en/corn-true-wireless-stereo-pro-earbuds-white-eb015-1298",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRo4Hkl12SW3_G5oCGsSQwutbVO4BfSkvnIL-g_2HS1uikgkK80",
+                    "match": "different",
+                    "why": "Non-Apple brand knockoff listing"
+                  },
+                  {
+                    "rank": 13,
+                    "title": "Apple AirPods Pro 1st Generation Left Airpod OEM Left Side Airpods Pro 1st Only | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.ca/itm/115149763582",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQmlswBUdf-w6CcKIr85vVfTnqKYnK-sc_y4cqWVnBQ6MxKQL9d",
+                    "match": "likely",
+                    "why": "Pro 1st gen design matches, but generation can't be confirmed from the photo"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 16465,
+                "purpose": "identify",
+                "confidence": "likely",
+                "rank": 1,
+                "title": "Buy Apple Airpods Pro 1st Gen LEFT Side Airpod Only - Original Apple Airpods Pro 1st",
+                "source": "eBay",
+                "price": 0,
+                "link": "https://www.ebay.com/itm/114297836968",
+                "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSHSwAjEKzqrfu9bsmAGEfOCc-OTAtKLj_WUleMl1_dtuX5aEuV"
+              },
+              {
+                "step": "page_price",
+                "at": 16600,
+                "tried": [
+                  {
+                    "url": "https://www.ebay.com/itm/114297836968",
+                    "found": false,
+                    "amount": null,
+                    "currency": null
+                  },
+                  {
+                    "url": "https://www.ebay.com/itm/277076752744",
+                    "found": false,
+                    "amount": null,
+                    "currency": null
+                  },
+                  {
+                    "url": "https://www.ebay.com.hk/itm/203375633706",
+                    "found": false,
+                    "amount": null,
+                    "currency": null
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 23157,
+                "purpose": "pricing",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 4,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Apple AirPods Pro 1st Gen Replacement – Left, Right or Charging Case Left AirPod Pro",
+                    "source": "Walmart - TheRightOne",
+                    "price": 49.99,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Buy+Apple+Airpods+Pro+1st+Gen+LEFT+Side+Airpod+Only+-+Original+Apple+Airpods+Pro+1st+*&prds=localAnnotatedOfferId:1,catalogid:4880435140606315223,gpcid:150092",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcRNadgBMuqUaIVBqlxj5sI3JkdvXNnX_SIUS3Uv45Wj9zc6WRobum3-jlxcuzgusTRlvUQWvcET4OQGttZDNdFbmbwn5WAyOmaG7EQJx-f5KZgYwy6z16KPJA",
+                    "match": "likely",
+                    "why": "AirPods Pro 1st gen left bud; render, single bud vs pair"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Apple Airpods Pro Earbud 1st Gen. Left Ear Only A2084 Untested As-is",
+                    "source": "eBay - elot_sales",
+                    "price": 9.96,
+                    "link": "",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcT4ju32hK4e4D6P27OQcI2XpllE470X3sGqoEq4v-fG8P5CxDUcYYigeTId_qPhSxoOhsDptevBzQ_eP7gCPrWmiimq5CW71CzdZGzROzeqKI2XFaTGBckr4w",
+                    "match": "likely",
+                    "why": "Same AirPods Pro 1st gen bud design, single bud"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "Single Earbud for Left Apple Airpods Pro 1st Gen Earbud,Left Ear Side Only(A2084)",
+                    "source": "Newegg.com - SIMPLIZED",
+                    "price": 83.99,
+                    "link": "",
+                    "image": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcSrQOx45dxYtFgGmUIsqwO0_zmoFSJ97j0ccD_6mfRuOa5P7UmSfmmCOdRRacR9YRWhMjm-8kyBr1MKq_wHWkvqIfAsseZlRZaQSae4OEXrI3ungwgNDW824Q",
+                    "match": "different",
+                    "why": "Line drawing illustration, not a product photo"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Apple Airpod Pro 1st Gen. Replacement Left Side Only A2084 100%",
+                    "source": "eBay - dealzeez",
+                    "price": 41.29,
+                    "link": "",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcQM3FHEbIp3VXuJLQ9P8wQi_fYfHQCKo4IgY0DWu4q5wHZKJS1AUNhgJ5vtF_ZyLgIYS-cQopzXgevdChea20eySzCi3MksEX0qYcSamtvIvttX-RFhzdWB",
+                    "match": "likely",
+                    "why": "Same AirPods Pro 1st gen bud shape, single bud"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 23157,
+                "purpose": "pricing",
+                "confidence": "likely",
+                "rank": 0,
+                "title": "Apple AirPods Pro 1st Gen Replacement – Left, Right or Charging Case Left AirPod Pro",
+                "source": "Walmart - TheRightOne",
+                "price": 49.99,
+                "link": "https://www.google.com/search?ibp=oshop&q=Buy+Apple+Airpods+Pro+1st+Gen+LEFT+Side+Airpod+Only+-+Original+Apple+Airpods+Pro+1st+*&prds=localAnnotatedOfferId:1,catalogid:4880435140606315223,gpcid:150092",
+                "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcRNadgBMuqUaIVBqlxj5sI3JkdvXNnX_SIUS3Uv45Wj9zc6WRobum3-jlxcuzgusTRlvUQWvcET4OQGttZDNdFbmbwn5WAyOmaG7EQJx-f5KZgYwy6z16KPJA"
+              },
+              {
+                "step": "pricing",
+                "at": 23157,
+                "adopted": true,
+                "confidence": "likely"
+              },
+              {
+                "step": "alternatives",
+                "at": 24884,
+                "retailerQuery": "Apple AirPods Pro 1st Gen Replacement – Left, Right or Charging Case Left AirPod Pro",
+                "unbranded": 40,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "gate",
+                "at": 28443,
+                "purpose": "rebrand+retailer",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 4,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Apple AirPods Pro 3",
+                    "source": "Walmart",
+                    "price": 235,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Apple+AirPods+Pro+wireless+earbuds+with+silicone+ear+tips+tech+1+pair+*&prds=localAnnotatedOfferId:1,catalogid:2327420681279440941,gpcid:12576798458081720929,",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcRo-FBcS97knOjsjUSKG4beC6gFTy-92HKiuv9fAe2BULwMEBX2QWIsqzduFFdTjCjlQ7Ly7vFNqyHoAD_zyck2Zo-CaXd502yrcMWsiw3n",
+                    "match": "different",
+                    "why": "Title says AirPods Pro 3, a different generation; the image looks like a generic lookalike with a different tip and stem design"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "AirPods Pro Apple",
+                    "source": "eBay",
+                    "price": 38,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Apple+AirPods+Pro+wireless+earbuds+with+silicone+ear+tips+tech+1+pair+*&prds=localAnnotatedOfferId:1,catalogid:6883422599141817139,gpcid:2026503356983009469,p",
+                    "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcRQKZeNtwS7BDozqnbOObBgBpWl23eQHdukRz4M-mIuI7H881jCdJfdyX0EflG8oSFVvXXN7L0Ri9a5LbKlgfg5SGfrpuv_JekHdGUh7rdq",
+                    "match": "likely",
+                    "why": "AirPods Pro (1st gen) earbuds with the same stem and force sensor; the photo is low quality and the case is not in IMAGE A, so the generation can't be confirmed"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Apple AirPods Pro with MagSafe Case",
+                    "source": "MelroseMAC",
+                    "price": 229,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Apple+AirPods+Pro+wireless+earbuds+with+silicone+ear+tips+tech+1+pair+*&prds=localAnnotatedOfferId:1,catalogid:4891805616949897996,gpcid:3896066944466806859,p",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcQuJQKXM0p1tFiVPL22_Jr-4NddTrVaIFPYC-xwXTGaBMXKEqUUTwPFAjENwJxZKDgN0ehXpkte2Z0-kH288-M9Qr-koqSu9w6YBfaCzPoKbWPBt5y135Cvuw",
+                    "match": "similar",
+                    "why": "Image shows the AirPods Pro 2 with a USB-C/MagSafe case; the stem and tips look different from IMAGE A's 1st gen"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Apple AirPods Pro White with Magsafe Charging Case In Ear Headphones MLWK3AM/A",
+                    "source": "Walmart",
+                    "price": 253,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Apple+AirPods+Pro+wireless+earbuds+with+silicone+ear+tips+tech+1+pair+*&prds=localAnnotatedOfferId:1,catalogid:16009161307122264238,gpcid:7653949458363387390,",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSDNDA7txeqW-Myg-KWR0KYc4bhXupKhwemLCM-O2hF9nSQB73O1qPadKh73c1Mnlo7svgqKoTFD4CLDLTGMcZyFzxwvMuTFirNSRphJtE",
+                    "match": "exact",
+                    "why": "AirPods Pro 1st gen with MagSafe case, MLWK3AM/A; the earbud shape and stem vent match IMAGE A"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 28443,
+                "purpose": "rebrand+retailer",
+                "confidence": "exact",
+                "rank": 3,
+                "title": "Apple AirPods Pro White with Magsafe Charging Case In Ear Headphones MLWK3AM/A",
+                "source": "Walmart",
+                "price": 253,
+                "link": "https://www.google.com/search?ibp=oshop&q=Apple+AirPods+Pro+wireless+earbuds+with+silicone+ear+tips+tech+1+pair+*&prds=localAnnotatedOfferId:1,catalogid:16009161307122264238,gpcid:7653949458363387390,",
+                "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSDNDA7txeqW-Myg-KWR0KYc4bhXupKhwemLCM-O2hF9nSQB73O1qPadKh73c1Mnlo7svgqKoTFD4CLDLTGMcZyFzxwvMuTFirNSRphJtE"
+              },
+              {
+                "step": "identified",
+                "at": 28443,
+                "engineUsed": "unbranded_serper",
+                "confidence": "exact",
+                "title": "Apple AirPods Pro White with Magsafe Charging Case In Ear Headphones MLWK3AM/A",
+                "priced": true
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "correct exact"
+      },
+      "costUsd": 0.050683
+    },
+    {
+      "caseId": "stanley-quencher-eur",
+      "intent": "verdict",
+      "status": 200,
+      "ms": 16668,
+      "json": {
+        "found": true,
+        "mode": "VERDICT",
+        "priceSource": "screenshot",
+        "engineUsed": "lens_serper+priced_page",
+        "matchConfidence": "likely",
+        "category": "home",
+        "sourceProduct": {
+          "title": "STANLEY QUENCHER 40OZ - Tooth of Time Traders",
+          "price": 49.99,
+          "currency": "USD",
+          "imageUrl": "/api/proxy-image?url=https%3A%2F%2Fencrypted-tbn3.gstatic.com%2Fimages%3Fq%3Dtbn%3AANd9GcSXQSuLfgXjrXPRXPM68OYVSKJptHc6w3S0PmNoetokxovmnyuh&s=181f43f01f4784002673adc6cd50538d",
+          "productUrl": "https://store.philmontscoutranch.org/stanley-quencher-40oz/",
+          "affiliateUrl": "https://store.philmontscoutranch.org/stanley-quencher-40oz/",
+          "linkIsDirect": true,
+          "platform": "Philmont Scout Ranch"
+        },
+        "analysis": {
+          "retailEstimate": 61.89,
+          "retailSource": "screenshot",
+          "markup": 24,
+          "verdict": "OVERPRICED",
+          "savings": 11.9,
+          "savingsPercent": 19,
+          "confidence": "high",
+          "retailOriginal": {
+            "amount": 55,
+            "currency": "EUR",
+            "rate": 0.88862607,
+            "asOf": "2026-10-03"
+          }
+        },
+        "scanId": null,
+        "evaluation": {
+          "cached": false,
+          "ms": 16606,
+          "trace": {
+            "totalMs": 16588,
+            "claudeUsd": 0.024628,
+            "searchesByProvider": {
+              "serper": 2
+            },
+            "creditsByProvider": {
+              "serper": 5
+            },
+            "cache": {
+              "readTokens": 4434,
+              "writeTokens": 1478,
+              "uncachedInputTokens": 6073,
+              "callsReading": 3,
+              "calls": 4
+            },
+            "msByLayer": {
+              "model:extraction": 2331,
+              "model:gate": 8884,
+              "search:lens": 2050,
+              "search:shopping": 2279
+            },
+            "thinkingPerCall": 86,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2331,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 960,
+                "outputTokens": 172,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 1478,
+                "costUsd": 0.007335,
+                "stopReason": "end_turn",
+                "thinkingApprox": 89
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3737,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1941,
+                "outputTokens": 302,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0071976,
+                "stopReason": "end_turn",
+                "thinkingApprox": 129
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2567,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1389,
+                "outputTokens": 163,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0047036000000000005,
+                "stopReason": "end_turn",
+                "thinkingApprox": 65
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2580,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1783,
+                "outputTokens": 153,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.005391600000000001,
+                "stopReason": "end_turn",
+                "thinkingApprox": 61
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 2050,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 2279,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 2453,
+                "brand": "Stanley",
+                "productName": "Quencher® H2.0 FlowState™ Tumbler | 1.18L",
+                "visiblePrice": 55,
+                "currency": "EUR",
+                "quantity": "1 unit",
+                "category": "home",
+                "storeName": "Stanley 1913",
+                "visibleUrl": "eu.stanley1913.com",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 4566,
+                "list": "organic",
+                "rows": 10,
+                "usable": 10,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 4659,
+                "engine": "serper",
+                "candidates": 10,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "Quencher H2.0 FlowState Tumbler | 0.89L | Stanley 1913 NL",
+                    "source": "Stanley 1913",
+                    "price": 0,
+                    "link": "https://eu.stanley1913.com/products/quencher-h2-0-flowstate-tumbler-0-89-l?variant=49509058052420&bvstate=pg:3/ct:r",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcS_hpsmsXt9mvzNnq7ok5aTbX7cpeu_qJkAjYwWJ2UGo-eIVkxB"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Stanley Quencher H2.0 Tumbler with Handle and Straw 14 oz Flowstate 3-Position Lid Cup Holder Compatible for Travel Insu",
+                    "source": "Amazon.ae",
+                    "price": 0,
+                    "link": "https://www.amazon.ae/Flowstate-3-Position-Compatible-Insulated-Stainless/dp/B0DQY7LP4H",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSi_7pLMAnHpm9me4RNDSB5KqeDJ3BOvboCN7MVLSrl1SnND9Rd"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Stanley 1913 Quencher H2.0 Water Bottle with Straw 1.18L - Rose Quartz | Flowstate - Cold For 11 Hours - With Ice For 48",
+                    "source": "Amazon.it",
+                    "price": 0,
+                    "link": "https://www.amazon.it/-/en/STANLEY-Quencher-Water-Bottle-Straw/dp/B0CNTWY3VM",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT4gcqyGw5oL6EKap8IFwPIyB6jNIy2yUHV3RNSWaEOE9uOQNYo"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Stanley Quencher H2.0 FlowState Drinking Bottle with Straw, 1.2 L, Thermal Mug, Cools for 11 Hours, 48 Hours, Ice-Cooled",
+                    "source": "Amazon.ca",
+                    "price": 0,
+                    "link": "https://www.amazon.ca/Stanley-Quencher-FlowState-Ice-Cooled-Dishwasher/dp/B0CNTWY3VM",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRdRFP_40eZ1w4LrIMMhJcirkytbD57451j3HNMu0QAEv7ZRbl3"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "STANLEY QUENCHER 40OZ - Tooth of Time Traders",
+                    "source": "Philmont Scout Ranch",
+                    "price": 0,
+                    "link": "https://store.philmontscoutranch.org/stanley-quencher-40oz/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSXQSuLfgXjrXPRXPM68OYVSKJptHc6w3S0PmNoetokxovmnyuh"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Quencher H2.0 FlowState™ Tumbler (30 oz - Rose Quartz 2.0) | Sporting Life Online",
+                    "source": "sportinglife.ca",
+                    "price": 0,
+                    "link": "https://www.sportinglife.ca/en-CA/equipment/more-gear/hydration/water-bottles-tumblers/quencher-h2.0-flowstate-tumbler-30-oz---rose-quartz-2.0/25864638.html",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcS-K8_-fFjB-d37tI_E-TqA_Vo89j0iQOFpkWGIizl3F6KpzJGI"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "25 Cheap Mother's Day Gifts You Can Buy Before May 12",
+                    "source": "pedestrian.tv",
+                    "price": 0,
+                    "link": "https://www.pedestrian.tv/style/cheap-mothers-day-gifts-australia/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcR3px72F2Xc6duG3axNfIuGybBgqC2VjaMGQ0F6Ws09FHhX0xwL"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Stanley Cup Meme Giant Water Bottle | TikTok",
+                    "source": "TikTok",
+                    "price": 0,
+                    "link": "https://www.tiktok.com/discover/stanley-cup-meme-giant-water-bottle",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcTnw9He29uU9E4Q3oCMTh6UQEiHIlIaUvsnjRlX7D9dKclj0L4O"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "world.taobao.com: Stanley Shaker Cup Large Capacity Portable Sealed Leak-Proof Stylish High-Value Fitness Outdoor Sports",
+                    "source": "Taobao",
+                    "price": 0,
+                    "link": "https://world.taobao.com/lang/en-us/item/VGFnWHhwcVJ6V0Fydzl6dGxRb0FjUT09.htm",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQyOFudkUe4alY-WVCdXCfKHYEF-F5RM5lTEmoa_cpB__EMepdK"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Stanley Cup Spiral Notebooks for Sale | Redbubble",
+                    "source": "Redbubble",
+                    "price": 0,
+                    "link": "https://www.redbubble.com/shop/stanley+cup+spiral-notebooks",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSl-JvUy9q_u8TuYUSsOFr1ZvcEBLZmUqIm4UNNKGO0zFprbKF2"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 4673,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 8481,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Quencher H2.0 FlowState Tumbler | 0.89L | Stanley 1913 NL",
+                    "source": "Stanley 1913",
+                    "price": 0,
+                    "link": "https://eu.stanley1913.com/products/quencher-h2-0-flowstate-tumbler-0-89-l?variant=49509058052420&bvstate=pg:3/ct:r",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcS_hpsmsXt9mvzNnq7ok5aTbX7cpeu_qJkAjYwWJ2UGo-eIVkxB",
+                    "match": "similar",
+                    "why": "Same Rose Quartz Quencher but the title says 0.89L (30 oz), not 1.18L"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Stanley Quencher H2.0 Tumbler with Handle and Straw 14 oz Flowstate 3-Position Lid Cup Holder Compatible for Travel Insu",
+                    "source": "Amazon.ae",
+                    "price": 0,
+                    "link": "https://www.amazon.ae/Flowstate-3-Position-Compatible-Insulated-Stainless/dp/B0DQY7LP4H",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSi_7pLMAnHpm9me4RNDSB5KqeDJ3BOvboCN7MVLSrl1SnND9Rd",
+                    "match": "different",
+                    "why": "14 oz Quencher with a short body, not the 1.18L"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Stanley 1913 Quencher H2.0 Water Bottle with Straw 1.18L - Rose Quartz | Flowstate - Cold For 11 Hours - With Ice For 48",
+                    "source": "Amazon.it",
+                    "price": 0,
+                    "link": "https://www.amazon.it/-/en/STANLEY-Quencher-Water-Bottle-Straw/dp/B0CNTWY3VM",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT4gcqyGw5oL6EKap8IFwPIyB6jNIy2yUHV3RNSWaEOE9uOQNYo",
+                    "match": "likely",
+                    "why": "Title says 1.18L Rose Quartz, but the image shows two sizes side by side"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Stanley Quencher H2.0 FlowState Drinking Bottle with Straw, 1.2 L, Thermal Mug, Cools for 11 Hours, 48 Hours, Ice-Cooled",
+                    "source": "Amazon.ca",
+                    "price": 0,
+                    "link": "https://www.amazon.ca/Stanley-Quencher-FlowState-Ice-Cooled-Dishwasher/dp/B0CNTWY3VM",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRdRFP_40eZ1w4LrIMMhJcirkytbD57451j3HNMu0QAEv7ZRbl3",
+                    "match": "likely",
+                    "why": "Rose Quartz 40 oz-style Quencher, title says 1.2 L, but the image is a lifestyle shot and the size is not clear"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "STANLEY QUENCHER 40OZ - Tooth of Time Traders",
+                    "source": "Philmont Scout Ranch",
+                    "price": 0,
+                    "link": "https://store.philmontscoutranch.org/stanley-quencher-40oz/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSXQSuLfgXjrXPRXPM68OYVSKJptHc6w3S0PmNoetokxovmnyuh",
+                    "match": "likely",
+                    "why": "40 oz Quencher in pink with a straw lid, but a different tone and a label on the base"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Quencher H2.0 FlowState™ Tumbler (30 oz - Rose Quartz 2.0) | Sporting Life Online",
+                    "source": "sportinglife.ca",
+                    "price": 0,
+                    "link": "https://www.sportinglife.ca/en-CA/equipment/more-gear/hydration/water-bottles-tumblers/quencher-h2.0-flowstate-tumbler-30-oz---rose-quartz-2.0/25864638.html",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcS-K8_-fFjB-d37tI_E-TqA_Vo89j0iQOFpkWGIizl3F6KpzJGI",
+                    "match": "similar",
+                    "why": "Title says 30 oz, a smaller size than the 1.18L"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 11072,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 3,
+                "candidates": [
+                  {
+                    "rank": 8,
+                    "title": "world.taobao.com: Stanley Shaker Cup Large Capacity Portable Sealed Leak-Proof Stylish High-Value Fitness Outdoor Sports",
+                    "source": "Taobao",
+                    "price": 0,
+                    "link": "https://world.taobao.com/lang/en-us/item/VGFnWHhwcVJ6V0Fydzl6dGxRb0FjUT09.htm",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQyOFudkUe4alY-WVCdXCfKHYEF-F5RM5lTEmoa_cpB__EMepdK",
+                    "match": "similar",
+                    "why": "Taobao listing titled as a shaker cup, likely a knockoff; the title doesn't confirm it's the Stanley Quencher H2.0 and the 40oz size is unverified"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Stanley Cup Spiral Notebooks for Sale | Redbubble",
+                    "source": "Redbubble",
+                    "price": 0,
+                    "link": "https://www.redbubble.com/shop/stanley+cup+spiral-notebooks",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSl-JvUy9q_u8TuYUSsOFr1ZvcEBLZmUqIm4UNNKGO0zFprbKF2",
+                    "match": "different",
+                    "why": "Spiral notebook with a printed cup picture, not the tumbler itself"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "25 Cheap Mother's Day Gifts You Can Buy Before May 12",
+                    "source": "pedestrian.tv",
+                    "price": 0,
+                    "link": "https://www.pedestrian.tv/style/cheap-mothers-day-gifts-australia/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcR3px72F2Xc6duG3axNfIuGybBgqC2VjaMGQ0F6Ws09FHhX0xwL",
+                    "match": "different",
+                    "why": "Gift-guide article, not a product listing"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 11072,
+                "purpose": "identify",
+                "confidence": "likely",
+                "rank": 2,
+                "title": "Stanley 1913 Quencher H2.0 Water Bottle with Straw 1.18L - Rose Quartz | Flowstate - Cold For 11 Hours - With Ice For 48",
+                "source": "Amazon.it",
+                "price": 0,
+                "link": "https://www.amazon.it/-/en/STANLEY-Quencher-Water-Bottle-Straw/dp/B0CNTWY3VM",
+                "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT4gcqyGw5oL6EKap8IFwPIyB6jNIy2yUHV3RNSWaEOE9uOQNYo"
+              },
+              {
+                "step": "page_price",
+                "at": 11673,
+                "tried": [
+                  {
+                    "url": "https://www.amazon.it/-/en/STANLEY-Quencher-Water-Bottle-Straw/dp/B0CNTWY3VM",
+                    "found": false,
+                    "amount": null,
+                    "currency": null
+                  },
+                  {
+                    "url": "https://www.amazon.ca/Stanley-Quencher-FlowState-Ice-Cooled-Dishwasher/dp/B0CNTWY3VM",
+                    "found": false,
+                    "amount": null,
+                    "currency": null
+                  },
+                  {
+                    "url": "https://store.philmontscoutranch.org/stanley-quencher-40oz/",
+                    "found": true,
+                    "amount": 49.99,
+                    "currency": "USD"
+                  }
+                ]
+              },
+              {
+                "step": "alternatives",
+                "at": 13953,
+                "retailerQuery": "STANLEY QUENCHER 40OZ - Tooth of Time Traders",
+                "unbranded": 3,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "gate",
+                "at": 16582,
+                "purpose": "rebrand+retailer",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 3,
+                "candidates": [
+                  {
+                    "rank": 19,
+                    "title": "Stanley Quencher H2.0 Flowstate Vacuum-Insulated Travel Tumbler 1.18L",
+                    "source": "McGrocer",
+                    "price": 99.42,
+                    "link": "",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSZtXL-EOE2ZRAciKhTabDkr0VpLCw-1tw5lDxTjidKvY6356v6cMrw2k3Kno8NRs_La0Advqzy7CEfkANcprtt_H5QQDYpJ1uWR3aVp1bWuTi-73FspmRBWg",
+                    "match": "similar",
+                    "why": "Same Quencher H2.0 model but black colourway, not the pale pink of IMAGE A"
+                  },
+                  {
+                    "rank": 25,
+                    "title": "Stanley 40 Oz Stainless Steel H2.0 Flowstate Quencher Tumbler - Home",
+                    "source": "Mercari",
+                    "price": 35,
+                    "link": "",
+                    "image": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcSK5oBVYcSfmAhixLiKojhXYlRybGRGAhLPFnIOTWJ1E2qfA1t13CaFsBRw7naY_e6CvM3zRBnuL5wsmekFSudnzWny1cJl4faEMpAMt0I",
+                    "match": "similar",
+                    "why": "Same Quencher model but mint green colourway, and the 40 oz title is the same size as 1.18L only by conversion"
+                  },
+                  {
+                    "rank": 36,
+                    "title": "Stanley THE QUENCHER H2.0 FLOWSTATE TUMBLER 40 OZ - Fog - NEW, In Stock - New Home | Color: Grey",
+                    "source": "Mercari",
+                    "price": 98,
+                    "link": "",
+                    "image": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcSj0HyyaMFVJh2rjA_q_4zhcyMRtonjOGpqJU7X2JeLLvI6bxJYlf870S93FRMIQYHSiwZPhiBllQQYTL4jUxoStjHHPPJY8roP4EpF7bo",
+                    "match": "similar",
+                    "why": "Same Quencher model but grey/fog colourway, not pink"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 16582,
+                "purpose": "rebrand+retailer",
+                "confidence": "unverified",
+                "rank": 19,
+                "title": "Stanley Quencher H2.0 Flowstate Vacuum-Insulated Travel Tumbler 1.18L",
+                "source": "McGrocer",
+                "price": 99.42,
+                "link": "",
+                "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSZtXL-EOE2ZRAciKhTabDkr0VpLCw-1tw5lDxTjidKvY6356v6cMrw2k3Kno8NRs_La0Advqzy7CEfkANcprtt_H5QQDYpJ1uWR3aVp1bWuTi-73FspmRBWg"
+              },
+              {
+                "step": "identified",
+                "at": 16582,
+                "engineUsed": "lens_serper+priced_page",
+                "confidence": "likely",
+                "title": "STANLEY QUENCHER 40OZ - Tooth of Time Traders",
+                "priced": true
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "correct likely"
+      },
+      "costUsd": 0.029628
+    },
+    {
+      "caseId": "flowlife-flowgun-air",
+      "intent": "finder",
+      "status": 200,
+      "ms": 15182,
+      "json": {
+        "found": false,
+        "mode": "UNRESOLVED",
+        "priceSource": "estimated",
+        "engineUsed": "none",
+        "matchConfidence": "unverified",
+        "category": "other",
+        "sourceProduct": {
+          "title": "Product not identified",
+          "price": 0,
+          "currency": "USD",
+          "imageUrl": "",
+          "productUrl": "",
+          "affiliateUrl": "",
+          "platform": "unknown"
+        },
+        "analysis": {
+          "retailEstimate": 0,
+          "retailSource": "estimated",
+          "markup": 0,
+          "verdict": "UNVERIFIED",
+          "savings": 0,
+          "savingsPercent": 0,
+          "confidence": "low"
+        },
+        "scanId": null,
+        "evaluation": {
+          "cached": false,
+          "ms": 15119,
+          "trace": {
+            "totalMs": 15104,
+            "claudeUsd": 0.023196,
+            "searchesByProvider": {
+              "serper": 2
+            },
+            "creditsByProvider": {
+              "serper": 5
+            },
+            "cache": {
+              "readTokens": 0,
+              "writeTokens": 0,
+              "uncachedInputTokens": 7573,
+              "callsReading": 0,
+              "calls": 4
+            },
+            "msByLayer": {
+              "model:extraction": 1841,
+              "model:gate": 9317,
+              "search:lens": 1842,
+              "search:shopping": 1716
+            },
+            "thinkingPerCall": 70,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 1841,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1378,
+                "outputTokens": 140,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.004156,
+                "stopReason": "end_turn",
+                "thinkingApprox": 63
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 4119,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2306,
+                "outputTokens": 338,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.007992,
+                "stopReason": "end_turn",
+                "thinkingApprox": 112
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3237,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2339,
+                "outputTokens": 250,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.007178,
+                "stopReason": "end_turn",
+                "thinkingApprox": 82
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 1961,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1550,
+                "outputTokens": 77,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.00387,
+                "stopReason": "end_turn",
+                "thinkingApprox": 21
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 1842,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 1716,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 1847,
+                "brand": "",
+                "productName": "black mini percussion massage gun with ball head",
+                "visiblePrice": null,
+                "currency": "",
+                "quantity": "1 unit",
+                "category": "fitness",
+                "storeName": "",
+                "visibleUrl": "",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 3749,
+                "list": "organic",
+                "rows": 59,
+                "usable": 40,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 3811,
+                "engine": "serper",
+                "candidates": 40,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "Amazon.com: PlayMakar MVPmini Massage Gun HeatTip Accessory for Percussion Massage with Heat Technology (Massage Gun Not",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/PlayMakar-MVPmini-Massage-Percussion-Technology/dp/B0BB5Z7Z6X",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQZfXmELHj7C_CrOtbnn83dsmZNmAeu-c_i-UEYzFqQCyGyE7hz"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Amazon.com: PlayMakar ShocDuo Dual Head Absorption & Reverberation Massage Head for MVP+ Massage Gun : Health & Househol",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/PlayMakar-ShocDuo-Absorption-Reverberation-Massage/dp/B0BHKQFR97",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScW6azhYIT756Xc5l7WDOTR6JAgVTY-6DDA9PJyaI94OF24GhW"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Amazon.com: Herramienta de ejercicio de mano para adultos, masilla de entrenamiento de fuerza de agarre, ejercicio de ma",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/-/es/Masilla-ejercicio-mano-aliviar-estrés/dp/B0FS7W5FJ6",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcR4ph8tEMfJ9OtOd3whA-iqE8GvJCtYL5h0Gdh2NYh8TfsWYnWS"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "MVPmini 5 in 1 Percussion Massager with Carrying Case and 4 Silica Rubber Tapotement Massage Heads: Optional Roller Head",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://www.walmart.com/ip/MVPmini-5-in-1-Percussion-Massager-with-Carrying-Case-and-4-Silica-Rubber-Tapotement-Massage-Heads-Optional-Roller-Head-and-HeatTip/5513130387",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSqV8z9S3PxNFN07oIsLvS4E-Qfa_Osd3D8L_bV8Yz3jRq1mCZ6"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Playmakar MVP Mini Percussion Massage System Massage Gun MVP-500 for sale online | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/p/16060936494",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQQHJP4Czu5_QDehQc3UgG8ZTIAmHacDmU5fMEzOcKggVyykpZ3"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "iLive Personal Handheld Massager Black IMP301B - Office Depot",
+                    "source": "Office Depot",
+                    "price": 0,
+                    "link": "https://www.officedepot.com/a/products/9936997/iLive-Personal-Handheld-Massager-Black-IMP301B/",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTSPF8QMR9eptbiG_2KH8EOelscGeEqOUgMa02g4oQt9ThRQhbh"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "Buy Cult Flex Portable Deep Tissue Massage Gun for Full-Body Muscle Relief, Ultra-Lightweight Handheld Design, 6 Speed L",
+                    "source": "cultstore.com",
+                    "price": 0,
+                    "link": "https://cultstore.com/products/cult-flex-portable-deep-tissue-massage-gun-for-full-body-muscle-relief-ultra-lightweight-handheld-design-6-speed-levels-up-to-3-hour-battery-life-4-interchangeable-heads",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQue5ZKsvwffzusiJ53MTII6d86EC61d8IzYTsu6_28jBwVXQrT"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "xiaomi massage gun tissue handheld electric muscle - Temu Greece",
+                    "source": "Temu",
+                    "price": 0,
+                    "link": "https://www.temu.com/gr-en/xiaomi-massage-gun--tissue-handheld-electric-muscle-massager-percussion-massage--3-attachments---gift-g-601102905505618.html",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTrKJd8GGUTTZu5mIV8bSFdRIyqEZxJAH8TDhDhtFasgN6pf9N7"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "SLLYE Pistola de masaje muscular personal de mano, masajeador de tejido profundo con 3 velocidades, potente pistola de m",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/-/es/masajeador-velocidades-percusión-inalámbrica-dispositivo/dp/B09728LNGQ",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRZ0FEL-SKt-EhwZV_lWdVg6pbHLdrAJYqk1yVmVqLYBkkramXk"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Muscle Massager Gun for Back Relief Deep Tissue Pocket Percussion Tool",
+                    "source": "cencalsports.org",
+                    "price": 0,
+                    "link": "https://cencalsports.org/products/muscle-massager-gun-for-back-relief-deep-tissue-pocket-percussion-tool-ff3225",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSGknIb5yJxMMyFFFzr9KavIQJNVV9PVMUs9fG_yIWpvEa1UooR"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "LHILS マッサージガン 4アタッチメント付 BLD-701 アテックス AX-HX450RD ルルト゛カ゛ン プラスアーム マッサージ",
+                    "source": "bensonpfwbc.com",
+                    "price": 0,
+                    "link": "https://www.bensonpfwbc.com/?shop/detail/Z50002164486771",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcStqPV1b8RbEfhw0yTB2rXHpoJe-PXi8WrWp6piCbbyrqA_aAER"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Hxlamzoo Mini Massage Gun for Muscle Pain Relief - Deep Tissue Percussion Therapy, 6 Speeds & 4 Attachments, Portable De",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://business.walmart.com/ip/Hxlamzoo-Mini-Massage-Gun-Muscle-Pain-Relief-Deep-Tissue-Percussion-Therapy-6-Speeds-4-Attachments-Portable-Design-Back-Neck-Shoulder-Home-Travel-Use/16126918369",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQax85lheDzqBVhgBsStlxv9PgpP421oxdABuRQg_VE51Dkjdkl"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 3825,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 8035,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Amazon.com: PlayMakar MVPmini Massage Gun HeatTip Accessory for Percussion Massage with Heat Technology (Massage Gun Not",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/PlayMakar-MVPmini-Massage-Percussion-Technology/dp/B0BB5Z7Z6X",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQZfXmELHj7C_CrOtbnn83dsmZNmAeu-c_i-UEYzFqQCyGyE7hz",
+                    "match": "different",
+                    "why": "Listing is a HeatTip accessory only (gun not included), and the gun shape is a different design with a vent on top"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Amazon.com: PlayMakar ShocDuo Dual Head Absorption & Reverberation Massage Head for MVP+ Massage Gun : Health & Househol",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/PlayMakar-ShocDuo-Absorption-Reverberation-Massage/dp/B0BHKQFR97",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScW6azhYIT756Xc5l7WDOTR6JAgVTY-6DDA9PJyaI94OF24GhW",
+                    "match": "similar",
+                    "why": "Listing is a massage head accessory for the MVP+; the gun looks similar, but it is a different product"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "MVPmini 5 in 1 Percussion Massager with Carrying Case and 4 Silica Rubber Tapotement Massage Heads: Optional Roller Head",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://www.walmart.com/ip/MVPmini-5-in-1-Percussion-Massager-with-Carrying-Case-and-4-Silica-Rubber-Tapotement-Massage-Heads-Optional-Roller-Head-and-HeatTip/5513130387",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSqV8z9S3PxNFN07oIsLvS4E-Qfa_Osd3D8L_bV8Yz3jRq1mCZ6",
+                    "match": "likely",
+                    "why": "MVPmini kit with the same T-shaped black body and ball head; the kit adds a case and extra heads, and a vent at the top is not visible in image A"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Amazon.com: Herramienta de ejercicio de mano para adultos, masilla de entrenamiento de fuerza de agarre, ejercicio de ma",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/-/es/Masilla-ejercicio-mano-aliviar-estrés/dp/B0FS7W5FJ6",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcR4ph8tEMfJ9OtOd3whA-iqE8GvJCtYL5h0Gdh2NYh8TfsWYnWS",
+                    "match": "different",
+                    "why": "Larger pistol-grip gun with different handle and a logo; the title is for a hand-exercise tool, not a massage gun"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Playmakar MVP Mini Percussion Massage System Massage Gun MVP-500 for sale online | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/p/16060936494",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQQHJP4Czu5_QDehQc3UgG8ZTIAmHacDmU5fMEzOcKggVyykpZ3",
+                    "match": "likely",
+                    "why": "Playmakar MVP Mini with the same compact T-body and ball head; the kit adds a case and extra heads"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "iLive Personal Handheld Massager Black IMP301B - Office Depot",
+                    "source": "Office Depot",
+                    "price": 0,
+                    "link": "https://www.officedepot.com/a/products/9936997/iLive-Personal-Handheld-Massager-Black-IMP301B/",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTSPF8QMR9eptbiG_2KH8EOelscGeEqOUgMa02g4oQt9ThRQhbh",
+                    "match": "different",
+                    "why": "iLive brand, different body shape with a long angled handle"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 11350,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 6,
+                    "title": "Buy Cult Flex Portable Deep Tissue Massage Gun for Full-Body Muscle Relief, Ultra-Lightweight Handheld Design, 6 Speed L",
+                    "source": "cultstore.com",
+                    "price": 0,
+                    "link": "https://cultstore.com/products/cult-flex-portable-deep-tissue-massage-gun-for-full-body-muscle-relief-ultra-lightweight-handheld-design-6-speed-levels-up-to-3-hour-battery-life-4-interchangeable-heads",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQue5ZKsvwffzusiJ53MTII6d86EC61d8IzYTsu6_28jBwVXQrT",
+                    "match": "exact",
+                    "why": "Cult Flex gun: same black body, round head and side control panel; title doesn't contradict"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "xiaomi massage gun tissue handheld electric muscle - Temu Greece",
+                    "source": "Temu",
+                    "price": 0,
+                    "link": "https://www.temu.com/gr-en/xiaomi-massage-gun--tissue-handheld-electric-muscle-massager-percussion-massage--3-attachments---gift-g-601102905505618.html",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTrKJd8GGUTTZu5mIV8bSFdRIyqEZxJAH8TDhDhtFasgN6pf9N7",
+                    "match": "similar",
+                    "why": "Grey Xiaomi-style gun with different body shape and no side control strip"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "SLLYE Pistola de masaje muscular personal de mano, masajeador de tejido profundo con 3 velocidades, potente pistola de m",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/-/es/masajeador-velocidades-percusión-inalámbrica-dispositivo/dp/B09728LNGQ",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRZ0FEL-SKt-EhwZV_lWdVg6pbHLdrAJYqk1yVmVqLYBkkramXk",
+                    "match": "different",
+                    "why": "Larger gun with red LED display and a different handle"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Muscle Massager Gun for Back Relief Deep Tissue Pocket Percussion Tool",
+                    "source": "cencalsports.org",
+                    "price": 0,
+                    "link": "https://cencalsports.org/products/muscle-massager-gun-for-back-relief-deep-tissue-pocket-percussion-tool-ff3225",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSGknIb5yJxMMyFFFzr9KavIQJNVV9PVMUs9fG_yIWpvEa1UooR",
+                    "match": "similar",
+                    "why": "Mini gun branded HeyShy, a different brand and layout"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Hxlamzoo Mini Massage Gun for Muscle Pain Relief - Deep Tissue Percussion Therapy, 6 Speeds & 4 Attachments, Portable De",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://business.walmart.com/ip/Hxlamzoo-Mini-Massage-Gun-Muscle-Pain-Relief-Deep-Tissue-Percussion-Therapy-6-Speeds-4-Attachments-Portable-Design-Back-Neck-Shoulder-Home-Travel-Use/16126918369",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQax85lheDzqBVhgBsStlxv9PgpP421oxdABuRQg_VE51Dkjdkl",
+                    "match": "similar",
+                    "why": "Angled-head gun with a different body shape and no visible side panel"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "LHILS マッサージガン 4アタッチメント付 BLD-701 アテックス AX-HX450RD ルルト゛カ゛ン プラスアーム マッサージ",
+                    "source": "bensonpfwbc.com",
+                    "price": 0,
+                    "link": "https://www.bensonpfwbc.com/?shop/detail/Z50002164486771",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcStqPV1b8RbEfhw0yTB2rXHpoJe-PXi8WrWp6piCbbyrqA_aAER",
+                    "match": "similar",
+                    "why": "Different head angle and body shape; title lists unrelated model names"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 11350,
+                "purpose": "identify",
+                "confidence": "exact",
+                "rank": 6,
+                "title": "Buy Cult Flex Portable Deep Tissue Massage Gun for Full-Body Muscle Relief, Ultra-Lightweight Handheld Design, 6 Speed L",
+                "source": "cultstore.com",
+                "price": 0,
+                "link": "https://cultstore.com/products/cult-flex-portable-deep-tissue-massage-gun-for-full-body-muscle-relief-ultra-lightweight-handheld-design-6-speed-levels-up-to-3-hour-battery-life-4-interchangeable-heads",
+                "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQue5ZKsvwffzusiJ53MTII6d86EC61d8IzYTsu6_28jBwVXQrT"
+              },
+              {
+                "step": "page_price",
+                "at": 11396,
+                "tried": [
+                  {
+                    "url": "https://cultstore.com/products/cult-flex-portable-deep-tissue-massage-gun-for-full-body-muscle-relief-ultra-lightweight-handheld-design-6-speed-levels-up-to-3-h",
+                    "found": false,
+                    "amount": null,
+                    "currency": null
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 15103,
+                "purpose": "pricing",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 1,
+                "candidates": [
+                  {
+                    "rank": 35,
+                    "title": "Cnv Portable Mini Percussion Massage Gun, Handheld Deep Tissue Muscle Massager with 4 Replaceable Massage Heads, Quiet U",
+                    "source": "Walmart - ChaoJingMaoYi",
+                    "price": 90.99,
+                    "link": "",
+                    "image": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcRHQSRIUtuT2RUtcohKveCLYLr-TFndik3D10dYJ_QwsrtenrGcszSdaFX8UEKiwPAWj8QSJjdGeYSGYjwrHk4zVb0xU4yqKxWgrZmYs6KHgJNmCyRiEv7S",
+                    "match": "different",
+                    "why": "Candidate is a glossy silver body with a flat white tip and a single button. Image A is matte black with a round foam ball, a side LED indicator strip and a pow"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 15103,
+                "purpose": "pricing",
+                "confidence": "unverified",
+                "rank": 35,
+                "title": "Cnv Portable Mini Percussion Massage Gun, Handheld Deep Tissue Muscle Massager with 4 Replaceable Massage Heads, Quiet U",
+                "source": "Walmart - ChaoJingMaoYi",
+                "price": 90.99,
+                "link": "",
+                "image": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcRHQSRIUtuT2RUtcohKveCLYLr-TFndik3D10dYJ_QwsrtenrGcszSdaFX8UEKiwPAWj8QSJjdGeYSGYjwrHk4zVb0xU4yqKxWgrZmYs6KHgJNmCyRiEv7S"
+              },
+              {
+                "step": "pricing",
+                "at": 15103,
+                "adopted": false,
+                "confidence": null
+              },
+              {
+                "step": "alternatives",
+                "at": 15104,
+                "retailerQuery": "Buy Cult Flex Portable Deep Tissue Massage Gun for Full-Body Muscle Relief, Ultra-Lightweight Handheld",
+                "unbranded": 0,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "identified",
+                "at": 15104,
+                "engineUsed": "lens_serper",
+                "confidence": "exact",
+                "title": "Buy Cult Flex Portable Deep Tissue Massage Gun for Full-Body Muscle Relief, Ultra-Lightweight Handheld Design, 6 Speed L",
+                "priced": false
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "miss",
+        "detail": "no match"
+      },
+      "costUsd": 0.028196
+    },
+    {
+      "caseId": "silicone-pastry-brush",
+      "intent": "finder",
+      "status": 200,
+      "ms": 11587,
+      "json": {
+        "found": true,
+        "mode": "FINDER",
+        "priceSource": "estimated",
+        "engineUsed": "lens_serper+priced_serper",
+        "matchConfidence": "likely",
+        "category": "home",
+        "sourceProduct": {
+          "title": "Silicone Basting Brush 9\" Kitchen Tool Cooking Utensil Baking Pastry Sauce New",
+          "price": 7.1,
+          "currency": "USD",
+          "imageUrl": "/api/proxy-image?url=https%3A%2F%2Fencrypted-tbn2.gstatic.com%2Fshopping%3Fq%3Dtbn%3AANd9GcRRjQpJriImuoeTXhM6Z39-lsllAwpUE_k2CqeC_Ffvl5G7gxlY0fTFBs1wgR40TTXB-hzx7fBUNswYeb7Tww9pnlAcdf7ojsNmO2jGNwIcIx5KSV7HnHUi&s=7ca760758e946f4ce12c2313f4091761",
+          "productUrl": "https://www.google.com/search?ibp=oshop&q=Silicone+Basting+Brush+9%22+Kitchen+Cooking&prds=localAnnotatedOfferId:1,catalogid:9908062288626675931,gpcid:13322788399414709475,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+          "affiliateUrl": "https://www.google.com/search?ibp=oshop&q=Silicone+Basting+Brush+9%22+Kitchen+Cooking&prds=localAnnotatedOfferId:1,catalogid:9908062288626675931,gpcid:13322788399414709475,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+          "linkIsDirect": false,
+          "platform": "Walmart - AllTopBargains"
+        },
+        "analysis": {
+          "retailEstimate": 31.95,
+          "retailSource": "estimated",
+          "markup": 350,
+          "verdict": "UNVERIFIED",
+          "savings": 24.85,
+          "savingsPercent": 78,
+          "confidence": "medium"
+        },
+        "scanId": null,
+        "evaluation": {
+          "cached": false,
+          "ms": 11534,
+          "trace": {
+            "totalMs": 11517,
+            "claudeUsd": 0.016826,
+            "searchesByProvider": {
+              "serper": 2
+            },
+            "creditsByProvider": {
+              "serper": 5
+            },
+            "cache": {
+              "readTokens": 2956,
+              "writeTokens": 1478,
+              "uncachedInputTokens": 3880,
+              "callsReading": 2,
+              "calls": 3
+            },
+            "msByLayer": {
+              "model:extraction": 2056,
+              "model:gate": 5379,
+              "search:lens": 2440,
+              "search:shopping": 719
+            },
+            "thinkingPerCall": 57,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2056,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 960,
+                "outputTokens": 135,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 1478,
+                "costUsd": 0.006965,
+                "stopReason": "end_turn",
+                "thinkingApprox": 61
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2636,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1336,
+                "outputTokens": 167,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0046376,
+                "stopReason": "end_turn",
+                "thinkingApprox": 48
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2743,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1584,
+                "outputTokens": 176,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0052236,
+                "stopReason": "end_turn",
+                "thinkingApprox": 62
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 2440,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 719,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 2168,
+                "brand": "",
+                "productName": "silicone basting brush with clear acrylic handle",
+                "visiblePrice": null,
+                "currency": "",
+                "quantity": "1 unit",
+                "category": "home",
+                "storeName": "",
+                "visibleUrl": "",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 4671,
+                "list": "organic",
+                "rows": 3,
+                "usable": 3,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 4860,
+                "engine": "serper",
+                "candidates": 3,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "Amazon.com: Silicone Basting Brush 9\" Kitchen Cooking ...",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/Silicone-Basting-Kitchen-Cooking-Grilling/dp/B004KA7N4M",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQF-x3ZHFW5uI1bgxhWN7UxpwHp7m5ByCSd_FiraapZ3A&s"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "KD ZONE Non Stick 12 Cavity Appam Maker with Lid and Side ...",
+                    "source": "www.amazon.sa",
+                    "price": 0,
+                    "link": "https://www.amazon.sa/-/en/Stick-Cavity-Appam-Maker-Handle/dp/B09DX2RCS5",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQPHGZYcjS793KZB_ztvcyVe1M5LilOU96gdr3wAuGbGA&s"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "2018R SILICONE BASTING / PASTRY BRUSH-RED - Norpro, Inc.",
+                    "source": "Norpro Wholesale",
+                    "price": 0,
+                    "link": "https://www.norpro.com/product/silicone-brush-red/",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRlDracvMZs6cxkm_OKcwbYFzR0wK5_pspFPVBf70vXOQ&s"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 4874,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 7613,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 3,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Amazon.com: Silicone Basting Brush 9\" Kitchen Cooking ...",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/Silicone-Basting-Kitchen-Cooking-Grilling/dp/B004KA7N4M",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQF-x3ZHFW5uI1bgxhWN7UxpwHp7m5ByCSd_FiraapZ3A&s",
+                    "match": "likely",
+                    "why": "Same clear handle with loop hole and red silicone bristles; the listing also shows other colours, and the title is generic"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "2018R SILICONE BASTING / PASTRY BRUSH-RED - Norpro, Inc.",
+                    "source": "Norpro Wholesale",
+                    "price": 0,
+                    "link": "https://www.norpro.com/product/silicone-brush-red/",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRlDracvMZs6cxkm_OKcwbYFzR0wK5_pspFPVBf70vXOQ&s",
+                    "match": "likely",
+                    "why": "Same clear handle with a hanging loop and red silicone head; the angle is small and the red is slightly duller"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "KD ZONE Non Stick 12 Cavity Appam Maker with Lid and Side ...",
+                    "source": "www.amazon.sa",
+                    "price": 0,
+                    "link": "https://www.amazon.sa/-/en/Stick-Cavity-Appam-Maker-Handle/dp/B09DX2RCS5",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQPHGZYcjS793KZB_ztvcyVe1M5LilOU96gdr3wAuGbGA&s",
+                    "match": "different",
+                    "why": "Title is for an appam maker, not a basting brush, so the listing does not match; the brush itself looks similar"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 7613,
+                "purpose": "identify",
+                "confidence": "likely",
+                "rank": 0,
+                "title": "Amazon.com: Silicone Basting Brush 9\" Kitchen Cooking ...",
+                "source": "Amazon.com",
+                "price": 0,
+                "link": "https://www.amazon.com/Silicone-Basting-Kitchen-Cooking-Grilling/dp/B004KA7N4M",
+                "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQF-x3ZHFW5uI1bgxhWN7UxpwHp7m5ByCSd_FiraapZ3A&s"
+              },
+              {
+                "step": "page_price",
+                "at": 7975,
+                "tried": [
+                  {
+                    "url": "https://www.amazon.com/Silicone-Basting-Kitchen-Cooking-Grilling/dp/B004KA7N4M",
+                    "found": false,
+                    "amount": null,
+                    "currency": null
+                  },
+                  {
+                    "url": "https://www.norpro.com/product/silicone-brush-red/",
+                    "found": false,
+                    "amount": null,
+                    "currency": null
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 11516,
+                "purpose": "pricing",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 4,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Silicone Basting Brush 9\" Kitchen Tool Cooking Utensil Baking Pastry Sauce New",
+                    "source": "Walmart - AllTopBargains",
+                    "price": 7.1,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Silicone+Basting+Brush+9%22+Kitchen+Cooking&prds=localAnnotatedOfferId:1,catalogid:9908062288626675931,gpcid:13322788399414709475,pvo:2,pvt:hg&gl=us&udm=28&pv",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcRRjQpJriImuoeTXhM6Z39-lsllAwpUE_k2CqeC_Ffvl5G7gxlY0fTFBs1wgR40TTXB-hzx7fBUNswYeb7Tww9pnlAcdf7ojsNmO2jGNwIcIx5KSV7HnHUi",
+                    "match": "exact",
+                    "why": "Same clear handle with loop hole and orange silicone head; the main image shows the orange version"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "9.05 inch Kitchen Oil Basting Brush, Food Grade Silicone BBQ Brushes with No-slip Handle for for Baking, Grilling, Roast",
+                    "source": "Walmart - COOFANIN Co., Ltd.",
+                    "price": 4.29,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Silicone+Basting+Brush+9%22+Kitchen+Cooking&prds=localAnnotatedOfferId:1,catalogid:270610573007612600,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcRPRUni01OnH29sXAVM3VAvqpr3MqrVEgCBb39h75s4JZ1A-7wMszKqrf5gCikCu6AnMUfu_6KBF41AZ-NCXTSVuw8NBBNCbt61BdJvTX5ambHm71fyUXqF",
+                    "match": "different",
+                    "why": "Grey double-ended brush with a grey rubber grip, not the clear handle"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Byujiro Silicone Basting Brush 9.8 Inch Wide Head Heat Resistant BBQ Sauce Brush for Grilling Baking Kitchen, Flexible N",
+                    "source": "Walmart - Byujiro Toys",
+                    "price": 1.98,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Silicone+Basting+Brush+9%22+Kitchen+Cooking&prds=localAnnotatedOfferId:1,catalogid:8864044584199259420,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcTFoSYo1qrHrXaxUUBf1PxsLq1dm0DObO3RYjlwAjEG6cdgOQg3jcX0O5X9XNNXOdpOjXZulECDGTmSqaVnhM61tO-UPMJDmqO2vLWD2Bc",
+                    "match": "different",
+                    "why": "Wide flat teal brush with a dark handle"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "Zumic Silicone Oil Brush Basting Brush",
+                    "source": "Walmart - Seller",
+                    "price": 2.43,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Silicone+Basting+Brush+9%22+Kitchen+Cooking&prds=localAnnotatedOfferId:1,catalogid:17575682753271334754,gpcid:4675041164494046147,pvo:2,pvt:hg&gl=us&udm=28&pv",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcR_P0AHBA1DemFXUqbLQ5vPjDw4hLAtAp-QRDkYEtICxVcDSTymVP4ERPGlz7fE1QC7HwiZgRvNjFpDLhadFa4R4Q1YxMCemR6jKFW4BptjaRfIvPWuYuQk1A",
+                    "match": "similar",
+                    "why": "Solid pale-green silicone brush with a hanging hole, not the clear handle"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 11516,
+                "purpose": "pricing",
+                "confidence": "exact",
+                "rank": 0,
+                "title": "Silicone Basting Brush 9\" Kitchen Tool Cooking Utensil Baking Pastry Sauce New",
+                "source": "Walmart - AllTopBargains",
+                "price": 7.1,
+                "link": "https://www.google.com/search?ibp=oshop&q=Silicone+Basting+Brush+9%22+Kitchen+Cooking&prds=localAnnotatedOfferId:1,catalogid:9908062288626675931,gpcid:13322788399414709475,pvo:2,pvt:hg&gl=us&udm=28&pv",
+                "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcRRjQpJriImuoeTXhM6Z39-lsllAwpUE_k2CqeC_Ffvl5G7gxlY0fTFBs1wgR40TTXB-hzx7fBUNswYeb7Tww9pnlAcdf7ojsNmO2jGNwIcIx5KSV7HnHUi"
+              },
+              {
+                "step": "pricing",
+                "at": 11516,
+                "adopted": true,
+                "confidence": "likely"
+              },
+              {
+                "step": "alternatives",
+                "at": 11517,
+                "retailerQuery": "Silicone Basting Brush 9\" Kitchen Tool Cooking Utensil Baking Pastry Sauce New",
+                "unbranded": 0,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "identified",
+                "at": 11517,
+                "engineUsed": "lens_serper+priced_serper",
+                "confidence": "likely",
+                "title": "Silicone Basting Brush 9\" Kitchen Tool Cooking Utensil Baking Pastry Sauce New",
+                "priced": true
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "correct likely"
+      },
+      "costUsd": 0.021826
+    },
+    {
+      "caseId": "car-phone-holder",
+      "intent": "finder",
+      "status": 200,
+      "ms": 35387,
+      "json": {
+        "found": false,
+        "mode": "UNRESOLVED",
+        "priceSource": "estimated",
+        "engineUsed": "none",
+        "matchConfidence": "unverified",
+        "category": "other",
+        "sourceProduct": {
+          "title": "Product not identified",
+          "price": 0,
+          "currency": "USD",
+          "imageUrl": "",
+          "productUrl": "",
+          "affiliateUrl": "",
+          "platform": "unknown"
+        },
+        "analysis": {
+          "retailEstimate": 0,
+          "retailSource": "estimated",
+          "markup": 0,
+          "verdict": "UNVERIFIED",
+          "savings": 0,
+          "savingsPercent": 0,
+          "confidence": "low"
+        },
+        "scanId": null,
+        "evaluation": {
+          "cached": false,
+          "ms": 35305,
+          "trace": {
+            "totalMs": 35286,
+            "claudeUsd": 0.027939,
+            "searchesByProvider": {
+              "serper": 3,
+              "serpapi": 1
+            },
+            "creditsByProvider": {
+              "serper": 5
+            },
+            "cache": {
+              "readTokens": 5442,
+              "writeTokens": 1814,
+              "uncachedInputTokens": 6428,
+              "callsReading": 3,
+              "calls": 4
+            },
+            "msByLayer": {
+              "model:extraction": 2088,
+              "model:gate": 9818,
+              "search:lens": 1640,
+              "search:shopping": 20843
+            },
+            "thinkingPerCall": 91,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2088,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 960,
+                "outputTokens": 156,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 1814,
+                "costUsd": 0.008015,
+                "stopReason": "end_turn",
+                "thinkingApprox": 74
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3505,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1947,
+                "outputTokens": 289,
+                "cacheReadTokens": 1814,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0071468,
+                "stopReason": "end_turn",
+                "thinkingApprox": 111
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3604,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1955,
+                "outputTokens": 313,
+                "cacheReadTokens": 1814,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0074028,
+                "stopReason": "end_turn",
+                "thinkingApprox": 109
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2709,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1566,
+                "outputTokens": 188,
+                "cacheReadTokens": 1814,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0053748,
+                "stopReason": "end_turn",
+                "thinkingApprox": 71
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 1640,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 8002,
+                "status": 0
+              },
+              {
+                "layer": "shopping",
+                "provider": "serpapi",
+                "engine": "google_shopping",
+                "ms": 12001,
+                "status": 0
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 840,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "status": 0,
+                "kind": "timeout",
+                "detail": "The operation was aborted due to timeout",
+                "severity": "advisory"
+              },
+              {
+                "layer": "shopping",
+                "provider": "serpapi",
+                "status": 0,
+                "kind": "timeout",
+                "detail": "The operation was aborted due to timeout",
+                "severity": "advisory"
+              }
+            ],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 2256,
+                "brand": "",
+                "productName": "Windshield suction cup gooseneck phone holder (3.5\"-6\" adjustable clamp)",
+                "visiblePrice": null,
+                "currency": "",
+                "quantity": "1 unit",
+                "category": "accessories",
+                "storeName": "",
+                "visibleUrl": "",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 3971,
+                "list": "organic",
+                "rows": 60,
+                "usable": 40,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 4041,
+                "engine": "serper",
+                "candidates": 40,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "WAOCEO Tablet Stand Tablet Car Holder for Windscreen Dashboard, Universal Car Tablet Holder with Long Arm Suction for 7~",
+                    "source": "Amazon.de",
+                    "price": 0,
+                    "link": "https://www.amazon.de/-/en/WAOCEO-Windscreen-Dashboard-Universal-Suction/dp/B0CLQLT6KY",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRGHvxDdMQGTbyp-kRC7OmQAxXxB8su7njyJKKayCljt4MGo8b7"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Amazon.com: Xobebe Mobile Phone Car Holder 2-in-1 Air Vent & Windshield from Offers 360° Universal Fit. Mount Cellphone ",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/Windshield-Xobebe-Universal-Adjustable-Smartphones/dp/B00S7E2FT0",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSYX4w6mBIGKUivHwvImuzKU8ZJ0i34pxEgw18gOkZkJju3FUCU"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "PRAV® in Car Holder for All 9\" - 11\" Tablet PC Suction Windscreen Windshield Moun T4U2 : Amazon.in: Electronics",
+                    "source": "Amazon.in",
+                    "price": 0,
+                    "link": "https://www.amazon.in/PRAV®-Car-Holder-All-Windscreen/dp/B0D8TS64J9",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSrBLmkjeJmestvIvwaoZKOeuA564nOTLWck_47QWDuMD5wXM1X"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Universal Mini Tablet Holder Car Suction Windshield Mount 360 Rotation | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/281643008350",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcS0KhA-nz0IAB6TVHFHQD5GUxPP-U06QJl3yULZDfn9-9nGzGw4"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "7-11 inch tablet holder, car windshield mount, holder for all brands of tablets : Amazon.ca: Electronics",
+                    "source": "Amazon.ca",
+                    "price": 0,
+                    "link": "https://www.amazon.ca/tablet-holder-windshield-brands-tablets/dp/B0DJP2PG2S",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSDnQ6vR-FaAALs_IX97UGqXW_OzJQ8S-IHnoFXjdxBH7Q0rh9m"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Amazon.com: DOITOOL 1pc Cup Tablet Stand for Devices Vehicle Navigator Holder Easy to Install Car Mount Bracket for Tabl",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/-/es/DOITOOL-TA08QTXX204110HPW03/dp/B0F1MGWP4H",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQbL6yOoKTxkvnnzT8qCfrXi1q-cbVCSd90e1qYgt3siVKFtgxu"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "K-S-Trade Windshield Holder Compatible With Samsung Galaxy Tab S5e Wi-Fi Car Tablet Suction Cup Car Holder Windshield Ho",
+                    "source": "Amazon.nl",
+                    "price": 0,
+                    "link": "https://www.amazon.nl/-/en/K-S-Trade-Samsung-Galaxy-Tab-Wi-Fi/dp/B07ZTRVF42",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS46lFEjDbD88LgML7ciplKNgtWaLAguPowbVoybXrpmvkQZ6Lk"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "SKISUNO Tablet Stand Large Suction Cup Tablet Suction Cup Black for Abs Vehicle Mounted Navigator : Amazon.ca: Electroni",
+                    "source": "Amazon.ca",
+                    "price": 0,
+                    "link": "https://www.amazon.ca/SKISUNO-Bracket-Navigator-Dashboard-Compatible/dp/B0CNL2FJQR",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTTC55VsWERhuZO7Z-2YFJVgK9HY5ZTGI01xJX-5raMf5JwIiek"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "Car Tablet Holder For ipad Pro 10.5 macbook Stand Universal Car Cup 7-11\" Tablet Mount Holder Stand Bracket For Samsung ",
+                    "source": "AliExpress",
+                    "price": 0,
+                    "link": "https://www.aliexpress.com/item/4000753043730.html",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSWsRIPKZXqnnjsz_YftX1ITB8faxucS_0WgtEuipblOkrqgwRb"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Kwmobile Universal Car Mount For Windshield For Oneplus One Two | Desertcart Angola",
+                    "source": "Desertcart UAE",
+                    "price": 0,
+                    "link": "https://angola.desertcart.com/products/18060565-kwmobile-universal-car-mount-for-windshield-for-one-plus-one-two-adjustable-fits-with-case",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTROVqR1T4e1bKbETijy3c70tEmjiN47DaSkmiwSCo7nzpNdTWa"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "HOMSFOU 1Pc Tablet Suction Cup Mount Durable Navigator Bracket for Tablets Easy Install Vehicle Storage Rack Secure Suct",
+                    "source": "Amazon.ae",
+                    "price": 0,
+                    "link": "https://www.amazon.ae/HOMSFOU-Suction-Durable-Navigator-Bracket/dp/B0FCDSZVN8",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQDMziDh79o05ebNHIOmj2H5WD5uFRJb6ppz9UUpKgbcpfZkgi-"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Car holder suction cup on glass, holder for tablet 7-10\", leg 6cm: Oem Cth05 - Black",
+                    "source": "Digikas.ee",
+                    "price": 0,
+                    "link": "https://digikas.ee/en/glass-windshield-holders-mounts-for-phones-tablets/12956-car-holder-suction-cup-on-glass-holder-for-tablet-7-10-leg-6cm-oem-cth05-black-4000000502876.html",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT4jM2Ku6M11tjq_DY5SpLoLU5KBM7aXuKXmCB9L3bTF2ZZmbuC"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 4054,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 7707,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "WAOCEO Tablet Stand Tablet Car Holder for Windscreen Dashboard, Universal Car Tablet Holder with Long Arm Suction for 7~",
+                    "source": "Amazon.de",
+                    "price": 0,
+                    "link": "https://www.amazon.de/-/en/WAOCEO-Windscreen-Dashboard-Universal-Suction/dp/B0CLQLT6KY",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRGHvxDdMQGTbyp-kRC7OmQAxXxB8su7njyJKKayCljt4MGo8b7",
+                    "match": "likely",
+                    "why": "Same black clamp with grey tips, round centre dial and long gooseneck arm; the title's 7-10.5 inch size conflicts with the 3.5-6 inch marking on A"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Amazon.com: Xobebe Mobile Phone Car Holder 2-in-1 Air Vent & Windshield from Offers 360° Universal Fit. Mount Cellphone ",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/Windshield-Xobebe-Universal-Adjustable-Smartphones/dp/B00S7E2FT0",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSYX4w6mBIGKUivHwvImuzKU8ZJ0i34pxEgw18gOkZkJju3FUCU",
+                    "match": "different",
+                    "why": "Phone holder with a different clamp and arm design, and a different brand"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "PRAV® in Car Holder for All 9\" - 11\" Tablet PC Suction Windscreen Windshield Moun T4U2 : Amazon.in: Electronics",
+                    "source": "Amazon.in",
+                    "price": 0,
+                    "link": "https://www.amazon.in/PRAV®-Car-Holder-All-Windscreen/dp/B0D8TS64J9",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSrBLmkjeJmestvIvwaoZKOeuA564nOTLWck_47QWDuMD5wXM1X",
+                    "match": "similar",
+                    "why": "Tablet clamp with a short ball-joint suction mount, not the long gooseneck arm"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Universal Mini Tablet Holder Car Suction Windshield Mount 360 Rotation | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/281643008350",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcS0KhA-nz0IAB6TVHFHQD5GUxPP-U06QJl3yULZDfn9-9nGzGw4",
+                    "match": "similar",
+                    "why": "Flower-shaped centre and a short curved arm, unlike A"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "7-11 inch tablet holder, car windshield mount, holder for all brands of tablets : Amazon.ca: Electronics",
+                    "source": "Amazon.ca",
+                    "price": 0,
+                    "link": "https://www.amazon.ca/tablet-holder-windshield-brands-tablets/dp/B0DJP2PG2S",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSDnQ6vR-FaAALs_IX97UGqXW_OzJQ8S-IHnoFXjdxBH7Q0rh9m",
+                    "match": "similar",
+                    "why": "Short articulated suction mount, different clamp layout"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Amazon.com: DOITOOL 1pc Cup Tablet Stand for Devices Vehicle Navigator Holder Easy to Install Car Mount Bracket for Tabl",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/-/es/DOITOOL-TA08QTXX204110HPW03/dp/B0F1MGWP4H",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQbL6yOoKTxkvnnzT8qCfrXi1q-cbVCSd90e1qYgt3siVKFtgxu",
+                    "match": "similar",
+                    "why": "Short curved arm and a different clamp"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 11377,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 6,
+                    "title": "K-S-Trade Windshield Holder Compatible With Samsung Galaxy Tab S5e Wi-Fi Car Tablet Suction Cup Car Holder Windshield Ho",
+                    "source": "Amazon.nl",
+                    "price": 0,
+                    "link": "https://www.amazon.nl/-/en/K-S-Trade-Samsung-Galaxy-Tab-Wi-Fi/dp/B07ZTRVF42",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS46lFEjDbD88LgML7ciplKNgtWaLAguPowbVoybXrpmvkQZ6Lk",
+                    "match": "similar",
+                    "why": "Same style tablet holder, but it has a short suction base rather than a long gooseneck, and the print is not confirmed"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "SKISUNO Tablet Stand Large Suction Cup Tablet Suction Cup Black for Abs Vehicle Mounted Navigator : Amazon.ca: Electroni",
+                    "source": "Amazon.ca",
+                    "price": 0,
+                    "link": "https://www.amazon.ca/SKISUNO-Bracket-Navigator-Dashboard-Compatible/dp/B0CNL2FJQR",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTTC55VsWERhuZO7Z-2YFJVgK9HY5ZTGI01xJX-5raMf5JwIiek",
+                    "match": "different",
+                    "why": "Plain face with a short bent arm, no gooseneck and no printed dial"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "Car Tablet Holder For ipad Pro 10.5 macbook Stand Universal Car Cup 7-11\" Tablet Mount Holder Stand Bracket For Samsung ",
+                    "source": "AliExpress",
+                    "price": 0,
+                    "link": "https://www.aliexpress.com/item/4000753043730.html",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSWsRIPKZXqnnjsz_YftX1ITB8faxucS_0WgtEuipblOkrqgwRb",
+                    "match": "likely",
+                    "why": "Long gooseneck with a suction cup, black and grey clamp and a similar round dial, though the size print is not readable"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Kwmobile Universal Car Mount For Windshield For Oneplus One Two | Desertcart Angola",
+                    "source": "Desertcart UAE",
+                    "price": 0,
+                    "link": "https://angola.desertcart.com/products/18060565-kwmobile-universal-car-mount-for-windshield-for-one-plus-one-two-adjustable-fits-with-case",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTROVqR1T4e1bKbETijy3c70tEmjiN47DaSkmiwSCo7nzpNdTWa",
+                    "match": "similar",
+                    "why": "Similar clamp with a rotating dial, but it has a short suction base with a joint and no gooseneck"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "HOMSFOU 1Pc Tablet Suction Cup Mount Durable Navigator Bracket for Tablets Easy Install Vehicle Storage Rack Secure Suct",
+                    "source": "Amazon.ae",
+                    "price": 0,
+                    "link": "https://www.amazon.ae/HOMSFOU-Suction-Durable-Navigator-Bracket/dp/B0FCDSZVN8",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQDMziDh79o05ebNHIOmj2H5WD5uFRJb6ppz9UUpKgbcpfZkgi-",
+                    "match": "different",
+                    "why": "Plain face with a short jointed arm, no printed dial"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Car holder suction cup on glass, holder for tablet 7-10\", leg 6cm: Oem Cth05 - Black",
+                    "source": "Digikas.ee",
+                    "price": 0,
+                    "link": "https://digikas.ee/en/glass-windshield-holders-mounts-for-phones-tablets/12956-car-holder-suction-cup-on-glass-holder-for-tablet-7-10-leg-6cm-oem-cth05-black-4000000502876.html",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT4jM2Ku6M11tjq_DY5SpLoLU5KBM7aXuKXmCB9L3bTF2ZZmbuC",
+                    "match": "similar",
+                    "why": "Similar clamp with a dial, but it has a short bent arm and the title says 7-10 inch, not 3.5-6 inch"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 11377,
+                "purpose": "identify",
+                "confidence": "likely",
+                "rank": 0,
+                "title": "WAOCEO Tablet Stand Tablet Car Holder for Windscreen Dashboard, Universal Car Tablet Holder with Long Arm Suction for 7~",
+                "source": "Amazon.de",
+                "price": 0,
+                "link": "https://www.amazon.de/-/en/WAOCEO-Windscreen-Dashboard-Universal-Suction/dp/B0CLQLT6KY",
+                "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRGHvxDdMQGTbyp-kRC7OmQAxXxB8su7njyJKKayCljt4MGo8b7"
+              },
+              {
+                "step": "page_price",
+                "at": 11615,
+                "tried": [
+                  {
+                    "url": "https://www.amazon.de/-/en/WAOCEO-Windscreen-Dashboard-Universal-Suction/dp/B0CLQLT6KY",
+                    "found": false,
+                    "amount": null,
+                    "currency": null
+                  },
+                  {
+                    "url": "https://www.aliexpress.com/item/4000753043730.html",
+                    "found": false,
+                    "amount": null,
+                    "currency": null
+                  }
+                ]
+              },
+              {
+                "step": "serpapi",
+                "at": 19651,
+                "left": 36,
+                "reserve": 20,
+                "searches": 1,
+                "allowed": true
+              },
+              {
+                "step": "gate",
+                "at": 35285,
+                "purpose": "pricing",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 4,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Alilang Car Headrest Tablet Holder Adjustable Strap Mount for Kids Travel Backseat Device Stand",
+                    "source": "Target",
+                    "price": 21.99,
+                    "link": "https://www.google.com/search?ibp=oshop&q=waoceo+tablet+stand+tablet+car+holder&prds=localAnnotatedOfferId:1,catalogid:1683940392055637595,gpcid:5441679516523911373,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcScP0cWVYwE9BBotA3NlnzCcikYSwaFmiQ72YsINJKezbpsWYpkkoNDXEZuUVh2rsUM161lNnkJo241pQkzFVF__bR246rhzNnyzH07_-CwhuVG2q70JE6Yiw",
+                    "match": "different",
+                    "why": "Headrest strap mount, not a suction cup gooseneck holder"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Tablet Car Mount Windshield Dashboard, Suction Cup Long Gooseneck Tablet Holder for Car, Truck, Suv, Compatible with 7-1",
+                    "source": "Walmart - Seller",
+                    "price": 31.48,
+                    "link": "",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcQvzAithtAH5CXWotTo3gzXi2L-sFKDg3PHcoHMK2cElMk0JDCqJ8fjtEj3vq6Cy0gRs_0aBYSKQ3y-L2GQBhwRbz3OjPp01J2f64KlPRVl",
+                    "match": "similar",
+                    "why": "Suction gooseneck holder, but its clamp design differs from the round-hub phone clamp with grey pads in A"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Car Tablet Mount, Car Cup Holder Phone Stand, Telescopic Rod Height-adjustable & Angle-adjustable",
+                    "source": "AliExpress - AliExpress-6004586761",
+                    "price": 4.57,
+                    "link": "https://www.google.com/search?ibp=oshop&q=waoceo+tablet+stand+tablet+car+holder&prds=localAnnotatedOfferId:1,catalogid:1113458881914924752,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcR-pMA1bV0nS0mq-1ghXQki348HN20j_HUiBAAQ2y4YniqOQNjm1BnQatxSGrqDulYWw3yURCWmSeqg9nf9RnWAnAXVNhgjuc46ADA1S4-amthzxL2r4p0lKw",
+                    "match": "different",
+                    "why": "Cup holder mount with no suction cup or gooseneck"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Creative Extended Van Dashboard Car Tablet Computer Stand, Powerful Suction Cup Tablet Computer Stand Car Navigation Hol",
+                    "source": "TikTok Shop",
+                    "price": 77,
+                    "link": "",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcTD0c0boCMClLickwtA1bTL5puNOVPL_OPSSEE29hX6rvEXXiW4hbyJhzy5LkbguFXL0AwOA0b939vSRg5XeQIUmHNYAmZT0SUem_q775nzVRlofO_-8gpZ",
+                    "match": "similar",
+                    "why": "Suction dashboard arm with a tablet clamp, but a different clamp and arm design"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 35285,
+                "purpose": "pricing",
+                "confidence": "unverified",
+                "rank": 3,
+                "title": "Tablet Car Mount Windshield Dashboard, Suction Cup Long Gooseneck Tablet Holder for Car, Truck, Suv, Compatible with 7-1",
+                "source": "Walmart - Seller",
+                "price": 31.48,
+                "link": "",
+                "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcQvzAithtAH5CXWotTo3gzXi2L-sFKDg3PHcoHMK2cElMk0JDCqJ8fjtEj3vq6Cy0gRs_0aBYSKQ3y-L2GQBhwRbz3OjPp01J2f64KlPRVl"
+              },
+              {
+                "step": "pricing",
+                "at": 35285,
+                "adopted": false,
+                "confidence": null
+              },
+              {
+                "step": "alternatives",
+                "at": 35285,
+                "retailerQuery": "WAOCEO Tablet Stand Tablet Car Holder for Windscreen Dashboard, Universal Car Tablet Holder with Long Arm",
+                "unbranded": 0,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "identified",
+                "at": 35285,
+                "engineUsed": "lens_serper",
+                "confidence": "likely",
+                "title": "WAOCEO Tablet Stand Tablet Car Holder for Windscreen Dashboard, Universal Car Tablet Holder with Long Arm Suction for 7~",
+                "priced": false
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "miss",
+        "detail": "no match"
+      },
+      "costUsd": 0.032939
+    }
+  ],
+  "freeAllowance": {
+    "before": 2,
+    "after": 2
+  },
+  "serpapiLeftAfter": 35,
+  "scanSpendUsd": 0.191756,
+  "finishedAt": "2026-10-03T17:25:05.632Z",
+  "spend": {
+    "claudeUsd": 0.181982,
+    "serpapiSearches": 1,
+    "serperCredits": 35,
+    "serpapiPerSearch": 0,
+    "searchUsd": 0.035,
+    "totalUsd": 0.216982,
+    "spentBeforeUsd": 6.1934000000000005,
+    "capUsd": 25
+  }
+}

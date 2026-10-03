@@ -738,6 +738,23 @@ if (!TOKEN) {
   process.exit(1);
 }
 log(`run ${run.run}: steps ${run.steps.join(", ")}; spent before $${spentBefore.toFixed(4)}; this run may spend $${runCap.toFixed(2)}`);
+// run.waitFor: a free, operator-only request that answers a known status only
+// once the build this run is for is serving (a route it adds, say), polled
+// every 20 seconds for up to maxMinutes before any step runs. Nothing in it
+// spends money; it keeps a run from paying for a diagnose of the old build.
+if (run.waitFor?.path) {
+  const { method = "POST", path, status = 400, maxMinutes = 10, body = "{}" } = run.waitFor;
+  const deadline = Date.now() + maxMinutes * 60_000;
+  let last = 0;
+  for (;;) {
+    const r = await operator(path, method === "GET" ? {} : { method, body, headers: { "content-type": "application/json" } }, 20_000);
+    last = r.status;
+    if (r.status === status) { log(`build ready: ${method} ${path} answered ${status}`); break; }
+    if (Date.now() > deadline) { log(`build not ready after ${maxMinutes} min: ${method} ${path} still answers ${last}`); break; }
+    await sleep(20_000);
+  }
+  results.waitedFor = { path, wanted: status, got: last };
+}
 for (const name of run.steps || []) {
   const step = STEPS[name];
   if (!step) { report.push(`Unknown step "${name}"; skipped.`); continue; }

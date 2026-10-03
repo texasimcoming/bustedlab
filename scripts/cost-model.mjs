@@ -8,7 +8,7 @@
  *
  *   npm run cost-model                    # thinking priced at 300 / 1,000 / 3,000 tokens per call
  *   npm run cost-model -- --thinking 640  # one measured figure, e.g. from /api/diagnose
- *   npm run cost-model -- --measured evals/results/run-3.json
+ *   npm run cost-model -- --measured evals/results/run-5.json
  *                                         # what real production scans cost, from the traces
  *                                         # the evaluation recorded (scripts/production-eval.mjs)
  *
@@ -38,9 +38,12 @@ const T = {
   // The photo is capped at 1568px on its long edge before any model sees it
   // (src/lib/image-cap.ts): a 1170x2532 screenshot becomes 725x1568, about
   // 1,516 tokens. Uncapped, the 5.5 models would read it at about 3,950.
-  referenceImage: 1600,
+  // Measured in production (run 5): the first read wrote 1,690 photo tokens
+  // on average to the cache.
+  referenceImage: 1700,
   // Lens and Shopping thumbnails are small, typically 200-300px square.
-  candidateThumbnail: 150,
+  // Measured (run 5): about 190 tokens each with its label.
+  candidateThumbnail: 175,
   extractPrompt: 700,
   extractOutput: 180,
   // The batch instruction, plus a label block per candidate.
@@ -152,10 +155,10 @@ function scanCost(name, thinking, caching = CACHING) {
 
 // ── Search, budget mode (SEARCH PROVIDERS in src/lib/scan.ts) ────────────
 //   Serper:  the primary for Lens and Shopping. Prepaid credits, about $0.001
-//            each on the smallest pack, 2,500 free to start. A Shopping or
-//            organic search is one credit; a Lens search is reported as 3
-//            (a secondary source; /api/diagnose and every traced scan report
-//            the credits Serper actually charged, so --measured uses those).
+//            each on the smallest pack, 2,500 free to start. Measured from the
+//            credits Serper reports on each response (run 5, 2026-10-03): a
+//            Lens search is 3 credits, a Shopping search 2, an organic search
+//            1. --measured uses each scan's reported credits.
 //   SerpApi: the last-resort backup, only when Serper fails and only above
 //            its reserve; free plan 250 searches a month, paid about $0.015 a
 //            search. The Amazon/Walmart/eBay sweep (three SerpApi searches)
@@ -163,15 +166,18 @@ function scanCost(name, thinking, caching = CACHING) {
 const SERPAPI_PER_SEARCH = 0.015;
 const SERPER_PER_CREDIT = 0.001;
 const SERPER_LENS_CREDITS = 3;
+const SERPER_SHOPPING_CREDITS = 2;
 const SERPER_FREE_CREDITS = 2500;
 // Serper credits per scan: Lens, then the Shopping searches each path makes.
+// Measured (run 5): 5 credits a scan in five of six scans (Lens and one
+// Shopping search), 7 when a rebrand search ran.
 const SEARCH_CALLS = {
-  cold: { serpapi: 0, serper: SERPER_LENS_CREDITS + 3 },
-  hard: { serpapi: 0, serper: SERPER_LENS_CREDITS + 5 },
+  cold: { serpapi: 0, serper: SERPER_LENS_CREDITS + SERPER_SHOPPING_CREDITS },
+  hard: { serpapi: 0, serper: SERPER_LENS_CREDITS + 3 * SERPER_SHOPPING_CREDITS },
   identity: { serpapi: 0, serper: SERPER_LENS_CREDITS },
-  degraded: { serpapi: 0, serper: SERPER_LENS_CREDITS + 2 },
-  fallback: { serpapi: 0, serper: SERPER_LENS_CREDITS + 3 },
-  previous: { serpapi: 0, serper: SERPER_LENS_CREDITS + 3 },
+  degraded: { serpapi: 0, serper: SERPER_LENS_CREDITS + SERPER_SHOPPING_CREDITS },
+  fallback: { serpapi: 0, serper: SERPER_LENS_CREDITS + SERPER_SHOPPING_CREDITS },
+  previous: { serpapi: 0, serper: SERPER_LENS_CREDITS + SERPER_SHOPPING_CREDITS },
 };
 const searchCost = (name) => SEARCH_CALLS[name].serpapi * SERPAPI_PER_SEARCH + SEARCH_CALLS[name].serper * SERPER_PER_CREDIT;
 
@@ -280,7 +286,7 @@ for (const name of ["cold", "hard", "identity", "degraded"]) {
 
 console.log(`\n\nFULL COST PER SCAN: MODEL PLUS SEARCH (thinking ${think.toLocaleString()} per call)`);
 rule();
-console.log(`  Serper at $${SERPER_PER_CREDIT} a credit (a Lens search ${SERPER_LENS_CREDITS}), SerpApi only as a backup.`);
+console.log(`  Serper at $${SERPER_PER_CREDIT} a credit (a Lens search ${SERPER_LENS_CREDITS}, a Shopping search ${SERPER_SHOPPING_CREDITS}), SerpApi only as a backup.`);
 for (const name of Object.keys(SEQUENCES)) {
   const calls = SEARCH_CALLS[name];
   console.log(`  ${pad(name, 13)} model ${money(c(name))}  + search ${money(searchCost(name))} (${calls.serper} Serper credits, ${calls.serpapi} SerpApi)  = ${money(c(name) + searchCost(name))}`);
