@@ -2195,7 +2195,7 @@ function guardResult(
 ): VerificationResult {
   if (!result) return result;
   const { match, guard } = guardMatch(
-    { match: result.match, tie: result.tie },
+    { match: result.match, tie: result.tie, why: result.reasoning },
     { title: candidate.title, source: candidate.source, link: candidate.productUrl },
     guardReadOf(hints)
   );

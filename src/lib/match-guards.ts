@@ -20,6 +20,15 @@
  *   no_tie           the gate named nothing that ties the photo to the
  *                    listing (a logo, printed text, a distinctive part, the
  *                    identical product photo): never exact or likely.
+ *   not_for_sale     the gate's own reason says the page sells nothing (an
+ *                    article, a blog post, a review page, "not a product
+ *                    listing"): never exact or likely, whatever it answered.
+ *                    The replay in run 6 caught it answering "exact" on a
+ *                    health-site article while writing exactly that.
+ *   model_missing    a brand was read, the read names a model (OLED, Pro,
+ *                    Max, a model code like RB2132) and the listing does not:
+ *                    never exact or likely. A plain "Nintendo Switch" listing
+ *                    is not the Switch OLED in the photo.
  *
  * A guarded answer becomes "similar", which is what the engine already does
  * with a lookalike: it can still be shown, labelled for what it is, and it
@@ -34,7 +43,7 @@ export type GateMatch = "exact" | "likely" | "similar" | "different";
 export const TIE_KINDS = ["logo", "text", "part", "photo", "none"] as const;
 export type TieKind = (typeof TIE_KINDS)[number];
 
-export type GuardName = "brand_veto" | "no_brand_likely" | "part_listing" | "no_tie";
+export type GuardName = "brand_veto" | "no_brand_likely" | "model_missing" | "part_listing" | "no_tie" | "not_for_sale";
 
 export interface GuardCandidate {
   title: string;
@@ -56,6 +65,8 @@ export interface GuardAnswer {
   match: GateMatch;
   /** The gate's tie. Undefined only for answers recorded before the gate named one. */
   tie?: string;
+  /** The gate's own reason for its answer. */
+  why?: string;
 }
 
 const fold = (text: string): string =>
@@ -117,6 +128,39 @@ export function isPartListing(candidate: GuardCandidate, read: GuardRead): boole
   return false;
 }
 
+// Words that name a model within a product line, and model codes (letters
+// and digits together, four characters or more: RB2132, A2084, PH2083). A
+// size is not a model: 40oz, 1.18L and 64GB never count.
+const VARIANT_WORDS = new Set(["oled", "pro", "max", "mini", "plus", "ultra", "lite", "air", "go", "se", "xl"]);
+const SIZE = /^\d+(\.\d+)?(oz|l|ml|cl|gb|tb|mm|cm|in|inch|w|v|mah|kg|g|lb|lbs|pcs?|pack|x|qt|quart)$/;
+
+/** The models the first read names for a branded product, as words a listing must carry. */
+export function modelWords(read: GuardRead): string[] {
+  if (!squash(read.brand || "")) return [];
+  const brand = new Set(words(read.brand || ""));
+  const out = new Set<string>();
+  for (const w of words(read.productName || "")) {
+    if (brand.has(w)) continue;
+    const code = /[a-z]/.test(w) && /\d/.test(w) && w.length >= 4 && !SIZE.test(w);
+    if (VARIANT_WORDS.has(w) || code) out.add(w);
+  }
+  return [...out];
+}
+
+/** The model words of the read that a listing (title, seller, link) does not carry. */
+export function missingModelWords(candidate: GuardCandidate, read: GuardRead): string[] {
+  const text = squash(`${candidate.title || ""} ${candidate.source || ""} ${linkWords(candidate.link || "")}`);
+  return modelWords(read).filter(w => !text.includes(w));
+}
+
+// What the gate writes when the page it was shown sells nothing.
+const NOT_FOR_SALE = /\b(article|news|blog|review page|forum|encyclopedia|wiki|lecture|non-product|not a (product|listing|shop|store)|not (a )?product (listing|for sale)|not (offered )?for sale|sells nothing)\b/i;
+
+/** Whether the gate's own reason says the page is not something for sale. */
+export function reasonSaysNotForSale(why: string | undefined): boolean {
+  return NOT_FOR_SALE.test(String(why || ""));
+}
+
 /** The tie as a known kind; anything missing or unrecognised is "none". */
 export function readTie(raw: unknown): TieKind {
   const text = String(raw ?? "").trim().toLowerCase();
@@ -134,10 +178,12 @@ export function guardMatch(
 ): { match: GateMatch; guard: GuardName | null } {
   const { match } = answer;
   if (match !== "exact" && match !== "likely") return { match, guard: null };
+  if (reasonSaysNotForSale(answer.why)) return { match: "similar", guard: "not_for_sale" };
   if (read.brand !== undefined) {
     const brand = String(read.brand).trim();
     if (squash(brand) && !carriesBrand(brand, candidate)) return { match: "similar", guard: "brand_veto" };
     if (!squash(brand) && match === "likely") return { match: "similar", guard: "no_brand_likely" };
+    if (missingModelWords(candidate, read).length > 0) return { match: "similar", guard: "model_missing" };
   }
   if (isPartListing(candidate, read)) return { match: "similar", guard: "part_listing" };
   if (answer.tie !== undefined && readTie(answer.tie) === "none") return { match: "similar", guard: "no_tie" };

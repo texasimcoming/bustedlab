@@ -23,7 +23,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { carriesBrand, isPartListing, readTie, guardMatch } from "../src/lib/match-guards.ts";
+import { carriesBrand, isPartListing, readTie, guardMatch, missingModelWords, reasonSaysNotForSale } from "../src/lib/match-guards.ts";
 import { isRightProduct, isListing, NON_LISTING_HOSTS, storedAnswers } from "./lib/labels.mjs";
 
 const REPO = resolve(dirname(new URL(import.meta.url).pathname), "..");
@@ -40,7 +40,7 @@ const era = (row) => (row.source === "replay" ? "tie" : row.run <= 2 ? "old" : "
 // How many wrong answers no offline guard holds, per era, when this check was
 // written: the Cult Flex gun in run 5, and run 2's answers on pages that sell
 // nothing. These may only shrink.
-const PENDING_BASELINE = { old: 11, four: 1 };
+const PENDING_BASELINE = { old: 0, four: 0 };
 
 let failures = 0;
 const check = (name, ok, detail = "") => {
@@ -78,6 +78,22 @@ for (const [title, read, want] of [
 ]) {
   check(`"${title}" ${want ? "is" : "is not"} a part listing for "${read.productName}"`, isPartListing({ title }, read) === want);
 }
+for (const [title, read, want] of [
+  ["Nintendo Switch With Docking Station, Charger, HDMI 55GB | eBay", { brand: "Nintendo", productName: "Nintendo Switch OLED Model console" }, ["oled"]],
+  ["Nintendo Switch OLED Model with Neon Red & Neon Blue Joy-Con", { brand: "Nintendo", productName: "Nintendo Switch OLED Model console" }, []],
+  ["STANLEY QUENCHER 40OZ - Tooth of Time Traders", { brand: "Stanley", productName: "Quencher H2.0 FlowState Tumbler | 1.18L" }, []],
+  ["Ray Ban New Wayfarer RB 2132 Black", { brand: "Ray-Ban", productName: "Ray-Ban New Wayfarer sunglasses (RB2132)" }, []],
+  ["Apple AirPods (3rd generation)", { brand: "Apple", productName: "Apple AirPods Pro wireless earbuds" }, ["pro"]],
+  ["Silicone Basting Brush 9\" Kitchen", { brand: "", productName: "mini silicone basting brush" }, []],
+]) {
+  const got = missingModelWords({ title }, read);
+  check(`"${title}" for "${read.productName}" lacks ${want.length ? want.join(", ") : "no model word"}`, JSON.stringify(got) === JSON.stringify(want), JSON.stringify(got));
+}
+check("the gate's own words that a page sells nothing are read as such",
+  reasonSaysNotForSale("Identical photo of the holder, but it's a health-site article, not a product listing") &&
+  reasonSaysNotForSale("Review page, not a product listing") && reasonSaysNotForSale("blog post, not for sale") &&
+  !reasonSaysNotForSale("Same compact T-shaped black gun: round ball head, side panel with dot indicators") &&
+  !reasonSaysNotForSale("Cult Flex gun: same black body, round head and side control panel; title doesn't contradict"));
 check("a tie is read as one of its kinds, anything else as none",
   readTie("logo") === "logo" && readTie(" Photo ") === "photo" && readTie("shape") === "none" && readTie(undefined) === "none");
 {
@@ -87,6 +103,10 @@ check("a tie is read as one of its kinds, anything else as none",
   check("no brand read: an exact with a tie stands", guardMatch({ match: "exact", tie: "photo" }, listing, noBrand).match === "exact");
   check("an exact with tie none is held as no_tie", guardMatch({ match: "exact", tie: "none" }, listing, noBrand).guard === "no_tie");
   check("a brand read and not carried: held as brand_veto", guardMatch({ match: "exact", tie: "logo" }, listing, { brand: "Flowlife", productName: "" }).guard === "brand_veto");
+  check("an exact whose own reason calls the page an article: held as not_for_sale",
+    guardMatch({ match: "exact", tie: "photo", why: "Identical photo, but it's a health-site article, not a product listing" }, listing, noBrand).guard === "not_for_sale");
+  check("a listing without the model the photo names: held as model_missing",
+    guardMatch({ match: "likely", tie: "part" }, { title: "Nintendo Switch With Docking Station" }, { brand: "Nintendo", productName: "Nintendo Switch OLED Model" }).guard === "model_missing");
   check("no first read at all (a link scan): the brand rules do not apply", guardMatch({ match: "likely", tie: "part" }, listing, { productName: "mini massage gun" }).match === "likely");
   check("an answer recorded before ties existed is not held for lacking one", guardMatch({ match: "exact" }, listing, noBrand).match === "exact");
   check("similar and different are never changed",
@@ -116,7 +136,7 @@ for (const r of answered) {
   r.d = isPartListing(r.listing, r.read);
   // What the engine now does with this answer. For a replay, recomputed from
   // the gate's own answer and tie, and compared with what was recorded.
-  r.after = guardMatch({ match: r.gate, tie: r.source === "replay" ? r.tie : undefined }, r.listing, r.read);
+  r.after = guardMatch({ match: r.gate, tie: r.source === "replay" ? r.tie : undefined, why: r.why }, r.listing, r.read);
   r.held = r.host || !claims(r.after.match);
 }
 const rows = answered.filter(r => claims(r.gate));
@@ -127,7 +147,8 @@ const replays = rows.filter(r => r.source === "replay");
 const replayed = new Map(answered
   .filter(r => r.source === "replay" && ["exact", "likely", "similar", "different"].includes(r.gate))
   .map(r => [keyOf(r), r]));
-const caughtBy = (r) => [r.host && "host", r.a && "brand", r.b && "no-brand", r.d && "part", r.source === "replay" && r.after.guard === "no_tie" && "tie"].filter(Boolean).join("+") || "none";
+const LATER = { not_for_sale: "not-for-sale", model_missing: "model", no_tie: "tie" };
+const caughtBy = (r) => [r.host && "host", r.a && "brand", r.b && "no-brand", r.d && "part", LATER[r.after.guard]].filter(Boolean).join("+") || "none";
 const fmt = (r) => `${era(r).padEnd(4)} r${r.run} ${`${r.caseId}/${r.intent || "-"}`.padEnd(32)} ${r.purpose.padEnd(16)} ${r.gate.toUpperCase().padEnd(6)} ` +
   `"${r.listing.title.slice(0, 64)}" | brand read "${r.read.brand}" | held by: ${caughtBy(r)}`;
 
@@ -150,6 +171,20 @@ const lost = rows.filter(r => r.right && r.held && !r.host);
 for (const r of lost) console.log(`  ${fmt(r)}`);
 if (lost.length === 0) console.log("  none");
 
+// Case by case, for every case a replay covered: did any right listing come
+// back as a match before (the stored scans, the gate's own answers), and does
+// one now (the replay, after the shipped guards)?
+if (replays.length > 0) {
+  console.log("\nRECALL, CASE BY CASE (replayed cases): a right listing claimed before -> now");
+  const best = (list) => (list.some(r => r.right && r.gate === "exact") ? "exact" : list.some(r => r.right && r.gate === "likely") ? "likely" : "none");
+  const bestNow = (list) => (list.some(r => r.right && r.after.match === "exact" && !r.host) ? "exact" : list.some(r => r.right && r.after.match === "likely" && !r.host) ? "likely" : "none");
+  for (const caseId of [...new Set(replays.map(r => r.caseId).concat(answered.filter(r => r.source === "replay").map(r => r.caseId)))]) {
+    const before = best(rows.filter(r => r.caseId === caseId && r.source === "scan" && !r.host));
+    const now = bestNow(rows.filter(r => r.caseId === caseId && r.source === "replay"));
+    console.log(`  ${caseId.padEnd(24)} ${before.padEnd(7)} -> ${now}${before !== "none" && now === "none" ? "   (lost)" : ""}`);
+  }
+}
+
 console.log("");
 check("every wrong answer on the current gate is held, or pending a replay",
   wrong.filter(r => era(r) === "four" && !r.held).every(r => !replayed.has(keyOf(r)) || replayed.get(keyOf(r)).held));
@@ -158,8 +193,10 @@ for (const e of ["old", "four"]) {
 }
 check("no wrong answer survives a replay", replays.filter(r => !r.right).every(r => r.held),
   replays.filter(r => !r.right && !r.held).map(fmt).join("\n      "));
-check("every replay recorded what the shipped guards decide", replays.every(r => r.after.match === r.match),
-  replays.filter(r => r.after.match !== r.match).map(r => `${fmt(r)}: recorded ${r.match}, guards say ${r.after.match}`).join("\n      "));
+// A replay recorded what the guards of its day decided; the shipped guards
+// may only be stricter since, never laxer.
+check("no replay answer the guards held then passes the shipped guards now", replays.every(r => claims(r.match) || !claims(r.after.match)),
+  replays.filter(r => !claims(r.match) && claims(r.after.match)).map(r => `${fmt(r)}: recorded ${r.match}, guards say ${r.after.match}`).join("\n      "));
 if (replays.length > 0) {
   const uncovered = [...pending.old, ...pending.four];
   check("once replays are stored, every pending wrong answer has been replayed", uncovered.length === 0, uncovered.map(fmt).join("\n      "));
