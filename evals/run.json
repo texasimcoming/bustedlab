@@ -1,15 +1,11 @@
 {
-  "run": 7,
-  "note": "Live validation of the match guards and the SerpApi Lens escalation on production (PR #17, merge 5fa0d34; diagnose passed on it in the watchdog's deploy run): the six run-5 cases through the evaluation path, the wrong and missed ones first, under a $0.35 all-in scan cap that keeps the job's Claude total under $0.60.",
+  "run": 8,
+  "note": "The two live scans run 7's cap held back (Stanley euro screenshot, silicone brush), on the same build (5fa0d34), under a $0.16 all-in scan cap that keeps the job's Claude total under $0.60 ($0.4128 spent before this run).",
   "steps": ["preflight", "photos", "scan"],
-  "maxUsd": 0.37,
-  "scanCapUsd": 0.35,
-  "cases": ["yellowstone-cowboy-hat", "flowlife-flowgun-air", "car-phone-holder", "airpods-pro-2", "stanley-quencher-eur", "silicone-pastry-brush"],
+  "maxUsd": 0.17,
+  "scanCapUsd": 0.16,
+  "cases": ["stanley-quencher-eur", "silicone-pastry-brush"],
   "plan": [
-    ["yellowstone-cowboy-hat", "verdict"],
-    ["flowlife-flowgun-air", "finder"],
-    ["car-phone-holder", "finder"],
-    ["airpods-pro-2", "verdict"],
     ["stanley-quencher-eur", "verdict"],
     ["silicone-pastry-brush", "finder"]
   ]
