@@ -133,7 +133,7 @@ export function briefNumbers(stats) {
   const w = stats.window || {};
   const failures = (stats.failures?.byReason || []).filter(r => r.windowTotal > 0).sort((a, b) => b.windowTotal - a.windowTotal);
   const spendDays = stats.spend?.days || [];
-  const modelUsd = Math.round(sum(spendDays.map(d => d.modelUsd)) * 100) / 100;
+  const modelUsd = Math.round(sum(spendDays.map(d => d.modelUsd)) * 10000) / 10000;
   const uncached = sum(spendDays.map(d => d.uncachedFreeScans));
   const budget = stats.spend?.dailyModelBudgetUsd ?? null;
   const cap = stats.spend?.globalDailyFreeScanCap ?? null;
@@ -174,8 +174,15 @@ export function briefNumbers(stats) {
     cost: {
       modelUsd,
       uncachedFreeScans: uncached,
-      perCompletedScan: (w.scans ?? 0) > 0 ? Math.round((1000 * modelUsd) / w.scans) / 1000 : null,
-      perUncachedFreeScan: uncached > 0 ? Math.round((1000 * modelUsd) / uncached) / 1000 : null,
+      // To a hundredth of a cent: at a few cents a scan, three decimals
+      // rounded a real cost to "$0".
+      perCompletedScan: (w.scans ?? 0) > 0 ? Math.round((10000 * modelUsd) / w.scans) / 10000 : null,
+      perUncachedFreeScan: uncached > 0 ? Math.round((10000 * modelUsd) / uncached) / 10000 : null,
+      // The spend history is kept from the day it was added; days before
+      // its first entry read as zero because nothing was recorded, not
+      // because nothing was spent.
+      historyFrom: spendDays.find(d => d.modelUsd > 0 || d.uncachedFreeScans > 0)?.day ?? null,
+      windowFrom: spendDays[0]?.day ?? null,
       dailyBudgetUsd: budget,
       daysOverBudget: budget ? spendDays.filter(d => d.modelUsd >= budget).length : 0,
       freeCap: cap,
@@ -282,6 +289,8 @@ export function briefMarkdown({ date, numbers: n, fixes, summary, base }) {
     n.wrongProduct.count ? `${n.wrongProduct.count} this week. By result: ${Object.entries(n.wrongProduct.byResult).map(([k, v]) => `${k} ${v}`).join(", ") || "n/a"}.` : "None this week.",
     "",
     "## Cost against the caps", "",
+    ...(n.cost.historyFrom && n.cost.windowFrom && n.cost.historyFrom > n.cost.windowFrom
+      ? [`Spend history begins ${n.cost.historyFrom}: the days before it read as zero because nothing was recorded, so this week's cost figures are partial.`] : []),
     `Model spend ${money(n.cost.modelUsd)} this week (busiest day ${money(n.cost.busiestDayUsd)}; daily budget ${n.cost.dailyBudgetUsd === null ? "n/a" : money(n.cost.dailyBudgetUsd)}, crossed on ${n.cost.daysOverBudget} day(s)).`,
     `Per completed scan ${n.cost.perCompletedScan === null ? "n/a" : `$${n.cost.perCompletedScan}`} (cache hits included); per uncached free scan ${n.cost.perUncachedFreeScan === null ? "n/a" : `$${n.cost.perUncachedFreeScan}`} (${n.cost.uncachedFreeScans} of them; free cap ${n.cost.freeCap ?? "n/a"} a day, reached on ${n.cost.daysAtCap} day(s)).`,
     `Search accounts: Serper ${n.providers.serperCreditsLeft ?? "unknown"} credits left, SerpApi ${n.providers.serpApiSearchesLeft ?? "unknown"} searches left.`,

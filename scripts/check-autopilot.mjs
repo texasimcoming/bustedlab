@@ -104,7 +104,16 @@ const STATS = {
 const numbers = briefNumbers(STATS);
 const fixes = leverageFixes(numbers);
 check("cost per completed scan and per uncached free scan come from the spend history",
-  numbers.cost.modelUsd === 0.62 && numbers.cost.perCompletedScan === 0.024 && numbers.cost.perUncachedFreeScan === 0.031, JSON.stringify(numbers.cost));
+  numbers.cost.modelUsd === 0.62 && numbers.cost.perCompletedScan === 0.0238 && numbers.cost.perUncachedFreeScan === 0.031, JSON.stringify(numbers.cost));
+{
+  const partial = briefNumbers({ ...STATS, spend: { ...STATS.spend, days: [
+    { day: "2026-09-28", modelUsd: 0, uncachedFreeScans: 0 }, { day: "2026-09-29", modelUsd: 0, uncachedFreeScans: 0 },
+    { day: "2026-09-30", modelUsd: 0.0123, uncachedFreeScans: 0 },
+  ] } });
+  const text = briefMarkdown({ date: "2026-09-30", numbers: partial, fixes: [], summary: "", base: "https://example.test" });
+  check("a cost of about a cent a scan is not rounded to $0", partial.cost.perCompletedScan === 0.0005, String(partial.cost.perCompletedScan));
+  check("a spend history shorter than the week says so", /Spend history begins 2026-09-30/.test(text), text.slice(-500));
+}
 check("outcome mix, failure reasons and wrong-product counts carried through",
   numbers.outcomes.unresolved === 12 && numbers.failures[0].reason === "lens" && numbers.wrongProduct.count === 2);
 check("three fixes: the wrong-product reports first (the owner's first rule), then by reach: landings lost, cards never shared",
