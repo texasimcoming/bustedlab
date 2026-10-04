@@ -16,6 +16,12 @@
 export interface GateVerdict {
   match: "exact" | "likely" | "similar" | "different";
   reasoning: string;
+  /**
+   * What ties the candidate to IMAGE A: "logo", "text", "part", "photo" or
+   * "none". Anything missing or unrecognised reads as "none", and an "exact"
+   * or "likely" with no tie is held to "similar" by match-guards.ts.
+   */
+  tie: string;
 }
 
 /**
@@ -38,6 +44,14 @@ export interface GateVerdict {
  * anything) or back up what the images already show. Without it, the gate
  * had no way to tell a news article that reused the photo from a listing,
  * and called the article "exact" because it was literally the same picture.
+ *
+ * A NAMED TIE. Every answer also names what ties the listing to the photo:
+ * a logo, printed text, a distinctive part, or the identical photograph.
+ * The production evaluation's wrong matches were all argued from shape and
+ * colour ("same black body, round head and side control panel" for a Cult
+ * Flex gun shown a Flowlife one), so a match now has to point at something
+ * a different model of the same kind would not share. The prompt asks for
+ * it; match-guards.ts enforces it in code, whatever the answer says.
  */
 export function buildBatchPrompt(count: number): string {
   return `You are shown IMAGE A (one photo) and ${count} candidate product listing image${count === 1 ? "" : "s"}, numbered 1 to ${count}. Each candidate may come with its listing title and the site it is on.
@@ -57,11 +71,18 @@ A candidate that is not a product offered for sale is "different", even when it 
 Judge each candidate INDEPENDENTLY, in absolute terms, not against the other candidates. Do not rank them, and do not assume one of them must be the match: it is normal and expected for every candidate to be "different", and being the closest of the ones shown is never a reason to call something "exact" or "likely".
 
 Return ONLY a JSON array, one entry per candidate, in order:
-[{"candidate": 1, "match": "exact" | "likely" | "similar" | "different", "why": "a few words naming the feature that decided it"}]
+[{"candidate": 1, "match": "exact" | "likely" | "similar" | "different", "tie": "logo" | "text" | "part" | "photo" | "none", "why": "a few words naming the feature that decided it"}]
 "exact" = the same specific product: the same model in the same colourway, high confidence, and nothing in its title contradicts it.
 "likely" = the same model as far as the images show, but one thing cannot be confirmed: a detail is hidden or too small to see, or the colourway differs, or the title neither confirms nor contradicts it. Nothing visible or written says it is a different model.
 "similar" = a lookalike: the same kind of product, or the same brand, but a different model or one you cannot tie to IMAGE A.
 "different" = clearly not the same product, or not a product offered for sale.
+"tie" = the one thing, visible in BOTH images, that ties this listing to the product in IMAGE A rather than to any other model of its kind:
+  "logo" = the same logo, wordmark or brand marking;
+  "text" = the same printed text, label, pattern or model number;
+  "part" = a distinctive part this model has and other models of its kind do not;
+  "photo" = the identical product photograph;
+  "none" = nothing more specific than colour, overall shape, size, material or the parts every product of this kind has (a handle, a head, a lid, a strap, a button, a panel).
+"exact" and "likely" need a tie. With "none", the answer is "similar" or "different".
 Be strict. Default to "similar" or "different" when uncertain. Never guess "exact" or "likely".`;
 }
 
@@ -95,11 +116,12 @@ export function salvageVerdictObjects(text: string): unknown[] {
 }
 
 export function coerceVerdict(raw: unknown): GateVerdict | null {
-  const entry = raw as { match?: unknown; why?: unknown; reasoning?: unknown } | null;
+  const entry = raw as { match?: unknown; why?: unknown; reasoning?: unknown; tie?: unknown } | null;
   const match = entry?.match;
   if (match !== "exact" && match !== "likely" && match !== "similar" && match !== "different") return null;
   const why = typeof entry?.why === "string" ? entry.why
     : typeof entry?.reasoning === "string" ? entry.reasoning
     : "";
-  return { match, reasoning: why };
+  const tie = typeof entry?.tie === "string" ? entry.tie.trim().toLowerCase() : "none";
+  return { match, reasoning: why, tie };
 }

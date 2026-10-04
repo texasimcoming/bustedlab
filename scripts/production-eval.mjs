@@ -40,6 +40,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, rea
 import { resolve, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import { identityMatches, isListing } from "./lib/labels.mjs";
 
 const REPO = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const BASE = (process.env.BASE_URL || "https://www.bustedlab.com").replace(/\/$/, "");
@@ -353,12 +354,6 @@ const escapeMd = (t) => String(t ?? "").replace(/\|/g, "/").replace(/\n/g, " ");
 const scans = []; // { caseId, intent, status, ms, json, classification }
 let stopAll = false;
 
-function identityMatches(c, text) {
-  const t = String(text || "").toLowerCase();
-  const all = c.identity?.all || [];
-  const any = c.identity?.any || [];
-  return all.every(w => t.includes(w)) && (any.length === 0 || any.some(w => t.includes(w)));
-}
 
 /** The user's categories, from a result and the label. */
 function classify(c, res) {
@@ -454,18 +449,25 @@ async function scanStep() {
   scanReport(stopped, allowanceBefore, allowanceAfter, serpapiLeft, scanSpent, scanCap);
 }
 
+/** Whether the scan asked SerpApi's Lens after Serper's could not verify (ESCALATION in scan.ts). */
+function escalationOf(trace) {
+  const steps = (trace?.steps || []).filter(x => x.step === "escalation");
+  if (steps.length === 0) return "not needed";
+  return steps.map(x => (x.ran ? `ran: ${x.fresh ?? 0} new, ${x.confidence}${x.fromEscalation ? ", used" : ""}` : `skipped: ${x.reason}`)).join("; ");
+}
+
 function scanReport(stopped, before, after, serpapiLeft, scanSpent = 0, scanCap = Infinity) {
   report.push("## Scans\n");
   if (stopped) report.push(`Stopped early: ${stopped}.\n`);
   report.push(`Free allowance seen from this runner's address: ${before} before, ${after} after (an evaluation scan must not use it). SerpApi searches left after: ${serpapiLeft ?? "unknown"}.`);
   report.push(`Scan step spend, all-in: $${scanSpent.toFixed(4)}${Number.isFinite(scanCap) ? ` of its $${scanCap.toFixed(2)} cap` : ""}.\n`);
-  report.push("| case | kind | intent | class | confidence | mode | engine | shown | ms | $ all-in | $ model | Serper credits | SerpApi | cache read / written | calls reading |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+  report.push("| case | kind | intent | class | confidence | mode | engine | SerpApi escalation | shown | ms | $ all-in | $ model | Serper credits | SerpApi | cache read / written | calls reading |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const s of scans) {
     const c = CASES.find(x => x.id === s.caseId);
     const r = s.json || {};
     const t = r.evaluation?.trace || {};
     const cost = scanCost(t);
-    report.push(`| ${s.caseId} | ${c?.kind || ""} | ${s.intent} | **${s.classification.label}**${s.classification.detail ? ` (${escapeMd(s.classification.detail).slice(0, 80)})` : ""} | ${r.matchConfidence || ""} | ${r.mode || r.error || ""} | ${r.engineUsed || ""} | ${escapeMd(r.sourceProduct?.title || "").slice(0, 60)} | ${s.ms ?? ""} | ${cost.usd.toFixed(4)} | ${t.claudeUsd ?? ""} | ${cost.serperCredits} | ${cost.serpapi} | ${t.cache ? `${t.cache.readTokens} / ${t.cache.writeTokens}` : ""} | ${t.cache ? `${t.cache.callsReading} of ${t.cache.calls}` : ""} |`);
+    report.push(`| ${s.caseId} | ${c?.kind || ""} | ${s.intent} | **${s.classification.label}**${s.classification.detail ? ` (${escapeMd(s.classification.detail).slice(0, 80)})` : ""} | ${r.matchConfidence || ""} | ${r.mode || r.error || ""} | ${r.engineUsed || ""} | ${escalationOf(t)} | ${escapeMd(r.sourceProduct?.title || "").slice(0, 60)} | ${s.ms ?? ""} | ${cost.usd.toFixed(4)} | ${t.claudeUsd ?? ""} | ${cost.serperCredits} | ${cost.serpapi} | ${t.cache ? `${t.cache.readTokens} / ${t.cache.writeTokens}` : ""} | ${t.cache ? `${t.cache.callsReading} of ${t.cache.calls}` : ""} |`);
   }
   const counts = {};
   for (const s of scans) counts[s.classification.label] = (counts[s.classification.label] || 0) + 1;
@@ -518,21 +520,8 @@ function judgePick(c, pick) {
   return identityMatches(c, `${pick.candidate.title} ${pick.candidate.link}`) ? "hit" : "WRONG";
 }
 
-// The same host rule as isListingCandidate in src/lib/scan.ts: pages on these
-// hosts never reach the gate, so replays do not send them either.
-const NON_LISTING_HOSTS = [
-  "wikipedia.org", "wikimedia.org", "wikiwand.com", "fandom.com", "reddit.com", "pinterest.",
-  "youtube.com", "youtu.be", "instagram.com", "tiktok.com", "twitter.com", "x.com", "threads.net",
-  "tumblr.com", "flickr.com", "imgur.com", "quora.com", "medium.com", "substack.com", "deviantart.com",
-  "artstation.com", "behance.net", "dribbble.com", "cgtrader.com", "sketchfab.com", "turbosquid.com",
-  "manuals.plus", "manualslib.com",
-];
-function isListing(link) {
-  let host = "", path = "";
-  try { const u = new URL(link); host = u.hostname.toLowerCase(); path = u.pathname; } catch { return true; }
-  if (host === "facebook.com" || host.endsWith(".facebook.com")) return path.startsWith("/marketplace/");
-  return !NON_LISTING_HOSTS.some(h => (h.endsWith(".") ? host.includes(h) : host === h || host.endsWith(`.${h}`)));
-}
+// Pages on the hosts in scripts/lib/labels.mjs (isListing) never reach the
+// gate, so replays do not send them either.
 
 /** The identification candidates a case's gate saw, from this run or an earlier one. */
 function identifyBatches(caseId) {
@@ -565,6 +554,7 @@ async function pool(items, limit, fn) {
 
 async function replayStep() {
   if (stopAll) { report.push("## Model replays\n\nSkipped: see Scans.\n"); return; }
+  if (Array.isArray(run.replay?.sets)) return storedReplayStep();
   const gateConfigs = run.replay?.gate || [];
   const extractConfigs = run.replay?.extract || [];
   const parse = (cfg) => { const [model, effort] = cfg.split("@"); return { model, effort: effort || null, key: cfg }; };
@@ -630,6 +620,95 @@ async function replayStep() {
   }
   results.replay = { gate, extract };
   replayReport(gate, extract);
+}
+
+// ── replay of stored candidates through the shipped gate and guards ───────
+// run.replay = { model: "claude-sonnet-5-5@low", capUsd: 0.30,
+//   sets: [{ run: 5, caseId: "flowlife-flowgun-air", intent: "finder", purposes: ["identify"] }, ...] }
+// Each set is the candidates one stored scan's gate saw (its trace), for the
+// purposes named (identify by default). Within a case they are deduplicated by
+// link, pages on non-listing hosts are dropped (the engine never sends them),
+// and they go eight to a call to the shipped gate with that scan's own first
+// read, so every verdict comes back after the match guards exactly as a scan
+// would act on it. No search is repeated. A call is started only if even an
+// expensive one (the dearest so far times 1.5, at least 3 cents) cannot cross
+// capUsd. scripts/check-match-guards.mjs then judges the answers.
+async function storedReplayStep() {
+  const cfg = run.replay;
+  const [model, effort] = String(cfg.model || "claude-sonnet-5-5@low").split("@");
+  const cap = Number(cfg.capUsd) || 0.30;
+  const jobs = [];
+  const seen = new Map(); // case id -> links already queued
+  for (const set of cfg.sets) {
+    const file = resolve(RESULTS, `run-${set.run}.json`);
+    if (!existsSync(file)) { log(`replay: no run-${set.run}.json`); continue; }
+    const stored = JSON.parse(readFileSync(file, "utf8"));
+    const scan = (stored.scans || []).find(x => x.caseId === set.caseId && (!set.intent || x.intent === set.intent));
+    const steps = scan?.json?.evaluation?.trace?.steps || [];
+    const ext = steps.find(x => x.step === "extraction");
+    const photo = photos.get(set.caseId);
+    if (!ext || !photo) { log(`replay: ${set.caseId} from run ${set.run}: ${ext ? "no photo" : "no stored read"}`); continue; }
+    const read = { brand: ext.brand || "", productName: ext.productName || "" };
+    const purposes = set.purposes || ["identify"];
+    const links = seen.get(set.caseId) || new Set();
+    seen.set(set.caseId, links);
+    const fresh = steps
+      .filter(x => x.step === "gate" && purposes.includes(x.purpose || "identify"))
+      .flatMap(g => (g.candidates || []).map(k => ({ ...k, purpose: g.purpose || "identify" })))
+      .filter(k => isListing(k.link) && !links.has(k.link || k.image) && links.add(k.link || k.image));
+    for (let i = 0; i < fresh.length; i += 8) jobs.push({ set, read, photo, batch: fresh.slice(i, i + 8) });
+  }
+  log(`replay: ${jobs.length} gate call(s) on ${model}@${effort}`);
+  const answers = [];
+  let spent = 0, dearest = 0, stopped = "";
+  for (const job of jobs) {
+    const next = Math.max(0.03, dearest * 1.5);
+    if (spent + next > cap) { stopped = `the replay cap of $${cap.toFixed(2)} could be crossed by the next call ($${spent.toFixed(4)} spent)`; break; }
+    if (!canSpend(next)) { stopped = "the spend cap for this run was reached"; break; }
+    const body = {
+      op: "gate", model, effort,
+      image: { data: job.photo.data.toString("base64"), mimeType: job.photo.mimeType },
+      candidates: job.batch.map(x => ({ image: x.image, title: x.title, source: x.source, link: x.link })),
+      read: job.read,
+    };
+    const res = await operator("/api/eval", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } }, 90_000);
+    const usd = Number(res.json?.call?.costUsd) || 0;
+    spend.claudeUsd += usd;
+    spent += usd;
+    dearest = Math.max(dearest, usd);
+    const verdicts = res.json?.verdicts || [];
+    job.batch.forEach((k, i) => {
+      const v = verdicts[i] || {};
+      answers.push({
+        caseId: job.set.caseId, intent: job.set.intent || "", purpose: k.purpose, from: job.set.run, read: job.read,
+        title: k.title, source: k.source, link: k.link, price: k.price || 0,
+        gate: v.gateMatch || v.match || "unjudged", match: v.match || "unjudged", guard: v.guard || null, tie: v.tie ?? null,
+        why: String(v.reasoning || "").slice(0, 200), status: res.status, ok: res.json?.ok ?? false, loaded: res.json?.loaded ?? null,
+      });
+    });
+    await sleep(1000);
+  }
+  results.replay = { model: `${model}@${effort}`, capUsd: cap, spentUsd: +spent.toFixed(6), stopped: stopped || null, answers };
+  storedReplayReport(results.replay);
+}
+
+function storedReplayReport(replay) {
+  report.push("## Replay of stored candidates on the shipped gate and guards\n");
+  if (replay.stopped) report.push(`Stopped early: ${replay.stopped}.\n`);
+  report.push(`${replay.answers.length} candidate(s) judged by ${replay.model}; Claude $${replay.spentUsd.toFixed(4)} of the $${replay.capUsd.toFixed(2)} cap.\n`);
+  report.push("| case | from run | purpose | listing | label | gate | tie | guard | now | why |", "|---|---|---|---|---|---|---|---|---|---|");
+  const tally = { wrongHeld: 0, wrongShown: 0, rightKept: 0, rightHeld: 0 };
+  for (const a of replay.answers) {
+    const c = casesFile.cases.find(x => x.id === a.caseId);
+    const right = c?.findable === true && identityMatches(c, `${a.title} ${a.link}`);
+    const claimed = a.gate === "exact" || a.gate === "likely";
+    const shown = a.match === "exact" || a.match === "likely";
+    if (claimed && !right) tally[shown ? "wrongShown" : "wrongHeld"]++;
+    if (claimed && right) tally[shown ? "rightKept" : "rightHeld"]++;
+    if (!claimed && !shown) continue;
+    report.push(`| ${a.caseId} | ${a.from} | ${a.purpose} | ${escapeMd(a.title || "").slice(0, 60)} | ${right ? "right" : "**wrong**"} | ${a.gate} | ${a.tie ?? ""} | ${a.guard || ""} | ${a.match} | ${escapeMd(a.why).slice(0, 90)} |`);
+  }
+  report.push("", `Wrong products the gate called exact or likely: ${tally.wrongHeld + tally.wrongShown}, held by the guards ${tally.wrongHeld}, **still shown ${tally.wrongShown}**. Right products kept ${tally.rightKept}, held ${tally.rightHeld}.`, "");
 }
 
 function replayReport(gate, extract) {

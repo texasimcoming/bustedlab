@@ -286,7 +286,7 @@ for (const name of ["cold", "hard", "identity", "degraded"]) {
 
 console.log(`\n\nFULL COST PER SCAN: MODEL PLUS SEARCH (thinking ${think.toLocaleString()} per call)`);
 rule();
-console.log(`  Serper at $${SERPER_PER_CREDIT} a credit (a Lens search ${SERPER_LENS_CREDITS}, a Shopping search ${SERPER_SHOPPING_CREDITS}), SerpApi only as a backup.`);
+console.log(`  Serper at $${SERPER_PER_CREDIT} a credit (a Lens search ${SERPER_LENS_CREDITS}, a Shopping search ${SERPER_SHOPPING_CREDITS}), SerpApi only as a backup and for the Lens escalation.`);
 for (const name of Object.keys(SEQUENCES)) {
   const calls = SEARCH_CALLS[name];
   console.log(`  ${pad(name, 13)} model ${money(c(name))}  + search ${money(searchCost(name))} (${calls.serper} Serper credits, ${calls.serpapi} SerpApi)  = ${money(c(name) + searchCost(name))}`);

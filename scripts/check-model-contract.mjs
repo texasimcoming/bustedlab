@@ -281,7 +281,10 @@ function anthropic(body) {
     const images = body.messages[0].content.filter(b => b.type === "image");
     const verdicts = images.slice(1).map((img, i) => {
       const url = Buffer.from(img.source.data, "base64").toString("utf8").replace(/^IMG::/, "");
-      return { candidate: i + 1, match: VERDICTS[url] || "different", why: "contract" };
+      const match = VERDICTS[url] || "different";
+      // The tie a gate following its prompt names: a match is tied by the
+      // cap's logo, anything else by nothing (see buildBatchPrompt).
+      return { candidate: i + 1, match, tie: match === "exact" || match === "likely" ? "logo" : "none", why: "contract" };
     });
     return simulatedReply(body, JSON.stringify(verdicts));
   }
@@ -541,8 +544,17 @@ section("BUDGET MODE: SERPER FIRST, SERPAPI ONLY AS A BACKUP ABOVE ITS RESERVE")
     errors.some(e => /serpapi held at its reserve/.test(e)) && result.failure?.reason === "lens", `${summary(result)} | ${errors.join(" | ")}`);
 }
 {
+  // ESCALATION in scan.ts: nothing Serper brought could be verified (here,
+  // nothing at all), so SerpApi's Lens is asked once while it is above its
+  // reserve. That is an escalation, not a failure.
   const { result, serpApi } = await scan({ serperLensEmpty: true });
-  check("Serper answers 'no visual matches': that is an answer, SerpApi's Lens is not asked", !serpApi.includes("google_lens"), serpApi.join(", "));
+  check("Serper answers 'no visual matches': SerpApi's Lens is asked exactly once, as an escalation",
+    serpApi.filter(e => e === "google_lens").length === 1 && /escalated/.test(result.engineUsed || ""), `${serpApi.join(", ")}; via ${result.engineUsed}`);
+  check("and the cap is identified, not reported as a failure", !result.failure && result.matchConfidence === "exact", summary(result));
+}
+{
+  const { result, serpApi } = await scan({ serperLensEmpty: true, serpApiLeft: 20 });
+  check("the same with SerpApi at its reserve: SerpApi is not searched", serpApi.length === 0, serpApi.join(", "));
   check("and it is an honest no-match, not a failure", !result.failure && result.mode === "UNRESOLVED", summary(result));
 }
 {

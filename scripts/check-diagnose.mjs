@@ -43,7 +43,7 @@ globalThis.fetch = async (input, init = {}) => {
     sent.push(body);
     const prompt = JSON.stringify(body.messages[0].content);
     const text = prompt.includes("candidate product listing image")
-      ? JSON.stringify([{ candidate: 1, match: "exact", why: "same photo" }])
+      ? JSON.stringify([{ candidate: 1, match: "exact", tie: "photo", why: "same photo" }])
       : JSON.stringify({ productName: "whitening strips", brand: "", visiblePrice: null, currency: "", imageQuality: "good" });
     // As the 5.5 models answer: a thinking block first, then the text, with
     // output_tokens covering both.
