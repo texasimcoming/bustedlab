@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isOperator } from "@/lib/operator";
 import { diagnoseEngine, ENGINE_MODELS, SERPAPI_RESERVE, retailerSweepOn, type LayerProbe } from "@/lib/scan";
 import { GLOBAL_DAILY_CAP } from "@/lib/redis";
+import { serperCreditsLeft } from "@/lib/provider-balance";
 import { MODEL_RULES } from "@/lib/model-rules";
 import { evaluationUsage } from "@/lib/eval-log";
 import { DIAGNOSE_SAMPLE } from "@/lib/diagnose-sample";
@@ -124,29 +125,10 @@ async function serper(): Promise<LayerProbe> {
   }
 }
 
-/**
- * Serper's remaining credits, if its account endpoint says. Reported, never
- * failed: the endpoint is not in Serper's public docs as far as this code
- * knows, and only numeric fields are kept (an account payload can carry an
- * email). When it answers nothing usable, the balance is on serper.dev.
- */
+/** Serper's remaining credits, reported in the shape this route has always used. */
 async function serperBalance(): Promise<Record<string, unknown>> {
-  const key = process.env.SERPER_API_KEY;
-  if (!key) return { known: false, detail: "SERPER_API_KEY is not set" };
-  try {
-    const res = await fetch("https://google.serper.dev/account", {
-      headers: { "X-API-KEY": key },
-      signal: AbortSignal.timeout(6000),
-    });
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    const numbers = Object.fromEntries(Object.entries(body).filter(([, v]) => typeof v === "number"));
-    const balance = ["balance", "credits", "creditsLeft", "credits_left", "remaining"].map(k => body[k]).find(v => typeof v === "number");
-    return res.ok && typeof balance === "number"
-      ? { known: true, creditsLeft: balance, fields: numbers }
-      : { known: false, status: res.status, fields: numbers, detail: "the account endpoint gave no balance; see serper.dev" };
-  } catch (err) {
-    return { known: false, detail: String((err as Error)?.message || err).slice(0, 200) };
-  }
+  const b = await serperCreditsLeft();
+  return b.known ? { known: true, creditsLeft: b.left, fields: b.fields } : { known: false, status: b.status, fields: b.fields, detail: b.detail };
 }
 
 async function exchangeRates(): Promise<LayerProbe> {

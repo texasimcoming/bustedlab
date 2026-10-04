@@ -1,0 +1,75 @@
+# Production watchdog. Read-only against production: /api/preflight and
+# /api/stats every hour (free), plus /api/diagnose (about 3 cents of Claude
+# and 5 Serper credits) every Monday and after every production deploy.
+#
+# Any not-ready state, failed layer, credit-exhausted error or spike in
+# scans that could not be completed fails the run, so GitHub emails the
+# owner, and opens (or adds to) an issue labelled "watchdog" that mentions
+# them. A later passing run closes it. The operator token comes from the
+# ANALYTICS_TOKEN secret and is scrubbed from everything written.
+#
+# Never runs on pull_request: a fork must not reach the token.
+name: watchdog
+
+on:
+  schedule:
+    - cron: "23 * * * *"   # hourly: preflight and scan failures
+    - cron: "41 6 * * 1"   # Mondays 06:41 UTC: also diagnose
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      diagnose:
+        description: "Also run /api/diagnose (about 3 cents of Claude and 5 Serper credits)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    # Production deploys only, once they are live; preview deploys are not production.
+    if: github.event_name != 'deployment_status' || (github.event.deployment_status.state == 'success' && contains(github.event.deployment.environment, 'Production'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Let the production alias switch to the new deploy
+        if: github.event_name == 'deployment_status'
+        run: sleep 45
+      - name: Check production
+        id: check
+        env:
+          ANALYTICS_TOKEN: ${{ secrets.ANALYTICS_TOKEN }}
+          BASE_URL: https://www.bustedlab.com
+          MODE: ${{ (github.event_name == 'deployment_status' || github.event.schedule == '41 6 * * 1' || inputs.diagnose) && 'diagnose' || 'hourly' }}
+          EXPECT_COMMIT: ${{ github.event.deployment.sha }}
+        run: node --experimental-strip-types --no-warnings scripts/watchdog.mjs
+      - name: Raise the alarm
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          test -f watchdog-result.md || echo "The watchdog run failed before it could check production. See the run log." > watchdog-result.md
+          printf '@%s production needs attention. Run: %s\n\n' "$OWNER" "$RUN_URL" | cat - watchdog-result.md > alarm.md
+          gh label create watchdog --color B60205 --description "Production watchdog alarm" --force >/dev/null
+          open=$(gh issue list --label watchdog --state open --json number --jq '.[0].number')
+          if [ -n "$open" ]; then gh issue comment "$open" --body-file alarm.md; else gh issue create --title "Watchdog: production check failed" --label watchdog --body-file alarm.md; fi
+      - name: Close the alarm once production is healthy again
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          open=$(gh issue list --label watchdog --state open --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$open" ]; then printf 'Recovered: %s\n\n' "$RUN_URL" | cat - watchdog-result.md > recovered.md; gh issue close "$open" --comment "$(cat recovered.md)"; fi

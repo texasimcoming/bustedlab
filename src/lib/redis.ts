@@ -42,6 +42,7 @@ export const keys = {
   bustedTotal: () => `scan:verdicts:busted`,
   hourlyScans: () => `scan:hourly:${new Date().toISOString().slice(0, 13)}`, // buckets by UTC hour
   globalDaily: () => `scan:global:${new Date().toISOString().slice(0, 10)}`,
+  globalDailyHistory: (day: string) => `scan:global:hist:${day}`,
   paidUser: (email: string) => `paid:${email.toLowerCase().trim()}`,
   magicToken: (token: string) => `magic:${token}`,
   session: (token: string) => `session:${token}`,
@@ -265,6 +266,23 @@ export async function incrementGlobalScans(): Promise<void> {
   const midnight = new Date();
   midnight.setUTCHours(24, 0, 0, 0);
   await getRedis().expireat(key, Math.floor(midnight.getTime() / 1000));
+  // The same count kept per day for 400 days, for cost per scan in the
+  // weekly brief: the cap's own counter expires at midnight.
+  const history = keys.globalDailyHistory(new Date().toISOString().slice(0, 10));
+  await getRedis().incr(history);
+  await getRedis().expire(history, 60 * 60 * 24 * 400);
+}
+
+/** Uncached free scans per UTC day, oldest first, for the last `days` days. */
+export async function readGlobalScansHistory(days: number): Promise<{ day: string; uncachedFreeScans: number }[]> {
+  const list: string[] = [];
+  for (let i = days - 1; i >= 0; i--) list.push(new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10));
+  try {
+    const values = await getRedis().mget<(number | string | null)[]>(...list.map(keys.globalDailyHistory));
+    return list.map((day, i) => ({ day, uncachedFreeScans: Number(values[i]) || 0 }));
+  } catch {
+    return list.map(day => ({ day, uncachedFreeScans: 0 }));
+  }
 }
 
 // ════════════════════════════════════════════════════════════════

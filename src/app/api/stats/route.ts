@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildFunnel, readEvents, readScanFailures, readWrongProduct, CLIENT_EVENTS } from "@/lib/analytics";
-import { getLedgerSize, readCspViolations } from "@/lib/redis";
+import { getLedgerSize, readCspViolations, readGlobalScansHistory, GLOBAL_DAILY_CAP } from "@/lib/redis";
+import { readModelSpendHistory, currentSpendMode, DAILY_MODEL_BUDGET_USD } from "@/lib/model-budget";
+import { serperCreditsLeft, serpApiSearchesLeft } from "@/lib/provider-balance";
 import { isOperator } from "@/lib/operator";
 
 /**
@@ -25,12 +27,17 @@ export async function GET(req: NextRequest) {
   const requested = Number(req.nextUrl.searchParams.get("days") || 30);
   const days = Math.min(Math.max(Number.isFinite(requested) ? requested : 30, 1), 120);
 
-  const [series, ledgerSize, csp, failures, wrongProduct] = await Promise.all([
+  const [series, ledgerSize, csp, failures, wrongProduct, spendDays, scanDays, mode, serper, serpapi] = await Promise.all([
     readEvents(days),
     getLedgerSize().catch(() => 0),
     readCspViolations(days).catch(() => []),
     readScanFailures(days),
     readWrongProduct(days),
+    readModelSpendHistory(days),
+    readGlobalScansHistory(days),
+    currentSpendMode(),
+    serperCreditsLeft(),
+    serpApiSearchesLeft(),
   ]);
 
   return NextResponse.json(
@@ -54,6 +61,17 @@ export async function GET(req: NextRequest) {
       // the identification engine; a report is the person's word, rate
       // limited, not proof.
       wrongProduct,
+      // Spend against the caps, per UTC day: measured model spend (every
+      // Claude call, as its usage reported it) and the uncached free scans
+      // the global cap counted. Kept 400 days.
+      spend: {
+        mode,
+        dailyModelBudgetUsd: DAILY_MODEL_BUDGET_USD,
+        globalDailyFreeScanCap: GLOBAL_DAILY_CAP,
+        days: spendDays.map((d, i) => ({ ...d, uncachedFreeScans: scanDays[i]?.uncachedFreeScans ?? 0 })),
+      },
+      // What the search accounts have left (free lookups; numbers only).
+      providers: { serperCreditsLeft: serper.known ? serper.left : null, serpApiSearchesLeft: serpapi.known ? serpapi.left : null },
       window: buildFunnel(series, "window"),
       lifetime: buildFunnel(series, "total"),
       series: series.map(s => ({

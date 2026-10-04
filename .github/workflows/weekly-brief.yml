@@ -1,0 +1,60 @@
+# Weekly growth brief and content pack, Mondays 07:13 UTC. Read-only against
+# production: /api/stats (operator token) and /api/leaderboard (public).
+#
+# Writes reports/weekly-<date>.md and reports/content-<date>.md to the
+# autopilot-reports branch (not main, so a report never triggers a production
+# deploy) and opens an issue labelled "weekly-brief" with both. Numbers come
+# from code. When the ANTHROPIC_API_KEY repo secret exists, one Sonnet 5.5
+# call (capped under $0.02) writes a short summary around them; without it
+# the brief is numbers only. Posting stays manual.
+name: weekly-brief
+
+on:
+  schedule:
+    - cron: "13 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: weekly-brief
+  cancel-in-progress: false
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build the brief and the content pack
+        env:
+          ANALYTICS_TOKEN: ${{ secrets.ANALYTICS_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BASE_URL: https://www.bustedlab.com
+          OUT_DIR: reports-out
+        run: node --experimental-strip-types --no-warnings scripts/weekly-brief.mjs
+      - name: Commit the reports to the autopilot-reports branch
+        run: |
+          date=$(cat reports-out/date.txt)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch -q origin autopilot-reports; then git worktree add -q ../reports FETCH_HEAD && git -C ../reports checkout -q -B autopilot-reports;
+          else git worktree add -q --orphan -b autopilot-reports ../reports; fi
+          mkdir -p ../reports/reports
+          cp "reports-out/weekly-$date.md" "reports-out/content-$date.md" ../reports/reports/
+          git -C ../reports add reports
+          git -C ../reports commit -q -m "Weekly brief and content pack, $date" || echo "nothing new to commit"
+          git -C ../reports push -q origin autopilot-reports
+      - name: Open the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          date=$(cat reports-out/date.txt)
+          printf 'Files: %s/%s/tree/autopilot-reports/reports\n\n' "${{ github.server_url }}" "${{ github.repository }}" | cat - reports-out/issue.md > issue-body.md
+          gh label create weekly-brief --color 0E8A16 --description "Weekly growth brief" --force >/dev/null
+          gh issue create --title "Weekly brief and content pack, $date" --label weekly-brief --body-file issue-body.md

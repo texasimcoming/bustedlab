@@ -133,6 +133,11 @@ function getRedis(): Redis {
 
 const dayKey = () => `spend:model:${new Date().toISOString().slice(0, 10)}`;
 const BREAKER_KEY = "spend:model:breaker";
+// The same spend, kept per day for 400 days: the governor's own counter
+// expires at midnight, and the weekly brief and the watchdog need history
+// (cost per scan against the caps). Read by readModelSpendHistory.
+const historyKey = (day: string) => `spend:model:hist:${day}`;
+const HISTORY_TTL_SECONDS = 60 * 60 * 24 * 400;
 
 /**
  * Adds one call's real cost to today's total. Awaited rather than fired and
@@ -145,12 +150,30 @@ export async function recordModelSpend(usd: number): Promise<void> {
   if (!(usd > 0)) return;
   try {
     const key = dayKey();
-    await getRedis().incrbyfloat(key, usd);
+    const history = historyKey(new Date().toISOString().slice(0, 10));
     const midnight = new Date();
     midnight.setUTCHours(24, 0, 0, 0);
-    await getRedis().expireat(key, Math.floor(midnight.getTime() / 1000));
+    // One round trip for the governor's counter and the history.
+    const pipeline = getRedis().pipeline();
+    pipeline.incrbyfloat(key, usd);
+    pipeline.expireat(key, Math.floor(midnight.getTime() / 1000));
+    pipeline.incrbyfloat(history, usd);
+    pipeline.expire(history, HISTORY_TTL_SECONDS);
+    await pipeline.exec();
   } catch {
     /* see FAILING OPEN above */
+  }
+}
+
+/** Model spend per UTC day, oldest first, for the last `days` days. Zeros on a Redis failure. */
+export async function readModelSpendHistory(days: number): Promise<{ day: string; modelUsd: number }[]> {
+  const list: string[] = [];
+  for (let i = days - 1; i >= 0; i--) list.push(new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10));
+  try {
+    const values = await getRedis().mget<(number | string | null)[]>(...list.map(historyKey));
+    return list.map((day, i) => ({ day, modelUsd: Math.round((Number(values[i]) || 0) * 10_000) / 10_000 }));
+  } catch {
+    return list.map(day => ({ day, modelUsd: 0 }));
   }
 }
 

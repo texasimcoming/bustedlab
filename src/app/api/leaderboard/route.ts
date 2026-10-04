@@ -6,6 +6,7 @@ import {
   getRecentRecords,
   getLedgerSize,
   getTopSavingsProducts,
+  getIndexEntries,
 } from "@/lib/redis";
 import { REAL_CATCHES_MINIMUM } from "@/content/catches";
 
@@ -29,6 +30,11 @@ import { REAL_CATCHES_MINIMUM } from "@/content/catches";
  * products qualify (the page shows its labelled illustrative set until then).
  * The same fields The Index already shows for each record, nothing more.
  *
+ * And `weekTop`: the five steepest markups measured in the last seven days,
+ * one per product (the same rows The Index shows for that window), for the
+ * weekly content pack (scripts/weekly-brief.mjs). Evaluation scans never
+ * reach the ledger, so nothing here comes from one.
+ *
  * Public and identical for every visitor, so it is cached at the edge. The
  * blanket no-store on /api/* exists to stop one person's free-scan state being
  * served to the next; there is nothing personal in here, and a leaderboard
@@ -46,7 +52,7 @@ export async function GET() {
     }
   };
 
-  const [trending, categories, topMarkup, recent, ledgerSize, catches] = await Promise.all([
+  const [trending, categories, topMarkup, recent, ledgerSize, catches, week] = await Promise.all([
     settle(() => getTrendingProducts(10), []),
     settle(() => getCategoryStats(5), []),
     settle(() => getTopMarkupProducts(10), []),
@@ -54,6 +60,7 @@ export async function GET() {
     settle(() => getRecentRecords(24), []),
     settle(() => getLedgerSize(), 0),
     settle(() => getTopSavingsProducts(REAL_CATCHES_MINIMUM), []),
+    settle(() => getIndexEntries({ days: 7, limit: 25 }), []),
   ]);
 
   return NextResponse.json(
@@ -84,6 +91,21 @@ export async function GET() {
           markup: r.markup,
           savings: r.savings,
           id: r.id,
+        })),
+      weekTop: week
+        .filter(r => r.markup > 0 && r.savings > 0 && r.matchConfidence !== "unverified")
+        .slice(0, 5)
+        .map(r => ({
+          id: r.id,
+          ts: r.ts,
+          title: r.title,
+          category: r.category,
+          retailPrice: r.retailPrice,
+          wholesalePrice: r.wholesalePrice,
+          markup: r.markup,
+          savings: r.savings,
+          matchConfidence: r.matchConfidence,
+          platform: r.platform,
         })),
       catches: catches.length < REAL_CATCHES_MINIMUM ? [] : catches.map(r => ({
         id: r.id,
