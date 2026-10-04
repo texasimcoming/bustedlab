@@ -1,20 +1,122 @@
 {
-  "run": 5,
-  "note": "Budget mode (PR #8, merge 49e4ebe): diagnose on the merge commit, the one-time purge of earlier evaluation data, then six scans under a hard $0.60 all-in cap.",
-  "steps": ["preflight", "diagnose", "purge", "photos", "scan"],
-  "expectCommit": "49e4ebe",
-  "waitFor": { "method": "POST", "path": "/api/eval/purge", "status": 400, "maxMinutes": 12 },
-  "purgeId": "eval-runs-1-4",
-  "requireDiagnosePass": true,
-  "maxUsd": 0.75,
-  "scanCapUsd": 0.60,
-  "cases": ["yellowstone-cowboy-hat", "airpods-pro-2", "stanley-quencher-eur", "flowlife-flowgun-air", "silicone-pastry-brush", "car-phone-holder"],
-  "plan": [
-    ["yellowstone-cowboy-hat", "verdict"],
-    ["airpods-pro-2", "verdict"],
-    ["stanley-quencher-eur", "verdict"],
-    ["flowlife-flowgun-air", "finder"],
-    ["silicone-pastry-brush", "finder"],
-    ["car-phone-holder", "finder"]
-  ]
+  "run": 6,
+  "note": "Match guards and the SerpApi Lens escalation (PR #16, merge 7971053): the stored candidates behind every wrong match the offline guards could not settle, then behind the right matches, replayed on the shipped gate (Sonnet 5.5 low) with each case's stored first read, under a $0.25 Claude cap (the owner's replay cap is $0.30; the rest is kept for the live scans under the $0.60 total). No search is repeated.",
+  "steps": [
+    "preflight",
+    "photos",
+    "replay"
+  ],
+  "cases": [
+    "flowlife-flowgun-air",
+    "knitted-hat",
+    "car-phone-holder",
+    "silicone-pastry-brush",
+    "raku-pitcher",
+    "kitchen-spatula",
+    "airpods-pro-2",
+    "switch-oled",
+    "yellowstone-cowboy-hat",
+    "stanley-quencher-eur",
+    "flowgun-go-eur"
+  ],
+  "maxUsd": 0.27,
+  "replay": {
+    "model": "claude-sonnet-5-5@low",
+    "capUsd": 0.25,
+    "sets": [
+      {
+        "run": 5,
+        "caseId": "flowlife-flowgun-air",
+        "intent": "finder"
+      },
+      {
+        "run": 3,
+        "caseId": "flowlife-flowgun-air",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "knitted-hat",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "knitted-hat",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "car-phone-holder",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "car-phone-holder",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "silicone-pastry-brush",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "silicone-pastry-brush",
+        "intent": "finder"
+      },
+      {
+        "run": 3,
+        "caseId": "silicone-pastry-brush",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "raku-pitcher",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "kitchen-spatula",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "airpods-pro-2",
+        "intent": "verdict"
+      },
+      {
+        "run": 5,
+        "caseId": "airpods-pro-2",
+        "intent": "verdict",
+        "purposes": [
+          "rebrand+retailer"
+        ]
+      },
+      {
+        "run": 2,
+        "caseId": "switch-oled",
+        "intent": "verdict"
+      },
+      {
+        "run": 3,
+        "caseId": "switch-oled",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "yellowstone-cowboy-hat",
+        "intent": "verdict"
+      },
+      {
+        "run": 5,
+        "caseId": "stanley-quencher-eur",
+        "intent": "verdict"
+      },
+      {
+        "run": 3,
+        "caseId": "flowgun-go-eur",
+        "intent": "verdict"
+      }
+    ]
+  }
 }

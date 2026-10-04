@@ -793,6 +793,32 @@ const SCENARIO_BRAND_AND_PART = {
   expect: { titleIncludes: "AirPods Pro (2nd generation)", price: 189.99, confidence: "exact", mode: "FINDER" },
 };
 
+// The run 6 replay: shown a health-site article that reused the photo, the
+// gate wrote "it's a health-site article, not a product listing" and still
+// answered "exact". Its own reason holds the answer, and with SerpApi at its
+// reserve the honest result is the real listing, as a lookalike.
+const SCENARIO_ARTICLE_EXACT = {
+  name: "An 'exact' whose own reason says the page is an article is held",
+  intent: "finder",
+  guardOnly: true,
+  serpapiLeft: 20,
+  vision: {
+    productName: "windshield suction cup gooseneck phone holder", brand: "", visiblePrice: null, currency: "",
+    quantity: "", category: "tech", platform: "unknown", storeName: "", visibleUrl: "",
+    priceConfidence: "none", imageQuality: "good",
+  },
+  lens: [
+    { title: "Suporte de celular para cama: como escolher um modelo ...", source: "Geriatria e Gerontologia", link: "https://geriatria.test/suporte", thumbnail: "https://img.test/article-holder" },
+    { title: "Gooseneck Windshield Phone Mount", source: "Walmart", link: "https://walmart.test/gooseneck", thumbnail: "https://img.test/gooseneck", price: { value: "$15.99", extracted_value: 15.99, currency: "$" } },
+  ],
+  shopping: () => [],
+  amazon: () => [],
+  verdicts: { "https://img.test/article-holder": "exact", "https://img.test/gooseneck": "similar" },
+  ties: { "https://img.test/article-holder": "photo" },
+  whys: { "https://img.test/article-holder": "Identical photo of the holder under a frosted windshield, but it's a health-site article, not a product listing" },
+  expect: { titleIncludes: "Gooseneck Windshield Phone Mount", price: 15.99, confidence: "unverified", mode: "FINDER" },
+};
+
 // ════════════════════════════════════════════════════════════════
 // The mocked internet.
 // ════════════════════════════════════════════════════════════════
@@ -960,7 +986,7 @@ function installFetch(scenario, stats) {
           const match = scenario.verdicts[candidateUrl];
           if (!match) throw new Error(`scenario "${scenario.name}" has no verification verdict for ${candidateUrl}`);
           stats.verified.push(`${match.padEnd(9)} ${candidateUrl.replace("https://img.test/", "")}`);
-          return { candidate: i + 1, match, tie: tieFor(scenario, candidateUrl, match), why: "mocked" };
+          return { candidate: i + 1, match, tie: tieFor(scenario, candidateUrl, match), why: scenario.whys?.[candidateUrl] || "mocked" };
         });
         return jsonResponse({ usage, content: [{ type: "text", text: JSON.stringify(verdicts) }] });
       }
@@ -1143,7 +1169,7 @@ const SCENARIOS = [
   SCENARIO_SPIKE, SCENARIO_DEGRADED, SCENARIO_TRUNCATED, SCENARIO_CALL_FAILS,
   SCENARIO_LOOKALIKE, SCENARIO_REUSED_PHOTO, SCENARIO_PRICED_FROM_PAGE, SCENARIO_PRICE_SEARCH_DOWN,
   SCENARIO_TIER_PAGE_PRICE, SCENARIO_LIKELY_PRICE, SCENARIO_RETAILER_POOLS, SCENARIO_GLASSES_NO_SWEEP,
-  SCENARIO_ESCALATION, SCENARIO_ESCALATION_HELD, SCENARIO_ESCALATION_UNKNOWN, SCENARIO_ESCALATION_DEGRADED, SCENARIO_BRAND_AND_PART,
+  SCENARIO_ESCALATION, SCENARIO_ESCALATION_HELD, SCENARIO_ESCALATION_UNKNOWN, SCENARIO_ESCALATION_DEGRADED, SCENARIO_BRAND_AND_PART, SCENARIO_ARTICLE_EXACT,
 ];
 
 for (const scenario of SCENARIOS) {
