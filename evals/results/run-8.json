@@ -1,0 +1,1204 @@
+{
+  "run": 8,
+  "note": "The two live scans run 7's cap held back (Stanley euro screenshot, silicone brush), on the same build (5fa0d34), under a $0.16 all-in scan cap that keeps the job's Claude total under $0.60 ($0.4128 spent before this run).",
+  "base": "https://www.bustedlab.com",
+  "startedAt": "2026-10-04T18:57:18.737Z",
+  "steps": {
+    "preflight": {
+      "status": 200,
+      "ms": 643,
+      "json": {
+        "ready": true,
+        "environment": "production",
+        "blockers": [],
+        "warnings": [
+          {
+            "check": "email",
+            "detail": "The Resend key is send-only, so the domain could not be checked. Confirm bustedlab.com shows as verified in Resend."
+          }
+        ],
+        "ok": [
+          "redis",
+          "checkout (lemonsqueezy, overlay)",
+          "base url",
+          "model key",
+          "search key",
+          "identity salt"
+        ],
+        "next": "GET /api/diagnose with the same token: real calls to every model and provider",
+        "limits": {
+          "dailyModelBudgetUsd": 2,
+          "paidScansPerAccountPerDay": 500,
+          "freeUncachedScansPerDay": 50
+        }
+      },
+      "text": ""
+    }
+  },
+  "photos": {
+    "silicone-pastry-brush": {
+      "source": {
+        "commons": "Kitchen-Silicone-Brush.jpg"
+      },
+      "page": "https://commons.wikimedia.org/wiki/File:Kitchen-Silicone-Brush.jpg",
+      "title": "Kitchen-Silicone-Brush.jpg",
+      "license": "Public domain",
+      "author": "Evan-Amos",
+      "description": "A silicone pastry brush",
+      "askingPrice": null,
+      "width": 2000,
+      "height": 903,
+      "bytes": 83624,
+      "sha256": "d9b1328a11c61227"
+    },
+    "stanley-quencher-eur": {
+      "source": {
+        "shopify": "https://eu.stanley1913.com/fr/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+        "currency": "EUR"
+      },
+      "page": "https://eu.stanley1913.com/fr/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+      "title": "Quencher® H2.0 FlowState™ Tumbler | 1.18L",
+      "license": "",
+      "author": "",
+      "description": "",
+      "askingPrice": {
+        "amount": 55,
+        "currency": "EUR"
+      },
+      "width": 1080,
+      "height": 2340,
+      "bytes": 98583,
+      "sha256": "7a5bb4d93db0d187"
+    }
+  },
+  "scans": [
+    {
+      "caseId": "stanley-quencher-eur",
+      "intent": "verdict",
+      "status": 200,
+      "ms": 12815,
+      "json": {
+        "found": true,
+        "mode": "VERDICT",
+        "priceSource": "screenshot",
+        "engineUsed": "lens_serper+priced_page",
+        "matchConfidence": "exact",
+        "category": "home",
+        "sourceProduct": {
+          "title": "THE QUENCHER 2.0™ TUMBLER - Stanley 1913 Indonesia",
+          "price": 36.34,
+          "currency": "USD",
+          "imageUrl": "/api/proxy-image?url=https%3A%2F%2Fencrypted-tbn3.gstatic.com%2Fimages%3Fq%3Dtbn%3AANd9GcQeoSZBN1nFD_5r7y8m6bpump2DSKqopG98cgRatM9YafnKEzLy&s=fae9797c6225383e31526913261c076f",
+          "productUrl": "https://id.stanley1913.com/products/qnchrh2-0-tm-tumb-antique-white-tile",
+          "affiliateUrl": "https://id.stanley1913.com/products/qnchrh2-0-tm-tumb-antique-white-tile",
+          "linkIsDirect": true,
+          "platform": "Stanley 1913"
+        },
+        "analysis": {
+          "retailEstimate": 61.89,
+          "retailSource": "screenshot",
+          "markup": 70,
+          "verdict": "HIGH_MARKUP",
+          "savings": 25.55,
+          "savingsPercent": 41,
+          "confidence": "high",
+          "retailOriginal": {
+            "amount": 55,
+            "currency": "EUR",
+            "rate": 0.88862557,
+            "asOf": "2026-10-02"
+          }
+        },
+        "scanId": null,
+        "scanRef": "muu6nu4n7dcbe7f4aa62c58639fdf6a9",
+        "evaluation": {
+          "cached": false,
+          "ms": 12763,
+          "trace": {
+            "totalMs": 12743,
+            "claudeUsd": 0.019598,
+            "searchesByProvider": {
+              "serper": 2
+            },
+            "creditsByProvider": {
+              "serper": 5
+            },
+            "cache": {
+              "readTokens": 2956,
+              "writeTokens": 1478,
+              "uncachedInputTokens": 4716,
+              "callsReading": 2,
+              "calls": 3
+            },
+            "msByLayer": {
+              "model:extraction": 2407,
+              "model:gate": 5502,
+              "search:lens": 2496,
+              "search:shopping": 755
+            },
+            "thinkingPerCall": 82,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2407,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 960,
+                "outputTokens": 172,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 1478,
+                "costUsd": 0.007335,
+                "stopReason": "end_turn",
+                "thinkingApprox": 89
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2377,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1634,
+                "outputTokens": 168,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0052436,
+                "stopReason": "end_turn",
+                "thinkingApprox": 66
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3125,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2122,
+                "outputTokens": 248,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0070196,
+                "stopReason": "end_turn",
+                "thinkingApprox": 90
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 2496,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 755,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 2530,
+                "brand": "Stanley",
+                "productName": "Quencher® H2.0 FlowState™ Tumbler | 1.18L",
+                "visiblePrice": 55,
+                "currency": "EUR",
+                "quantity": "1 unit",
+                "category": "home",
+                "storeName": "Stanley 1913",
+                "visibleUrl": "eu.stanley1913.com",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 5185,
+                "list": "organic",
+                "rows": 4,
+                "usable": 4,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 5236,
+                "engine": "serper",
+                "candidates": 4,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "THE QUENCHER 2.0™ TUMBLER – Stanley 1913 Indonesia",
+                    "source": "Stanley 1913",
+                    "price": 0,
+                    "link": "https://id.stanley1913.com/products/qnchrh2-0-tm-tumb-antique-white-tile",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQeoSZBN1nFD_5r7y8m6bpump2DSKqopG98cgRatM9YafnKEzLy"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "ad] ICYMI BIG drop on this Stanley 😍 🔗 ⬇️",
+                    "source": "Facebook",
+                    "price": 0,
+                    "link": "https://www.facebook.com/groups/919336406165819/posts/1688123919287060/",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQFD8BVHUh4_I4yuMnGJ1CYAyLOx1FmTVP4UGMtHKGOIWh8orNJ"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "25 Cheap Mother's Day Gifts You Can Buy Before May 12",
+                    "source": "pedestrian.tv",
+                    "price": 0,
+                    "link": "https://www.pedestrian.tv/style/cheap-mothers-day-gifts-australia/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcR3px72F2Xc6duG3axNfIuGybBgqC2VjaMGQ0F6Ws09FHhX0xwL"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Stanley 30 Oz Cup Holder FlowState Lid Cup Holder Compatible Stanley Quencher Flowstate Tumbler 30 Oz",
+                    "source": "wcsoluciones.com",
+                    "price": 0,
+                    "link": "https://wcsoluciones.com/?l=15323638081320",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSWDGckATcTTpUiG_2QWnzqIv8yL5Flz0lMkV4aZ6M1sR4yFa1y"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 5257,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 7689,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 3,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "THE QUENCHER 2.0™ TUMBLER – Stanley 1913 Indonesia",
+                    "source": "Stanley 1913",
+                    "price": 0,
+                    "link": "https://id.stanley1913.com/products/qnchrh2-0-tm-tumb-antique-white-tile",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQeoSZBN1nFD_5r7y8m6bpump2DSKqopG98cgRatM9YafnKEzLy",
+                    "match": "exact",
+                    "tie": "logo",
+                    "why": "Stanley Quencher H2.0 in rose quartz pink, same shape and logo; title is the same model line, regional site"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Stanley 30 Oz Cup Holder FlowState Lid Cup Holder Compatible Stanley Quencher Flowstate Tumbler 30 Oz",
+                    "source": "wcsoluciones.com",
+                    "price": 0,
+                    "link": "https://wcsoluciones.com/?l=15323638081320",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSWDGckATcTTpUiG_2QWnzqIv8yL5Flz0lMkV4aZ6M1sR4yFa1y",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Listing is for a cup holder accessory for the 30 oz size, not the 1.18L tumbler itself"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "25 Cheap Mother's Day Gifts You Can Buy Before May 12",
+                    "source": "pedestrian.tv",
+                    "price": 0,
+                    "link": "https://www.pedestrian.tv/style/cheap-mothers-day-gifts-australia/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcR3px72F2Xc6duG3axNfIuGybBgqC2VjaMGQ0F6Ws09FHhX0xwL",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Gift-guide article, not a product listing"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 7689,
+                "purpose": "identify",
+                "confidence": "exact",
+                "rank": 0,
+                "title": "THE QUENCHER 2.0™ TUMBLER – Stanley 1913 Indonesia",
+                "source": "Stanley 1913",
+                "price": 0,
+                "link": "https://id.stanley1913.com/products/qnchrh2-0-tm-tumb-antique-white-tile",
+                "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQeoSZBN1nFD_5r7y8m6bpump2DSKqopG98cgRatM9YafnKEzLy"
+              },
+              {
+                "step": "page_price",
+                "at": 8807,
+                "tried": [
+                  {
+                    "url": "https://id.stanley1913.com/products/qnchrh2-0-tm-tumb-antique-white-tile",
+                    "found": true,
+                    "amount": 650000,
+                    "currency": "IDR"
+                  }
+                ]
+              },
+              {
+                "step": "alternatives",
+                "at": 9563,
+                "retailerQuery": "THE QUENCHER 2.0™ TUMBLER",
+                "unbranded": 40,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "gate",
+                "at": 12732,
+                "purpose": "rebrand+retailer",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 4,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Stanley Stanley Quencher Tumbler",
+                    "source": "DICK'S Sporting Goods",
+                    "price": 40,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Quencher%C2%AE+H2.0+FlowState%E2%84%A2+Tumbler+%7C+1.18L+home+1+unit&prds=localAnnotatedOfferId:1,catalogid:7592717192100905695,gpcid:18087185896637849926,pvo",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcSaddi0yyBMXLXQbS7DmYCZYNwr9jFL1R4zZDQvKtgGdy-VkCt4WLRLwzm9JsYw21ESjaJTnFHp7ARpBlypurvmrtyTn3EHFJduaxYSQWS4tMMUuRh2-QCp",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Stanley Quencher but orange/terracotta colour, different lid and logo style; different colourway"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Stanley Quencher FlowState Tumbler",
+                    "source": "Sierra",
+                    "price": 20,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Quencher%C2%AE+H2.0+FlowState%E2%84%A2+Tumbler+%7C+1.18L+home+1+unit&prds=localAnnotatedOfferId:1,catalogid:16008771969105246772,gpcid:2678226954160204328,pvo",
+                    "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcQaUmSIBlPfe-JCVIIrfMVBaL0S0_WPEfBTDo-iXbakH4fHwbukuXf0BC_eG3n0hGENsuDDjcuCuHH_a1R_TLOjsjcKHNMGUllD95Tu_wg",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "black with rainbow graphic, different lid and design"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Stanley Quencher H2.0 Flowstate Tumbler",
+                    "source": "Academy Sports + Outdoors",
+                    "price": 45,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Quencher%C2%AE+H2.0+FlowState%E2%84%A2+Tumbler+%7C+1.18L+home+1+unit&prds=localAnnotatedOfferId:1,catalogid:1586776607641551012,gpcid:15481138607466710125,pvo",
+                    "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcRekXtGc7aXKiTJu9l3ldNWAEO1IR9OdGTWWM-GOlqGnP19YHxIS5nD1eCx-Oy_YDhNRjFjysP2chHh8cE47lR78-MvLUCqd-ibVatALvJ-",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "blue ombre colourway, different handle and lid"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Stanley The Quencher H2.0 Flowstate 40-Ounce Tumbler in Rose Quartz at Nordstrom",
+                    "source": "Nordstrom",
+                    "price": 40,
+                    "link": "",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcThqmO_R753vlJcLk7-qlEspUcsTL9WxW78igyDT9WqOXC8YGsQu--IJA9r_LdfiZqTRckyam63GcHhbIyjBkZlHn-BtNmYXJCx5ZR_5BU1QPD9uP1Z4_5w",
+                    "match": "likely",
+                    "tie": "logo",
+                    "why": "Stanley Quencher in Rose Quartz with the same logo, but title says 40oz while IMAGE A is 1.18L (40oz), and the image looks like the 30oz shape with a different "
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 12732,
+                "purpose": "rebrand+retailer",
+                "confidence": "likely",
+                "rank": 3,
+                "title": "Stanley The Quencher H2.0 Flowstate 40-Ounce Tumbler in Rose Quartz at Nordstrom",
+                "source": "Nordstrom",
+                "price": 40,
+                "link": "",
+                "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcThqmO_R753vlJcLk7-qlEspUcsTL9WxW78igyDT9WqOXC8YGsQu--IJA9r_LdfiZqTRckyam63GcHhbIyjBkZlHn-BtNmYXJCx5ZR_5BU1QPD9uP1Z4_5w"
+              },
+              {
+                "step": "identified",
+                "at": 12732,
+                "engineUsed": "lens_serper+priced_page",
+                "confidence": "exact",
+                "title": "THE QUENCHER 2.0™ TUMBLER – Stanley 1913 Indonesia",
+                "priced": true
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "correct exact"
+      },
+      "costUsd": 0.024598
+    },
+    {
+      "caseId": "silicone-pastry-brush",
+      "intent": "finder",
+      "status": 200,
+      "ms": 26610,
+      "json": {
+        "found": false,
+        "mode": "UNRESOLVED",
+        "priceSource": "estimated",
+        "engineUsed": "none",
+        "matchConfidence": "unverified",
+        "category": "other",
+        "sourceProduct": {
+          "title": "Product not identified",
+          "price": 0,
+          "currency": "USD",
+          "imageUrl": "",
+          "productUrl": "",
+          "affiliateUrl": "",
+          "platform": "unknown"
+        },
+        "analysis": {
+          "retailEstimate": 0,
+          "retailSource": "estimated",
+          "markup": 0,
+          "verdict": "UNVERIFIED",
+          "savings": 0,
+          "savingsPercent": 0,
+          "confidence": "low"
+        },
+        "scanId": null,
+        "scanRef": "muu6ogz8746a33daf378ae9c6f566939",
+        "evaluation": {
+          "cached": false,
+          "ms": 26543,
+          "trace": {
+            "totalMs": 26520,
+            "claudeUsd": 0.041405,
+            "searchesByProvider": {
+              "serper": 2,
+              "serpapi": 1
+            },
+            "creditsByProvider": {
+              "serper": 5
+            },
+            "cache": {
+              "readTokens": 7390,
+              "writeTokens": 1478,
+              "uncachedInputTokens": 10466,
+              "callsReading": 5,
+              "calls": 6
+            },
+            "msByLayer": {
+              "model:extraction": 1962,
+              "model:gate": 15509,
+              "search:lens": 7500,
+              "search:shopping": 815
+            },
+            "thinkingPerCall": 89,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 1962,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 960,
+                "outputTokens": 135,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 1478,
+                "costUsd": 0.006965,
+                "stopReason": "end_turn",
+                "thinkingApprox": 61
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3492,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2079,
+                "outputTokens": 328,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0077336,
+                "stopReason": "end_turn",
+                "thinkingApprox": 117
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3502,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2066,
+                "outputTokens": 344,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0078676,
+                "stopReason": "end_turn",
+                "thinkingApprox": 109
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3631,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1997,
+                "outputTokens": 335,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.007639600000000001,
+                "stopReason": "end_turn",
+                "thinkingApprox": 112
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3315,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2028,
+                "outputTokens": 323,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0075816,
+                "stopReason": "end_turn",
+                "thinkingApprox": 112
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 1569,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1336,
+                "outputTokens": 65,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0036176,
+                "stopReason": "end_turn",
+                "thinkingApprox": 22
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 1648,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "lens",
+                "provider": "serpapi",
+                "engine": "google_lens",
+                "ms": 5852,
+                "status": 200
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 815,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 2084,
+                "brand": "",
+                "productName": "silicone basting brush with clear acrylic handle",
+                "visiblePrice": null,
+                "currency": "",
+                "quantity": "1 unit",
+                "category": "home",
+                "storeName": "",
+                "visibleUrl": "",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 3798,
+                "list": "organic",
+                "rows": 60,
+                "usable": 40,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 3848,
+                "engine": "serper",
+                "candidates": 40,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "Toxham Silicone Oil Brush Cooking,Tandoor, BBQ (Random Colors Provided) 9- Inch (9 Inch): Buy Online at Best Price in UA",
+                    "source": "Amazon.ae",
+                    "price": 0,
+                    "link": "https://www.amazon.ae/Toxham-Silicone-Cooking-Tandoor-Provided/dp/B07R95CSPJ",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSoHgtvJhBiTE1yf6_WgL7J0CFR6M0mbyDNBMIeGQAwibD7Dgmk"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Norpro BBQ Marinade Pastry Basting Flat Brush Red Silicone Flat Head 9\" 2-Pack - Walmart.com",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://www.walmart.com/ip/Norpro-BBQ-Marinade-Pastry-Basting-Flat-Brush-Red-Silicone-Flat-Head-9-2-Pack/678582250",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRPKmUmSUdEN6WWP9EtNyoLM_LOOtGKfUVcrAHhPFrjqDJl9mgg"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Norpro Silicone Brush - Red, 1 ct - Smith's Food and Drug",
+                    "source": "Smith’s Food and Drug",
+                    "price": 0,
+                    "link": "https://www.smithsfoodanddrug.com/p/norpro-silicone-brush-red/0002890152018",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS8FMrfhZKzyKdvQ-kufwuuK00b6Ovm1zw2x5HyjllLInBsmCwt"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Emily Ruske & Mitchell Lake's Wedding Registry",
+                    "source": "MyRegistry.com",
+                    "price": 0,
+                    "link": "https://www.myregistry.com/wedding-registry/emily-ruske-and-mitchell-lake-edmonton-ab/5025060",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcS55TsJr_AQI4Hmh7vva5Cpv5dO0-IbAY8XYpy-QOMh8_tzEFSg"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Buy UV Silicone Spatula and Pastry Brush Set Online at Low Prices in India - Amazon.in",
+                    "source": "Amazon.in",
+                    "price": 0,
+                    "link": "https://www.amazon.in/Silicone-Spatula-Pastry-Brush-Set/dp/B07H6P7F7W",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQRCvkDi1K3CWvHQV3rh7Jky9ONXHahto_5QZseRjjunNMSOFgt"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Căutați rezultate pentru: 'DETERGENT ARIEL 1'",
+                    "source": "Produse Menaj",
+                    "price": 0,
+                    "link": "https://www.produsemenaj.ro/catalogsearch/result/index/?p=5&q=DETERGENT+ARIEL+1",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQkZ9HllXMmcO_SWq1g-lVq3_n77E-CG-W3T81zKZeBVGzRTDfu"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "ADITYA INFO™ मक्खन/तेल लगाने के लिए सिलिकॉन किचन कुकिंग बेस्टिंग ब्रश : Amazon.in: घर और किचन",
+                    "source": "Amazon.in",
+                    "price": 0,
+                    "link": "https://www.amazon.in/-/hi/ADITYA-INFOTM-सिलिकॉन-कुकिंग-बेस्टिंग/dp/B071HFSC6J",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRexPJWCbxoBsC78hIGsCmFmMcXfpX05HVHU2u9nCJJJYneX3SF"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Perfect Pricee 1 Cake Mold / 100 Muffin Mold / 1 Greasing Brush / 1 Spatula Kitchen Tool Set Price in India - Buy Perfec",
+                    "source": "Flipkart",
+                    "price": 0,
+                    "link": "https://www.flipkart.com/perfect-pricee-1-cake-mold-100-muffin-greasing-brush-spatula-kitchen-tool-set/p/itm63c59297503d9",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTCFau_PDjSPKR8KxdGklYFCN1m8e0cAX0Q64MBWNEJ1PZ2OXvf"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "Amazon.in: Transparent Spatula",
+                    "source": "Amazon.in",
+                    "price": 0,
+                    "link": "https://www.amazon.in/transparent-spatula/s?k=transparent+spatula",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQFyy_M15CvBzQ135W87tDUQm3n63R51vECHVJsr7Ro1TkBsNvJ"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Unique Bargains Basting Brush 20g Small Crystal Handle Brush Color Block Dishwasher Safe Silicone PP 6.89\"x1.26\" 1Pcs Re",
+                    "source": "Target",
+                    "price": 0,
+                    "link": "https://www.target.com/p/unique-bargains-basting-brush-20g-small-crystal-handle-brush-color-block-dishwasher-safe-silicone-pp-6-89-x1-26-1pcs-red-clear/-/A-1007621584",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSjcJvBeM2LbBOgNLv3pE1tCrvxI9-E9TqXwYJX33nwosEL1NCS"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "2pcs Flexible Silicone Brush Heat Resistant Non-stick Cooking Baking Tool Orange | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/275774231798",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcThC8AvAyz-GVLb-LGrREhUpWTW_uoY6fdKKh8TNWUA5K_G4YXg"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Buy KCL Blasting Brush & Spatula Silicone (Pack of 2) Online at Low Prices in India - Amazon.in",
+                    "source": "Amazon.in",
+                    "price": 0,
+                    "link": "https://www.amazon.in/KCL-Blasting-Brush-Spatula-Silicone/dp/B0748T8Z1H",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQYyXqYQdq2L_5OTKRRln5c3N1_IoXdgIxz3DvSMDZhkwaOQWsu"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 3861,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 7419,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Toxham Silicone Oil Brush Cooking,Tandoor, BBQ (Random Colors Provided) 9- Inch (9 Inch): Buy Online at Best Price in UA",
+                    "source": "Amazon.ae",
+                    "price": 0,
+                    "link": "https://www.amazon.ae/Toxham-Silicone-Cooking-Tandoor-Provided/dp/B07R95CSPJ",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSoHgtvJhBiTE1yf6_WgL7J0CFR6M0mbyDNBMIeGQAwibD7Dgmk",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "Same clear handle with teardrop hanging hole and red silicone brush; no brand visible, small image"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Norpro BBQ Marinade Pastry Basting Flat Brush Red Silicone Flat Head 9\" 2-Pack - Walmart.com",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://www.walmart.com/ip/Norpro-BBQ-Marinade-Pastry-Basting-Flat-Brush-Red-Silicone-Flat-Head-9-2-Pack/678582250",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRPKmUmSUdEN6WWP9EtNyoLM_LOOtGKfUVcrAHhPFrjqDJl9mgg",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "Same clear handle with loop hole and red silicone bristles; 2-pack title doesn't contradict single brush design"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Norpro Silicone Brush - Red, 1 ct - Smith's Food and Drug",
+                    "source": "Smith’s Food and Drug",
+                    "price": 0,
+                    "link": "https://www.smithsfoodanddrug.com/p/norpro-silicone-brush-red/0002890152018",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS8FMrfhZKzyKdvQ-kufwuuK00b6Ovm1zw2x5HyjllLInBsmCwt",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "Same clear flared handle, hanging loop and red silicone head; no brand marks visible in either image"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Emily Ruske & Mitchell Lake's Wedding Registry",
+                    "source": "MyRegistry.com",
+                    "price": 0,
+                    "link": "https://www.myregistry.com/wedding-registry/emily-ruske-and-mitchell-lake-edmonton-ab/5025060",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcS55TsJr_AQI4Hmh7vva5Cpv5dO0-IbAY8XYpy-QOMh8_tzEFSg",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Grey opaque handle, different design"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Buy UV Silicone Spatula and Pastry Brush Set Online at Low Prices in India - Amazon.in",
+                    "source": "Amazon.in",
+                    "price": 0,
+                    "link": "https://www.amazon.in/Silicone-Spatula-Pastry-Brush-Set/dp/B07H6P7F7W",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQRCvkDi1K3CWvHQV3rh7Jky9ONXHahto_5QZseRjjunNMSOFgt",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Clear handle but set with spatula; handle shape differs, no hanging hole"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Căutați rezultate pentru: 'DETERGENT ARIEL 1'",
+                    "source": "Produse Menaj",
+                    "price": 0,
+                    "link": "https://www.produsemenaj.ro/catalogsearch/result/index/?p=5&q=DETERGENT+ARIEL+1",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQkZ9HllXMmcO_SWq1g-lVq3_n77E-CG-W3T81zKZeBVGzRTDfu",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "Same clear handle and red silicone brush, same shape; title is unrelated search page"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 10972,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 6,
+                    "title": "ADITYA INFO™ मक्खन/तेल लगाने के लिए सिलिकॉन किचन कुकिंग बेस्टिंग ब्रश : Amazon.in: घर और किचन",
+                    "source": "Amazon.in",
+                    "price": 0,
+                    "link": "https://www.amazon.in/-/hi/ADITYA-INFOTM-सिलिकॉन-कुकिंग-बेस्टिंग/dp/B071HFSC6J",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRexPJWCbxoBsC78hIGsCmFmMcXfpX05HVHU2u9nCJJJYneX3SF",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Red silicone brush with clear handle, but the handle is more slender and the photo is a different one; same generic type"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Perfect Pricee 1 Cake Mold / 100 Muffin Mold / 1 Greasing Brush / 1 Spatula Kitchen Tool Set Price in India - Buy Perfec",
+                    "source": "Flipkart",
+                    "price": 0,
+                    "link": "https://www.flipkart.com/perfect-pricee-1-cake-mold-100-muffin-greasing-brush-spatula-kitchen-tool-set/p/itm63c59297503d9",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTCFau_PDjSPKR8KxdGklYFCN1m8e0cAX0Q64MBWNEJ1PZ2OXvf",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "Same clear handle with a teardrop hanging hole and wide orange-red silicone head with a collar; looks like the same product from a different angle"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Unique Bargains Basting Brush 20g Small Crystal Handle Brush Color Block Dishwasher Safe Silicone PP 6.89\"x1.26\" 1Pcs Re",
+                    "source": "Target",
+                    "price": 0,
+                    "link": "https://www.target.com/p/unique-bargains-basting-brush-20g-small-crystal-handle-brush-color-block-dishwasher-safe-silicone-pp-6-89-x1-26-1pcs-red-clear/-/A-1007621584",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSjcJvBeM2LbBOgNLv3pE1tCrvxI9-E9TqXwYJX33nwosEL1NCS",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Red silicone head on a clear handle, but the image is too small to confirm the handle shape or hole"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "Amazon.in: Transparent Spatula",
+                    "source": "Amazon.in",
+                    "price": 0,
+                    "link": "https://www.amazon.in/transparent-spatula/s?k=transparent+spatula",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQFyy_M15CvBzQ135W87tDUQm3n63R51vECHVJsr7Ro1TkBsNvJ",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Yellow brush with a slimmer clear handle and a different head shape; sold as a set with a spatula"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "2pcs Flexible Silicone Brush Heat Resistant Non-stick Cooking Baking Tool Orange | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/275774231798",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcThC8AvAyz-GVLb-LGrREhUpWTW_uoY6fdKKh8TNWUA5K_G4YXg",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Opaque white handle with orange head; sold as a pack of 2"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Buy KCL Blasting Brush & Spatula Silicone (Pack of 2) Online at Low Prices in India - Amazon.in",
+                    "source": "Amazon.in",
+                    "price": 0,
+                    "link": "https://www.amazon.in/KCL-Blasting-Brush-Spatula-Silicone/dp/B0748T8Z1H",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQYyXqYQdq2L_5OTKRRln5c3N1_IoXdgIxz3DvSMDZhkwaOQWsu",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Green brush and red spatula set; the handle is thinner and the head is different"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 10972,
+                "purpose": "identify",
+                "confidence": "unverified",
+                "rank": 0,
+                "title": "Toxham Silicone Oil Brush Cooking,Tandoor, BBQ (Random Colors Provided) 9- Inch (9 Inch): Buy Online at Best Price in UA",
+                "source": "Amazon.ae",
+                "price": 0,
+                "link": "https://www.amazon.ae/Toxham-Silicone-Cooking-Tandoor-Provided/dp/B07R95CSPJ",
+                "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSoHgtvJhBiTE1yf6_WgL7J0CFR6M0mbyDNBMIeGQAwibD7Dgmk"
+              },
+              {
+                "step": "serpapi",
+                "at": 10972,
+                "left": 246,
+                "reserve": 20,
+                "searches": 1,
+                "allowed": true
+              },
+              {
+                "step": "gate",
+                "at": 20700,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 40,
+                    "title": "Amazon.com: Silicone Basting Brush 9\" Kitchen Cooking ...",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/Silicone-Basting-Kitchen-Cooking-Grilling/dp/B004KA7N4M",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRmIHDe-22S0WTgpB2etoBKvZyPwtc1RQWoNODU99wb2-QAl4TA",
+                    "match": "similar",
+                    "tie": "photo",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "Same red-bristled brush photo on the left, but the listing also shows other colours and a 9-inch size that can't be confirmed"
+                  },
+                  {
+                    "rank": 41,
+                    "title": "Silicone Brush - Medium - Assorted Color : Buy Online at ...",
+                    "source": "www.amazon.sa",
+                    "price": 0,
+                    "link": "https://www.amazon.sa/-/en/Silicone-Brush-Medium-Assorted-Color/dp/B017FXCDKY",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQ9-_4U2B-ApQNisNWxgO_dxSMYB-yGP0m76lmUnlp4-jFw3cy1",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Red silicone brush with clear handle, but the handle end and proportions differ, and the title says assorted colours"
+                  },
+                  {
+                    "rank": 42,
+                    "title": "Conservation Tool Spotlight: Silicone Brushes | Conservation ...",
+                    "source": "Conservation Lab Chat - WordPress.com",
+                    "price": 0,
+                    "link": "https://uclconservation.wordpress.com/2015/02/09/conservation-tool-spotlight-silicone-brushes/",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQ-sacDc31Uf-3cLfYeu42zMBhtYUzeRc7FBTRgT3Ri5fdGfHVJ",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Same image, but it is a conservation blog post, not a product listing"
+                  },
+                  {
+                    "rank": 44,
+                    "title": "Single Silicone Brush - Syed Bakers Mart",
+                    "source": "Syed Bakers Mart",
+                    "price": 0,
+                    "link": "https://syedbakersmartbd.com/product/single-silicone-brush/",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQCgb-7yzARv5Iz06HpDFUoPUV9kIwCJfQlmoCWzjQH2375r0Gh",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Red brush with clear handle, but the handle shape appears different and there is no distinctive tie"
+                  },
+                  {
+                    "rank": 45,
+                    "title": "Silicone Pastry Brush Baking BBQ Basting Oil Pastry Cooking ...",
+                    "source": "eBay",
+                    "price": 11,
+                    "link": "https://www.ebay.com/itm/234961632722",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTY0DWW9UHzQvovA6gRWwgWyJBK8NgjAqUWMwGXgo4gP4HmN5L7",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Generic multi-colour clear-handle brushes in a lifestyle photo, no distinctive match"
+                  },
+                  {
+                    "rank": 46,
+                    "title": "ZEPELOFFY Amazon Silicone Pastry Basting Brush Review 2023 ...",
+                    "source": "The Kitchn",
+                    "price": 0,
+                    "link": "https://www.thekitchn.com/zepeloffy-amazon-silicone-pastry-basting-brush-review-23540808",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQO3rPxkVbY39Xei9XsxixHS73RNJdVmsWb9mtnjFpG41jKSZnJ",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Review article, and the handle and colours differ"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 24074,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 48,
+                    "title": "Buy Toxham Silicone Oil Brush Cooking,Tandoor, BBQ (Random ...",
+                    "source": "Amazon.in",
+                    "price": 0,
+                    "link": "https://www.amazon.in/Toxham-Silicone-Cooking-Tandoor-Provided/dp/B07R95CSPJ",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRS9vB1ogU5w9MlkU38Or8Ubo3ts5SvjWrwqVWQEU4zaMOwGfQO",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "Same clear handle with loop hole and red silicone head; the thumbnail is small, so the details can't be fully confirmed"
+                  },
+                  {
+                    "rank": 49,
+                    "title": "Silicone Basting Pastry Brush, Colorful Silicone Food Brush ...",
+                    "source": "eBay",
+                    "price": 13,
+                    "link": "https://www.ebay.com/itm/324462476133",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQlGii8GooCgPDLWaA-P38Fid5EN18xIBZbiy-jZ1eT4w2Gkuug",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Multi-colour set with a similar clear handle; no red one clearly confirmed as the same model"
+                  },
+                  {
+                    "rank": 50,
+                    "title": "Best Basting Brushes for Kitchen and BBQ – Silicone Basting ...",
+                    "source": "Eat Well 101",
+                    "price": 0,
+                    "link": "https://www.eatwell101.com/best-basting-brushes-for-kitchen-and-bbq-silicone-basting-brush-bbq-brush",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRcwyNKrdmTFsB-McETf59OeGlL51ZKeFX9FgBl9zgjbEOzKVXW",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "White handle with a different shape"
+                  },
+                  {
+                    "rank": 51,
+                    "title": "Silicone Basting Pastry Brush Oil Brushes Baking Bakeware ...",
+                    "source": "Xiamen Flying Silicone Rubber Co., Ltd.",
+                    "price": 0,
+                    "link": "https://xm-flying.en.made-in-china.com/product/pZztQiqEJUVs/China-Silicone-Basting-Pastry-Brush-Oil-Brushes-Baking-Bakeware.html",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQMdm8O5beH2zIYueHQap0w2GqwbJXm31XlJD0lz1r87z_TXWqR",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Similar clear-handle brushes in a multi-colour set; the handle shape differs slightly and there is no confirmed tie"
+                  },
+                  {
+                    "rank": 52,
+                    "title": "2018R SILICONE BASTING / PASTRY BRUSH-RED - Norpro, Inc.",
+                    "source": "Norpro Wholesale",
+                    "price": 0,
+                    "link": "https://www.norpro.com/product/silicone-brush-red/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcS9RmEuKpHnRXIXXFkkCt0rJfEwF4DEKxqi9Gs4syM8nFjHQ7Sb",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "Clear handle with a loop hole and an orange-red silicone head, same shape; the colour is slightly different"
+                  },
+                  {
+                    "rank": 53,
+                    "title": "Expert Grill Heat Resistant Food-Grade Silicone Basting ...",
+                    "source": "Walmart",
+                    "price": 1,
+                    "link": "https://www.walmart.com/ip/BASTING-BRUSH/16836722595",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcR_qRUaFLmsQ07jnSldHgjcXwWudXXR0fkHcbmrsClI_Ux0KBQI",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Black handle, different design"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 24074,
+                "purpose": "identify",
+                "confidence": "unverified",
+                "rank": 45,
+                "title": "Silicone Pastry Brush Baking BBQ Basting Oil Pastry Cooking ...",
+                "source": "eBay",
+                "price": 11,
+                "link": "https://www.ebay.com/itm/234961632722",
+                "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTY0DWW9UHzQvovA6gRWwgWyJBK8NgjAqUWMwGXgo4gP4HmN5L7"
+              },
+              {
+                "step": "escalation",
+                "at": 24074,
+                "to": "serpapi",
+                "ran": true,
+                "candidates": 40,
+                "fresh": 40,
+                "judged": 12,
+                "confidence": "unverified",
+                "fromEscalation": true
+              },
+              {
+                "step": "generic_search",
+                "at": 24892,
+                "query": "silicone basting brush with clear acrylic handle 1 unit",
+                "found": 1
+              },
+              {
+                "step": "gate",
+                "at": 26520,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 1,
+                "candidates": [
+                  {
+                    "rank": 7,
+                    "title": "Silicone Basting Brush Clear Handle Heat Resistant Oil Brush Bbq",
+                    "source": "eBay - zygj002",
+                    "price": 57.76,
+                    "link": "",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcQnlSyJjyxPdwvsBrGEbjTjYAfZPhrVcLQ_xv6SwKL70z6orv0FjosJA7IzXksIApnlL3OpYIC-oUNOQER61bJymxe5eN3Zw5uYIcJUkoiw",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Candidate shows stacked silicone food storage trays with lids, not a basting brush with a clear handle."
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 26520,
+                "purpose": "identify",
+                "confidence": "unverified",
+                "rank": 7,
+                "title": "Silicone Basting Brush Clear Handle Heat Resistant Oil Brush Bbq",
+                "source": "eBay - zygj002",
+                "price": 57.76,
+                "link": "",
+                "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcQnlSyJjyxPdwvsBrGEbjTjYAfZPhrVcLQ_xv6SwKL70z6orv0FjosJA7IzXksIApnlL3OpYIC-oUNOQER61bJymxe5eN3Zw5uYIcJUkoiw"
+              },
+              {
+                "step": "alternatives",
+                "at": 26520,
+                "retailerQuery": "silicone basting brush with clear acrylic handle",
+                "unbranded": 0,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "identified",
+                "at": 26520,
+                "engineUsed": "lens_serper",
+                "confidence": "unverified",
+                "title": "Toxham Silicone Oil Brush Cooking,Tandoor, BBQ (Random Colors Provided) 9- Inch (9 Inch): Buy Online at Best Price in UA",
+                "priced": false
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "miss",
+        "detail": "no match"
+      },
+      "costUsd": 0.056405
+    }
+  ],
+  "freeAllowance": {
+    "before": 2,
+    "after": 2
+  },
+  "serpapiLeftAfter": null,
+  "scanSpendUsd": 0.081003,
+  "finishedAt": "2026-10-04T18:58:07.988Z",
+  "spend": {
+    "claudeUsd": 0.061003,
+    "serpapiSearches": 1,
+    "serperCredits": 10,
+    "serpapiPerSearch": 0.01,
+    "searchUsd": 0.02,
+    "totalUsd": 0.081003,
+    "spentBeforeUsd": 6.836600000000001,
+    "capUsd": 25
+  }
+}

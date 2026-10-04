@@ -1,6 +1,6 @@
 # BustedLab: project memory
 
-As of 2 October 2026. These are the owner's facts and decisions. Do not add claims here that the owner has not made.
+As of 2 October 2026, updated 4 October 2026. These are the owner's facts and decisions. Do not add claims here that the owner has not made.
 
 ## What it is
 
@@ -41,6 +41,14 @@ Never change or remove these. If a change would touch one, flag it and ask.
 - No sampling parameters. Adaptive thinking is always on. Read replies by block type.
 - The rules live in `src/lib/model-rules.ts`.
 - Search: Serper is primary, SerpApi is the backup.
+- Escalation policy: the cheapest provider first, the better one when the cheap one cannot verify. Serper's Lens answers first; when nothing it found survives the gate and the match guards, SerpApi's Lens is asked once, only while SerpApi is above its reserve with a known balance, never on a degraded day. See ESCALATION in `src/lib/scan.ts`.
+- Match guards (`src/lib/match-guards.ts`) hold every gate answer in code. "Exact" and "likely" are refused when:
+  - a brand read off the photo is missing from the listing;
+  - no brand was read and the answer is "likely" (only "exact" counts then);
+  - the listing sells a part or one piece of the product;
+  - the read names a model the listing lacks;
+  - the gate names no tie (logo, printed text, distinctive part, or the identical photo);
+  - the gate's own reason says the page sells nothing.
 
 ## Research, October 2026
 
@@ -84,6 +92,7 @@ Each phase moves on only when its gate is met and its cost is funded by revenue.
 - **Evaluation scans never touch public data.**
 - **All changes go through a PR.** Never push a zip to main.
 - **No test purchase with the owner's card.**
+- **A model's "match" is a claim, not a fact.** The gate called lookalikes "exact" or "likely" on shape and colour alone, and once answered "exact" on a page it had itself described as an article. Match rules are enforced in code on every answer, and measured against every stored labelled result (`npm run check:match-guards`). Zero wrong products labelled exact or likely comes first; the recall it costs is reported plainly.
 
 ## How to report to the owner
 

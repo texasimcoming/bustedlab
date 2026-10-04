@@ -293,6 +293,23 @@ for (const name of Object.keys(SEQUENCES)) {
 }
 console.log(`  ${pad("result cache", 13)} $0.0000`);
 
+// ── The Lens escalation, measured ────────────────────────────────────────
+// Runs 7 and 8 (evals/results), the six labelled cases on the guarded engine:
+// five scans escalated to SerpApi's Lens (nothing Serper found survived the
+// gate and its guards), one did not. Claude per scan as each trace measured
+// it; one SerpApi search per escalation, free while the plan's 250 a month
+// last above SERPAPI_RESERVE.
+const ESCALATED_CLAUDE = [0.048671, 0.029584, 0.049217, 0.058187, 0.041405];
+const NOT_ESCALATED_CLAUDE = [0.019598];
+const ESCALATED_MS = [33256, 32325, 32609, 40967, 26520];
+const NOT_ESCALATED_MS = [12815];
+const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+console.log("\n\nTHE LENS ESCALATION, MEASURED (runs 7 and 8, six labelled cases)");
+rule();
+console.log(`  escalated (${ESCALATED_CLAUDE.length} scans): model ${money(mean(ESCALATED_CLAUDE))} a scan, ${Math.round(mean(ESCALATED_MS) / 1000)} s, + 1 SerpApi search`);
+console.log(`  not escalated (${NOT_ESCALATED_CLAUDE.length} scan): model ${money(mean(NOT_ESCALATED_CLAUDE))} a scan, ${Math.round(mean(NOT_ESCALATED_MS) / 1000)} s`);
+console.log(`  SerpApi's free 250 a month, held above a reserve of 20, covers ${250 - 20} escalations a month; past that, scans stay on Serper.`);
+
 // ── What the daily model budget bounds ───────────────────────────────────
 // DAILY_MODEL_BUDGET_USD is a SOFT budget: once the day's measured model
 // spend reaches it, scans keep running on the degraded path (Sonnet 5.5

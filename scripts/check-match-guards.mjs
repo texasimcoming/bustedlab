@@ -36,7 +36,7 @@ const RETIRED = new Set(["carved-spoon"]);
 // The gate's prompt by run: run 2 spoke three answers (exact / similar /
 // different, "similar" shown as likely); PR #6 brought the four answers runs
 // 3 and 5 used; replays from run 6 name a tie.
-const era = (row) => (row.source === "replay" ? "tie" : row.run <= 2 ? "old" : "four");
+const era = (row) => (row.tie != null ? "tie" : row.run <= 2 ? "old" : "four");
 // How many wrong answers no offline guard holds, per era, when this check was
 // written: the Cult Flex gun in run 5, and run 2's answers on pages that sell
 // nothing. These may only shrink.
@@ -136,7 +136,9 @@ for (const r of answered) {
   r.d = isPartListing(r.listing, r.read);
   // What the engine now does with this answer. For a replay, recomputed from
   // the gate's own answer and tie, and compared with what was recorded.
-  r.after = guardMatch({ match: r.gate, tie: r.source === "replay" ? r.tie : undefined, why: r.why }, r.listing, r.read);
+  // A tie is applied wherever the gate recorded one (replays, and live scans
+  // from run 7); answers from before it named one are not held for lacking it.
+  r.after = guardMatch({ match: r.gate, tie: r.tie ?? undefined, why: r.why }, r.listing, r.read);
   r.held = r.host || !claims(r.after.match);
 }
 const rows = answered.filter(r => claims(r.gate));
@@ -154,6 +156,9 @@ const fmt = (r) => `${era(r).padEnd(4)} r${r.run} ${`${r.caseId}/${r.intent || "
 
 console.log("\nWRONG PRODUCTS THE GATE CALLED EXACT OR LIKELY");
 const wrong = rows.filter(r => !r.right && r.source === "scan");
+// Live scans made by the guarded engine record the gate's own answer and
+// the guarded one: none may show a wrong product.
+const liveGuarded = rows.filter(r => r.source === "scan" && r.tie != null);
 const pending = { old: [], four: [] };
 for (const r of wrong) {
   let status = r.held ? "held" : "PENDING";
@@ -191,6 +196,8 @@ check("every wrong answer on the current gate is held, or pending a replay",
 for (const e of ["old", "four"]) {
   check(`pending wrong answers (${e} prompt) did not grow: ${pending[e].length} <= ${PENDING_BASELINE[e]}`, pending[e].length <= PENDING_BASELINE[e]);
 }
+check("no wrong answer survives on a live scan by the guarded engine", liveGuarded.filter(r => !r.right).every(r => r.held),
+  liveGuarded.filter(r => !r.right && !r.held).map(fmt).join("\n      "));
 check("no wrong answer survives a replay", replays.filter(r => !r.right).every(r => r.held),
   replays.filter(r => !r.right && !r.held).map(fmt).join("\n      "));
 // A replay recorded what the guards of its day decided; the shipped guards
