@@ -105,12 +105,14 @@ section("WHAT A FINISHED SCAN COUNTS");
   await countCompletedScan({ ...finished, evaluation: false });
   const visitorKeys = redis.keys();
   check("a visitor's verdict counts everywhere: lifetime counter, verdict stats, savings, cache, funnel, allowance, cap",
-    ["scan:total:global", "scan:verdicts:total", "scan:savings:global", "scan:cache:img:check:verdict", "stat:scan_completed:total", `scan:global:${day}`]
+    ["scan:total:global", "scan:verdicts:total", "scan:savings:global", "scan:cache:img:check:verdict", "stat:scan_completed:total", `scan:global:${day}`, `scan:global:hist:${day}`]
       .every(k => visitorKeys.includes(k)), visitorKeys.join(", "));
   reset();
   await countCompletedScan({ ...finished, evaluation: true });
+  // The cap's counter and its 400-day history (operator data, for cost per
+  // scan; an evaluation scan spends real money too). Nothing public.
   check("an evaluation scan's verdict counts against the global free cap and nothing else",
-    JSON.stringify(redis.keys()) === JSON.stringify([`scan:global:${day}`]), redis.keys().join(", "));
+    JSON.stringify(redis.keys().sort()) === JSON.stringify([`scan:global:${day}`, `scan:global:hist:${day}`]), redis.keys().join(", "));
   reset();
   await countCompletedScan({ ...finished, evaluation: true, servedFromCache: true });
   check("and a cached evaluation scan counts nowhere at all", redis.keys().length === 0, redis.keys().join(", "));
