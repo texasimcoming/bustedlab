@@ -4,6 +4,7 @@ import { checkoutReadiness, resolvePaymentProvider } from "@/lib/payment-provide
 import { emailFrom, emailFromDomain } from "@/lib/email";
 import { GLOBAL_DAILY_CAP, PAID_DAILY_SCAN_CEILING, redisRoundTrip } from "@/lib/redis";
 import { DAILY_MODEL_BUDGET_USD } from "@/lib/model-budget";
+import { affiliateConfig } from "@/lib/affiliate";
 
 /**
  * LAUNCH PREFLIGHT. One request that says whether this deployment can take
@@ -101,6 +102,13 @@ export async function GET(req: NextRequest) {
   }
   if (process.env.SERPAPI_KEY && !process.env.SERPER_API_KEY) {
     warnings.push({ check: "lens", detail: "SERPER_API_KEY is not set: Lens and Shopping run on SerpApi alone, and only until its remaining searches reach the reserve; after that, scans cannot search." });
+  }
+
+  // Affiliate links are off unless both are set; a key of the wrong shape
+  // leaves them off, which is said here rather than discovered in a payout.
+  if (process.env.AFFILIATE_PROVIDER) {
+    if (affiliateConfig()) ok.push(`affiliate links (${affiliateConfig()!.provider})`);
+    else warnings.push({ check: "affiliate", detail: `AFFILIATE_PROVIDER is "${process.env.AFFILIATE_PROVIDER}" but AFFILIATE_KEY is missing or not that network's shape, so links go out direct. Sovrn: the site's API key; Skimlinks: the "<publisher id>X<domain id>" id.` });
   }
 
   // ── Promises the site makes.
