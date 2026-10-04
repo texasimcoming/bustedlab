@@ -1,5 +1,6 @@
 import { Metadata } from "next";
 import Link from "next/link";
+import { activeAffiliateNetwork } from "@/lib/affiliate";
 
 export const metadata: Metadata = {
   title: "Privacy Policy - BustedLab",
@@ -7,6 +8,9 @@ export const metadata: Metadata = {
 };
 
 export default function PrivacyPage() {
+  // Named only while links are actually wrapped (AFFILIATE_PROVIDER set with
+  // a well-formed key): see src/lib/affiliate.ts.
+  const affiliate = activeAffiliateNetwork();
   return (
     <main style={{ maxWidth: "720px", margin: "0 auto", padding: "48px 24px 80px", color: "var(--text)", fontFamily: "var(--font-sans), sans-serif" }}>
       <Link href="/" style={{ color: "var(--accent-bright)", textDecoration: "none", fontSize: "14px", display: "inline-flex", alignItems: "center", gap: "6px", marginBottom: "32px" }}>
@@ -79,6 +83,9 @@ export default function PrivacyPage() {
             <li><strong style={{ color: "var(--text)" }}>Anthropic</strong> - the vision model that identifies the product. It receives the scanned image itself. Images sent for this purpose are not used to train models and are deleted within 30 days (anthropic.com/legal/privacy)</li>
             <li><strong style={{ color: "var(--text)" }}>Serper and SerpApi</strong> - reverse-image and shopping search: Serper first, SerpApi as a backup and when nothing Serper found can be confirmed. They receive the temporary image address and the search query, never your email address (serper.dev, serpapi.com/privacy)</li>
             <li><strong style={{ color: "var(--text)" }}>Google</strong> - Google Lens, the reverse-image engine those services query, fetches the image from the temporary address during the search (policies.google.com/privacy)</li>
+            {affiliate && (
+              <li><strong style={{ color: "var(--text)" }}>{affiliate.name}</strong> - affiliate links. When you follow a &quot;Go to this price&quot; link on a closest-match result, it passes through {affiliate.name}&apos;s redirect ({affiliate.redirectHost}) on its way to the store, which records the click and may set its own cookies there, so the store can credit BustedLab with a commission if you buy. It never changes which listing we show or its price, and it receives neither your email address nor your scanned image ({affiliate.policy})</li>
+            )}
           </ul>
           <p style={{ marginTop: "12px" }}>We do not sell, rent, or trade your personal data to any third party for marketing purposes.</p>
         </section>
@@ -91,7 +98,7 @@ export default function PrivacyPage() {
             <li><strong style={{ color: "var(--text)" }}>bl_claim</strong> - set when you start a purchase, so the browser you pay in can sign itself in once the payment is confirmed. It holds a random value, and is removed when used or after two hours.</li>
             <li><strong style={{ color: "var(--text)" }}>bl_bid</strong> - a random identifier, expiring after 30 days, that counts free scans from this browser. The free allowance (2 scans a day) belongs to the browser rather than the IP address, because mobile networks change your address mid-session and many people can share one address. It contains no information about you, is never linked to your email address, and is not used to track you across other websites.</li>
           </ul>
-          <p style={{ marginTop: "12px" }}>No third-party advertising or analytics cookies are used. One third-party script runs on this site, and only when you start to buy: our payment provider&apos;s checkout script, which loads when the upgrade screen opens or you point at or tap a buy button, so the payment form can open on this page instead of sending you to another site. If you never start a purchase, it never loads. While the payment form is open, the provider may set the cookies it needs to process your payment, under its own privacy policy. Your card details are entered into the provider&apos;s own secure frame, which this site cannot read. Our usage measurement is first-party, sets no cookie, and stores only aggregate daily counts.</p>
+          <p style={{ marginTop: "12px" }}>No third-party advertising or analytics cookies are used on this site.{affiliate && <> A &quot;Go to this price&quot; link on a closest-match result leaves it through {affiliate.name}&apos;s redirect, which may set its own cookies on its own domain to credit the referral (see Third-Party Services).</>} One third-party script runs on this site, and only when you start to buy: our payment provider&apos;s checkout script, which loads when the upgrade screen opens or you point at or tap a buy button, so the payment form can open on this page instead of sending you to another site. If you never start a purchase, it never loads. While the payment form is open, the provider may set the cookies it needs to process your payment, under its own privacy policy. Your card details are entered into the provider&apos;s own secure frame, which this site cannot read. Our usage measurement is first-party, sets no cookie, and stores only aggregate daily counts.</p>
         </section>
 
         <section>
