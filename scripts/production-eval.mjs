@@ -686,6 +686,12 @@ async function storedReplayStep() {
     spent += usd;
     dearest = Math.max(dearest, usd);
     const verdicts = res.json?.verdicts || [];
+    // The build before the match guards answers without a tie: every later
+    // call would measure the old gate, so the replay stops here.
+    if (res.status === 200 && verdicts.length > 0 && !verdicts.some(v => "tie" in v)) {
+      stopped = "production answered without a tie, so it is not yet running the guarded gate; push run.json again once the deploy is live";
+      break;
+    }
     job.batch.forEach((k, i) => {
       const v = verdicts[i] || {};
       answers.push({
