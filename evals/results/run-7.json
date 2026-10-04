@@ -1,0 +1,3160 @@
+{
+  "run": 7,
+  "note": "Live validation of the match guards and the SerpApi Lens escalation on production (PR #17, merge 5fa0d34; diagnose passed on it in the watchdog's deploy run): the six run-5 cases through the evaluation path, the wrong and missed ones first, under a $0.35 all-in scan cap that keeps the job's Claude total under $0.60.",
+  "base": "https://www.bustedlab.com",
+  "startedAt": "2026-10-04T18:53:02.441Z",
+  "steps": {
+    "preflight": {
+      "status": 200,
+      "ms": 637,
+      "json": {
+        "ready": true,
+        "environment": "production",
+        "blockers": [],
+        "warnings": [
+          {
+            "check": "email",
+            "detail": "The Resend key is send-only, so the domain could not be checked. Confirm bustedlab.com shows as verified in Resend."
+          }
+        ],
+        "ok": [
+          "redis",
+          "checkout (lemonsqueezy, overlay)",
+          "base url",
+          "model key",
+          "search key",
+          "identity salt"
+        ],
+        "next": "GET /api/diagnose with the same token: real calls to every model and provider",
+        "limits": {
+          "dailyModelBudgetUsd": 2,
+          "paidScansPerAccountPerDay": 500,
+          "freeUncachedScansPerDay": 50
+        }
+      },
+      "text": ""
+    }
+  },
+  "photos": {
+    "yellowstone-cowboy-hat": {
+      "source": {
+        "shopify": "https://yellowstonetvshop.com/products/yellowstone-fur-single-hat"
+      },
+      "page": "https://yellowstonetvshop.com/products/yellowstone-fur-single-hat",
+      "title": "Yellowstone x Bailey Cowboy Western 10x Hat",
+      "license": "",
+      "author": "",
+      "description": "",
+      "askingPrice": null,
+      "width": 1500,
+      "height": 1500,
+      "bytes": 124687,
+      "sha256": "cef5e71a1d59f289"
+    },
+    "flowlife-flowgun-air": {
+      "source": {
+        "page": "https://www.flowlife.com/en-GB/product/flowgun-air"
+      },
+      "page": "https://www.flowlife.com/en-GB/product/flowgun-air",
+      "title": "Flowgun Air – Percussive Therapy Massage Gun | Flowlife",
+      "license": "",
+      "author": "",
+      "description": "",
+      "askingPrice": null,
+      "width": 480,
+      "height": 600,
+      "bytes": 12469,
+      "sha256": "2e268f12e755e514"
+    },
+    "airpods-pro-2": {
+      "source": {
+        "commons": "AirPods Pro 2.jpg"
+      },
+      "page": "https://commons.wikimedia.org/wiki/File:AirPods_Pro_2.jpg",
+      "title": "AirPods Pro 2.jpg",
+      "license": "CC BY-SA 4.0",
+      "author": "— aconcagua ( talk )",
+      "description": "AirPods Pro",
+      "askingPrice": null,
+      "width": 2000,
+      "height": 1501,
+      "bytes": 417578,
+      "sha256": "e3607bd07e3e8f94"
+    },
+    "silicone-pastry-brush": {
+      "source": {
+        "commons": "Kitchen-Silicone-Brush.jpg"
+      },
+      "page": "https://commons.wikimedia.org/wiki/File:Kitchen-Silicone-Brush.jpg",
+      "title": "Kitchen-Silicone-Brush.jpg",
+      "license": "Public domain",
+      "author": "Evan-Amos",
+      "description": "A silicone pastry brush",
+      "askingPrice": null,
+      "width": 2000,
+      "height": 903,
+      "bytes": 83624,
+      "sha256": "92b5dfc4d1175b20"
+    },
+    "car-phone-holder": {
+      "source": {
+        "commons": "Car universal holder for smartphones and phablets, Oude Pekela (2018) 01.jpg"
+      },
+      "page": "https://commons.wikimedia.org/wiki/File:Car_universal_holder_for_smartphones_and_phablets,_Oude_Pekela_(2018)_01.jpg",
+      "title": "Car universal holder for smartphones and phablets, Oude Pekela (2018) 01.jpg",
+      "license": "CC BY-SA 4.0",
+      "author": "Donald Trung Quoc Don (Chữ Hán: 徵國單) - Wikimedia Commons . ( Want to use this image? )",
+      "description": "A clamp arm placed inside of an automobile to hold smartphones or phablets attached to the front window of an automobile.",
+      "askingPrice": null,
+      "width": 1125,
+      "height": 2000,
+      "bytes": 243817,
+      "sha256": "b2f2fa09ba918702"
+    },
+    "stanley-quencher-eur": {
+      "source": {
+        "shopify": "https://eu.stanley1913.com/fr/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+        "currency": "EUR"
+      },
+      "page": "https://eu.stanley1913.com/fr/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+      "title": "Quencher® H2.0 FlowState™ Tumbler | 1.18L",
+      "license": "",
+      "author": "",
+      "description": "",
+      "askingPrice": {
+        "amount": 55,
+        "currency": "EUR"
+      },
+      "width": 1080,
+      "height": 2340,
+      "bytes": 98583,
+      "sha256": "989a1eadbde4e119"
+    }
+  },
+  "scans": [
+    {
+      "caseId": "yellowstone-cowboy-hat",
+      "intent": "verdict",
+      "status": 200,
+      "ms": 33563,
+      "json": {
+        "found": false,
+        "mode": "UNRESOLVED",
+        "priceSource": "estimated",
+        "engineUsed": "none",
+        "matchConfidence": "unverified",
+        "category": "other",
+        "sourceProduct": {
+          "title": "Product not identified",
+          "price": 0,
+          "currency": "USD",
+          "imageUrl": "",
+          "productUrl": "",
+          "affiliateUrl": "",
+          "platform": "unknown"
+        },
+        "analysis": {
+          "retailEstimate": 0,
+          "retailSource": "estimated",
+          "markup": 0,
+          "verdict": "UNVERIFIED",
+          "savings": 0,
+          "savingsPercent": 0,
+          "confidence": "low"
+        },
+        "scanId": null,
+        "scanRef": "muu6ive47ff97a8086c87e7b0277acff",
+        "evaluation": {
+          "cached": false,
+          "ms": 33345,
+          "trace": {
+            "totalMs": 33256,
+            "claudeUsd": 0.048671,
+            "searchesByProvider": {
+              "serper": 2,
+              "serpapi": 1
+            },
+            "creditsByProvider": {
+              "serper": 5
+            },
+            "cache": {
+              "readTokens": 14690,
+              "writeTokens": 2938,
+              "uncachedInputTokens": 10834,
+              "callsReading": 5,
+              "calls": 6
+            },
+            "msByLayer": {
+              "model:extraction": 2292,
+              "model:gate": 18480,
+              "search:lens": 9895,
+              "search:shopping": 1894
+            },
+            "thinkingPerCall": 101,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2292,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 960,
+                "outputTokens": 138,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 2938,
+                "costUsd": 0.010645,
+                "stopReason": "end_turn",
+                "thinkingApprox": 63
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 4045,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2104,
+                "outputTokens": 333,
+                "cacheReadTokens": 2938,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0081256,
+                "stopReason": "end_turn",
+                "thinkingApprox": 111
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 4076,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2039,
+                "outputTokens": 331,
+                "cacheReadTokens": 2938,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.007975600000000001,
+                "stopReason": "end_turn",
+                "thinkingApprox": 111
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3594,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2010,
+                "outputTokens": 330,
+                "cacheReadTokens": 2938,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0079076,
+                "stopReason": "end_turn",
+                "thinkingApprox": 119
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3945,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2025,
+                "outputTokens": 325,
+                "cacheReadTokens": 2938,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0078876,
+                "stopReason": "end_turn",
+                "thinkingApprox": 118
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2820,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1696,
+                "outputTokens": 215,
+                "cacheReadTokens": 2938,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.006129600000000001,
+                "stopReason": "end_turn",
+                "thinkingApprox": 82
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 2342,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "lens",
+                "provider": "serpapi",
+                "engine": "google_lens",
+                "ms": 7553,
+                "status": 200
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 1894,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 2315,
+                "brand": "",
+                "productName": "black felt cowboy hat with gold concho band accent",
+                "visiblePrice": null,
+                "currency": "",
+                "quantity": "1 unit",
+                "category": "fashion",
+                "storeName": "",
+                "visibleUrl": "",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 4733,
+                "list": "organic",
+                "rows": 60,
+                "usable": 40,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 4808,
+                "engine": "serper",
+                "candidates": 40,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "Tucson: Texana Dallas Texana Lana 100x (MX/US, Numérica, 6 3/4, Negro) : Amazon.com.mx: Ropa, Zapatos y Accesorios",
+                    "source": "Amazon.com.mx",
+                    "price": 0,
+                    "link": "https://www.amazon.com.mx/Tucson-Texana-Dallas-Lana-100x/dp/B0FBSW94WM",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR8q8gYd9U0cLBBZdA3IuZYdLrZVil--DGUwz_OQT5YxZAzxR-h"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Amazon.com: El General: WESTERN HAT'S",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/stores/ElGeneral/page/A6156A7B-D34D-42A4-9042-0DADE124A018",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRgyIE_d1vgdptN2fdScFPb3a8mTxS9Yv-gCJ_-ijk2LleNcy6p"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Larry Mahan Opulento 30X Black Copa 65 – Resistol & Stetson Hats Mexico",
+                    "source": "cactusropesmxhats.com",
+                    "price": 0,
+                    "link": "https://cactusropesmxhats.com/products/larry-mahan-opulento-30x-black-copa-65",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQVJstLQT4s58J3srp5UeFewqCFsu9yLEMjwsUdxuhFzzBxi_mu"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Cowboy Hats Minnetonka Lite Felt Hat Minnetonka Original Size L Genuine Leather Hat/tan Outback Buffalo",
+                    "source": "corpus.kg",
+                    "price": 0,
+                    "link": "https://corpus.kg/shop/manufacturer-site?&transition=top40436630001890",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSw90j4lbhq3sL4IbJk_bj8KdMsYBFK4oIJjzCQ2ZEPxiJOmF_d"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Morcon 20X Sinaloa Felt Cowboy Hat Black – The Little Ranch",
+                    "source": "The Little Ranch Boots",
+                    "price": 0,
+                    "link": "https://thelittleranchny.com/es/products/morcon-20x-sinaloa-felt-cowboy-hat-black",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRcTyY9vSUyCZKDMtSN5Uo7wZNDg6EKBFc3sazcC_JKCzmAOCsk"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Larry Mahan 30X Opulento (MF3065OPUL40-Black) – El Herradero Western Wear",
+                    "source": "El Herradero Western Wear",
+                    "price": 0,
+                    "link": "https://elherraderoww.com/products/larry-mahan-opulento-mf3065opul40-black",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcR1ClzKWeP8exQSWsVxoVy-XMBzU74Ta-FLj5tfIkYW2hC24XJ0"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "Larry Mahan Opulento 30X Felt Cowboy Hat | Boot Barn",
+                    "source": "Boot Barn",
+                    "price": 0,
+                    "link": "https://www.bootbarn.com/larry-mahan-opulento-30x-felt-cowboy-hat/096B96.html",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQLGODcXA06BcWnwlzZxsLYRXHaemd4MInd1zTh8na-tLYmvPqq"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Underwraps Cattleman Cowboy Hat : Target",
+                    "source": "Target",
+                    "price": 0,
+                    "link": "https://www.target.com/p/underwraps-cattleman-cowboy-hat/-/A-1005973114",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcTYEE4VUJDXBvhQITK7UwuaFzBddDw48n4qDTMKSl8JFQW_jioW"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "T100X Texana 25% Wool, 75% Hair-Black | Sombreros Cowboy | Joe Boots",
+                    "source": "Joe Boots",
+                    "price": 0,
+                    "link": "https://joeboots.com/products/t100-texana-25-lana-75-pelo-1",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSiLbZ-Vitu1JIC5rXzf_bGwDInLGdw_flF8tkO6cYeci0tk1Dg"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Men's Cowboy Hat El General Texana 50X Horma Julion Color Black Wool - Walmart.com",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://www.walmart.com/ip/Men-s-Cowboy-Hat-El-General-Texana-50X-Horma-Julion-Color-Black-Wool/137115727",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ7YvF9L7HPAGJPCEEaEj_66jdEUFpszN9e7CUu1I-Jqk5FIaJa"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "SERRATELLI 6X AMAPOLA BEAVER BLACK FELT HAT COWBOY HAT | Genuine Leather Cowboy Boots and Hats — Zapateria Guadalajara",
+                    "source": "Zapateria Guadalajara",
+                    "price": 0,
+                    "link": "https://zapateriaguadalajara.com/products/serratelli-6x-amapola-beaver-felt-hat",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQnj32w1YgJJw7ukKDPRL5RpTxBLzADYtGYmTG_wqQ38owxC15H"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "El Amo 500X Premier Cowboy Hat | Stetson",
+                    "source": "Stetson",
+                    "price": 0,
+                    "link": "https://stetson.com/products/el-amo-black",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQfdpjs6brN9JqXPGjPR_oKFMmwyTGb4ObX6OcPFzH4opMhbrr7"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 4829,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 8948,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Tucson: Texana Dallas Texana Lana 100x (MX/US, Numérica, 6 3/4, Negro) : Amazon.com.mx: Ropa, Zapatos y Accesorios",
+                    "source": "Amazon.com.mx",
+                    "price": 0,
+                    "link": "https://www.amazon.com.mx/Tucson-Texana-Dallas-Lana-100x/dp/B0FBSW94WM",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR8q8gYd9U0cLBBZdA3IuZYdLrZVil--DGUwz_OQT5YxZAzxR-h",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Black cowboy hat, similar shape and small gold concho, but the brand and model can't be confirmed as the same"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Amazon.com: El General: WESTERN HAT'S",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/stores/ElGeneral/page/A6156A7B-D34D-42A4-9042-0DADE124A018",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRgyIE_d1vgdptN2fdScFPb3a8mTxS9Yv-gCJ_-ijk2LleNcy6p",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Different crown and brim shape, and the hardware on the band is different"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Larry Mahan Opulento 30X Black Copa 65 – Resistol & Stetson Hats Mexico",
+                    "source": "cactusropesmxhats.com",
+                    "price": 0,
+                    "link": "https://cactusropesmxhats.com/products/larry-mahan-opulento-30x-black-copa-65",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQVJstLQT4s58J3srp5UeFewqCFsu9yLEMjwsUdxuhFzzBxi_mu",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Black felt hat with a small gold band ornament, but the brim and crown differ and the brand is unconfirmed"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Cowboy Hats Minnetonka Lite Felt Hat Minnetonka Original Size L Genuine Leather Hat/tan Outback Buffalo",
+                    "source": "corpus.kg",
+                    "price": 0,
+                    "link": "https://corpus.kg/shop/manufacturer-site?&transition=top40436630001890",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSw90j4lbhq3sL4IbJk_bj8KdMsYBFK4oIJjzCQ2ZEPxiJOmF_d",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Different brim curve and a silver buckle band; the title is for a different product"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Morcon 20X Sinaloa Felt Cowboy Hat Black – The Little Ranch",
+                    "source": "The Little Ranch Boots",
+                    "price": 0,
+                    "link": "https://thelittleranchny.com/es/products/morcon-20x-sinaloa-felt-cowboy-hat-black",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRcTyY9vSUyCZKDMtSN5Uo7wZNDg6EKBFc3sazcC_JKCzmAOCsk",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Different hat shown in hand with a tag; the crown and brim differ"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Larry Mahan 30X Opulento (MF3065OPUL40-Black) – El Herradero Western Wear",
+                    "source": "El Herradero Western Wear",
+                    "price": 0,
+                    "link": "https://elherraderoww.com/products/larry-mahan-opulento-mf3065opul40-black",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcR1ClzKWeP8exQSWsVxoVy-XMBzU74Ta-FLj5tfIkYW2hC24XJ0",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Black Larry Mahan hat with a similar profile and small gold ornament, but the model can't be tied to IMAGE A"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 13099,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 6,
+                    "title": "Larry Mahan Opulento 30X Felt Cowboy Hat | Boot Barn",
+                    "source": "Boot Barn",
+                    "price": 0,
+                    "link": "https://www.bootbarn.com/larry-mahan-opulento-30x-felt-cowboy-hat/096B96.html",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQLGODcXA06BcWnwlzZxsLYRXHaemd4MInd1zTh8na-tLYmvPqq",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Black felt cowboy hat with a gold concho, but the crown and brim shape differ and no logo is visible to confirm the model"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Underwraps Cattleman Cowboy Hat : Target",
+                    "source": "Target",
+                    "price": 0,
+                    "link": "https://www.target.com/p/underwraps-cattleman-cowboy-hat/-/A-1005973114",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcTYEE4VUJDXBvhQITK7UwuaFzBddDw48n4qDTMKSl8JFQW_jioW",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Target Underwraps hat with a soft, floppy shape and no gold hardware"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "T100X Texana 25% Wool, 75% Hair-Black | Sombreros Cowboy | Joe Boots",
+                    "source": "Joe Boots",
+                    "price": 0,
+                    "link": "https://joeboots.com/products/t100-texana-25-lana-75-pelo-1",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSiLbZ-Vitu1JIC5rXzf_bGwDInLGdw_flF8tkO6cYeci0tk1Dg",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Black cowboy hat from a different brand with a different crown, and no matching marking"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Men's Cowboy Hat El General Texana 50X Horma Julion Color Black Wool - Walmart.com",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://www.walmart.com/ip/Men-s-Cowboy-Hat-El-General-Texana-50X-Horma-Julion-Color-Black-Wool/137115727",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ7YvF9L7HPAGJPCEEaEj_66jdEUFpszN9e7CUu1I-Jqk5FIaJa",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "El General hat has a different brand, a white band detail and a different crown"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "SERRATELLI 6X AMAPOLA BEAVER BLACK FELT HAT COWBOY HAT | Genuine Leather Cowboy Boots and Hats — Zapateria Guadalajara",
+                    "source": "Zapateria Guadalajara",
+                    "price": 0,
+                    "link": "https://zapateriaguadalajara.com/products/serratelli-6x-amapola-beaver-felt-hat",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQnj32w1YgJJw7ukKDPRL5RpTxBLzADYtGYmTG_wqQ38owxC15H",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Black felt hat with a small gold ornament, but the brim and crown differ and the brand cannot be confirmed"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "El Amo 500X Premier Cowboy Hat | Stetson",
+                    "source": "Stetson",
+                    "price": 0,
+                    "link": "https://stetson.com/products/el-amo-black",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQfdpjs6brN9JqXPGjPR_oKFMmwyTGb4ObX6OcPFzH4opMhbrr7",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Stetson hat with a different brim and crown and a silver pin rather than gold"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 13100,
+                "purpose": "identify",
+                "confidence": "unverified",
+                "rank": 0,
+                "title": "Tucson: Texana Dallas Texana Lana 100x (MX/US, Numérica, 6 3/4, Negro) : Amazon.com.mx: Ropa, Zapatos y Accesorios",
+                "source": "Amazon.com.mx",
+                "price": 0,
+                "link": "https://www.amazon.com.mx/Tucson-Texana-Dallas-Lana-100x/dp/B0FBSW94WM",
+                "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR8q8gYd9U0cLBBZdA3IuZYdLrZVil--DGUwz_OQT5YxZAzxR-h"
+              },
+              {
+                "step": "serpapi",
+                "at": 13128,
+                "left": 250,
+                "reserve": 20,
+                "searches": 1,
+                "allowed": true
+              },
+              {
+                "step": "gate",
+                "at": 24475,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 40,
+                    "title": "Yellowstone Cowboy Hat by Bailey 10x Western | Yellowstone Shop",
+                    "source": "Yellowstone Shop",
+                    "price": 450,
+                    "link": "https://yellowstonetvshop.com/products/yellowstone-fur-single-hat",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQH2uWRsKk4T4C0tMYoNYvFd7HeAJDtDFvzMh0Eh1iZMRX9FLGW",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "Same crown pinch, wide upturned brim, thin band with small gold concho on right; Bailey title consistent, small logo unreadable"
+                  },
+                  {
+                    "rank": 41,
+                    "title": "Texana Larry Mahan 6X Black Beaver Hair",
+                    "source": "Caballo Bronco",
+                    "price": 0,
+                    "link": "https://caballobronco.com/en/products/texana-real-larry-mahan-6x-de-castor-lmahan-6x-realnegro",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSePETJm68AvSx0iicsdh1iKFfNjQXdJ6ywTcycPMP8KwCJMVy7",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Black cowboy hat but flatter brim, different crown shape, band ends differently"
+                  },
+                  {
+                    "rank": 42,
+                    "title": "Texana 100X Estilo Sinaloa (25% Wool 75% Buffalo Fur ...",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/365954578989",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRk0hwrOxzq5uTbCid8lVg7eTOunsBSYnWXwrvCmIu7QKy3O3lK",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Black western hat with a different brim curl and crown; no matching hardware visible"
+                  },
+                  {
+                    "rank": 43,
+                    "title": "El Patron 4840 Premier 30X Cowboy Hat | Stetson",
+                    "source": "Stetson",
+                    "price": 800,
+                    "link": "https://stetson.com/products/el-patron-48-premier-30x-cowboy-hat-black",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQXZ1Qniqm0h_aQ7mF240cmEqL914BjhhMr-ui3sN41-CkNbxIY",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Stetson brand with its own logo tab, different crown and brim shape"
+                  },
+                  {
+                    "rank": 44,
+                    "title": "Essential Larry Mahan Mens 6X Felt Hat In Black - Shop Now",
+                    "source": "Starr Western Wear",
+                    "price": 0,
+                    "link": "https://starrwesternwear.com/products/larry-mahan-mens-6x-felt-hat-mf0665reno6x-blk",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTY5omedEjcNWgoQHCmTrRWk8_Hayp5zeJelGduh2_iZ-niXWD-",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Black hat with a green/gold pin, different brim shape and hardware"
+                  },
+                  {
+                    "rank": 45,
+                    "title": "El Presidente 100X Premier Cowboy Hat | Stetson",
+                    "source": "Stetson",
+                    "price": 0,
+                    "link": "https://stetson.com/products/el-presidente-100x-premier-cowboy-hat-black",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTAKMO1k5chFt75VdWZ0sHVhbxy5chIe3tFGtrEfRG4zPmvVC2G",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Stetson El Presidente, different crown and brim from the Bailey-style hat"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 28502,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 46,
+                    "title": "5X Dorado in Black | Larry Mahan Fur Felt Western – Larry ...",
+                    "source": "Larry Mahan Hats",
+                    "price": 0,
+                    "link": "https://larrymahanhats.com/products/5x-dorado-in-black-larry-mahan-fur-felt-western",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT9uXUPzf39E9HvB5RHINRWe5TJMlMzEJgCcsMFjWF92SRNcFVm",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Larry Mahan hat has a metal buckle band, while the small gold concho on a self band in A is not visible here"
+                  },
+                  {
+                    "rank": 47,
+                    "title": "Stetson 6x Black Guadalupana – ELP Western",
+                    "source": "ELP Western",
+                    "price": 380,
+                    "link": "https://elpwestern.com/products/stetson-6x-black-guadalupana",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQxRpG-A55YX6reJ-GGNXvIK_NISW9VV7bVPIP_H23g6H8dJMU3",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Black felt cowboy hat with a small gold pin, but the crown shape differs and the Stetson brand can't be tied to A"
+                  },
+                  {
+                    "rank": 48,
+                    "title": "Sanchez 20X Fur Felt Cowboy Hat – Rock'em",
+                    "source": "Rock'em",
+                    "price": 464,
+                    "link": "https://shoprockem.com/products/rockem-texana-pelo-de-castor-sinaloa-10x",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTomt1EusFwxkT2uTOYQXOyYTdk7CQi2cCy8K5nW19LzJoQ-Ase",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Black cowboy hat with a silver buckle; the brim and crown differ from A"
+                  },
+                  {
+                    "rank": 49,
+                    "title": "Murdoch's – Murdoch's x Serratelli - Adult Unisex's Bison ...",
+                    "source": "Murdoch's Ranch & Home Supply",
+                    "price": 0,
+                    "link": "https://www.murdochs.com/products/clothing-footwear-accessories/mens-accessories/headwear-neckwear/western-hats/murdochs-x-serratelli-adult-unisex-bison-1889-cowboy-hat/",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSQgG8MB-7fYSg5_nbikX4oWCntAD9NLnwoLm2aDh2bNqsmpSFt",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Different band and hardware, and a different brim shape"
+                  },
+                  {
+                    "rank": 50,
+                    "title": "Trinity 30x Vaquero Cowboy Hat – Twinstone Hats",
+                    "source": "Twinstone Hats",
+                    "price": 730,
+                    "link": "https://twinstonehats.com/products/trinity-30x-vaquero-cowboy-hat",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQIwFDXaVwW-ZgthSGtw3O9DO2df5xtwQ6vPz3vjZIrJ6zb6nfl",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Silver buckle on the band, different crown shape"
+                  },
+                  {
+                    "rank": 51,
+                    "title": "Yellowstone Bailey Cowboy Western 10x Hat by Bollman Hats ...",
+                    "source": "Paramount Shop",
+                    "price": 0,
+                    "link": "https://www.paramountshop.com/en-ec/products/yellowstone-fur-single-hat",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcS_fzjLI23v3qhklxSbrEl_HoQv5WTBfL5a3V0uHbYy6XQvZ6cg",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Similar front view, but the band hardware can't be confirmed and the brim is different"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 28502,
+                "purpose": "identify",
+                "confidence": "unverified",
+                "rank": 40,
+                "title": "Yellowstone Cowboy Hat by Bailey 10x Western | Yellowstone Shop",
+                "source": "Yellowstone Shop",
+                "price": 450,
+                "link": "https://yellowstonetvshop.com/products/yellowstone-fur-single-hat",
+                "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQH2uWRsKk4T4C0tMYoNYvFd7HeAJDtDFvzMh0Eh1iZMRX9FLGW"
+              },
+              {
+                "step": "escalation",
+                "at": 28502,
+                "to": "serpapi",
+                "ran": true,
+                "candidates": 40,
+                "fresh": 37,
+                "judged": 12,
+                "confidence": "unverified",
+                "fromEscalation": true
+              },
+              {
+                "step": "generic_search",
+                "at": 30397,
+                "query": "black felt cowboy hat with gold concho band accent 1 unit",
+                "found": 4
+              },
+              {
+                "step": "gate",
+                "at": 33255,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 4,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Western Concho Band Cowboy Hat",
+                    "source": "Etsy - Seller",
+                    "price": 24.99,
+                    "link": "https://www.google.com/search?ibp=oshop&q=black+felt+cowboy+hat+with+gold+concho+band+accent+1+unit+*+*&prds=localAnnotatedOfferId:1,catalogid:1299139321882360657,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcRaSyoUaCTdq2bBYGKU1MQ3O9ronGHvY-Ytlw13u6LQ2YOM8rIltriwwi0mSFeQi5JIrF-59JirtRYTRf6HynqPZRVUj6WVYA6WJkKl3mfh9SbUmSDrEo-Rgg",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Fedora-style hat with silver concho band; Image A is a tall-crown cowboy hat with a thin plain band"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Concho Band Cowboy Hat",
+                    "source": "Shop Style Your Senses",
+                    "price": 48,
+                    "link": "https://www.google.com/search?ibp=oshop&q=black+felt+cowboy+hat+with+gold+concho+band+accent+1+unit+*+*&prds=localAnnotatedOfferId:1,catalogid:13108386822687049614,gpcid:7714789414931659907,pvo:2,pvt:",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcRY5701AV2Au2VKVTJy_iS0SpNwHGQCi2Yh2MJx7EwaNFs-svCmpslDRu_fn3RivC0rigIafpHLqSt1mIA2A6JNFjXPG-W5rD7VqPvfrJI13rzBxg7dwSWW",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Suede-look cowboy hat with turquoise concho chain; Image A has a plain band and a small gold emblem"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Black Wool Felt Flat-Top Hat with Silver Concho Band, Gothic Steampunk Style",
+                    "source": "Etsy - Seller",
+                    "price": 76.17,
+                    "link": "https://www.google.com/search?ibp=oshop&q=black+felt+cowboy+hat+with+gold+concho+band+accent+1+unit+*+*&prds=localAnnotatedOfferId:1,catalogid:5873956928909367562,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcQJf8m75iJNcDkP-5Qg2wifLPTPeYFMCOg_T4yFXkdBWFH6MzmHfYe5d73HvQeSwmwniQQf_D1H2QchngX6ye6ilgmK40bBYtjkpmSthU7BGWAStVOzQTRJlA",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Flat-top steampunk hat, different silhouette"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Wild Range Men’s Leather Hat",
+                    "source": "eBay",
+                    "price": 107,
+                    "link": "https://www.google.com/search?ibp=oshop&q=black+felt+cowboy+hat+with+gold+concho+band+accent+1+unit+*+*&prds=localAnnotatedOfferId:1,catalogid:11358823561132497567,gpcid:14959688290546552592,pvo:2,pvt",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcRMv-EUHeyamYWcX5ypgXepdCdJSdpewlmSTpmmlgy1lOWwQU1kUnGGhSv2jQlMdruGzEWD06GNpXtBFpXUoGojpEnQA-jyYoxsjTwqWWPbGRHa-NVzeyB2",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Leather hat with studs, different material and shape"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 33255,
+                "purpose": "identify",
+                "confidence": "unverified",
+                "rank": 0,
+                "title": "Western Concho Band Cowboy Hat",
+                "source": "Etsy - Seller",
+                "price": 24.99,
+                "link": "https://www.google.com/search?ibp=oshop&q=black+felt+cowboy+hat+with+gold+concho+band+accent+1+unit+*+*&prds=localAnnotatedOfferId:1,catalogid:1299139321882360657,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcRaSyoUaCTdq2bBYGKU1MQ3O9ronGHvY-Ytlw13u6LQ2YOM8rIltriwwi0mSFeQi5JIrF-59JirtRYTRf6HynqPZRVUj6WVYA6WJkKl3mfh9SbUmSDrEo-Rgg"
+              },
+              {
+                "step": "alternatives",
+                "at": 33255,
+                "retailerQuery": "black felt cowboy hat with gold concho band accent",
+                "unbranded": 0,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "identified",
+                "at": 33255,
+                "engineUsed": "lens_serper",
+                "confidence": "unverified",
+                "title": "Tucson: Texana Dallas Texana Lana 100x (MX/US, Numérica, 6 3/4, Negro) : Amazon.com.mx: Ropa, Zapatos y Accesorios",
+                "priced": false
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "miss",
+        "detail": "no match"
+      },
+      "costUsd": 0.063671
+    },
+    {
+      "caseId": "flowlife-flowgun-air",
+      "intent": "finder",
+      "status": 200,
+      "ms": 32783,
+      "json": {
+        "found": true,
+        "mode": "FINDER",
+        "priceSource": "estimated",
+        "engineUsed": "lens_serper+escalated_serpapi+priced_page",
+        "matchConfidence": "exact",
+        "category": "fitness",
+        "sourceProduct": {
+          "title": "Flowgun Air Reuse - Percussive Massage Gun | Flowlife",
+          "price": 88.9,
+          "currency": "USD",
+          "imageUrl": "/api/proxy-image?url=https%3A%2F%2Fencrypted-tbn3.gstatic.com%2Fimages%3Fq%3Dtbn%3AANd9GcSYJcqwHsLBCcxiwolc_e4SqudfkyZciHsv3Yef12EiNutD8G1o&s=07ed194cedd3e63a005dba46f6c3d364",
+          "productUrl": "https://flowlife.com/en-BG/product/flowgun-air-reuse",
+          "affiliateUrl": "https://flowlife.com/en-BG/product/flowgun-air-reuse",
+          "linkIsDirect": true,
+          "platform": "Flowlife"
+        },
+        "analysis": {
+          "retailEstimate": 88.9,
+          "retailSource": "estimated",
+          "markup": 0,
+          "verdict": "UNVERIFIED",
+          "savings": 0,
+          "savingsPercent": 0,
+          "confidence": "high"
+        },
+        "scanId": null,
+        "scanRef": "muu6jn066e33868a5713fd1b6f01f8da",
+        "evaluation": {
+          "cached": false,
+          "ms": 32437,
+          "trace": {
+            "totalMs": 32325,
+            "claudeUsd": 0.029584,
+            "searchesByProvider": {
+              "serper": 1,
+              "serpapi": 1
+            },
+            "creditsByProvider": {
+              "serper": 3
+            },
+            "cache": {
+              "readTokens": 0,
+              "writeTokens": 0,
+              "uncachedInputTokens": 8867,
+              "callsReading": 0,
+              "calls": 4
+            },
+            "msByLayer": {
+              "model:extraction": 1935,
+              "model:gate": 11412,
+              "search:lens": 18060
+            },
+            "thinkingPerCall": 105,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 1935,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1378,
+                "outputTokens": 143,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.004186,
+                "stopReason": "end_turn",
+                "thinkingApprox": 63
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3724,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2641,
+                "outputTokens": 356,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.008842,
+                "stopReason": "end_turn",
+                "thinkingApprox": 124
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 4166,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2484,
+                "outputTokens": 375,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.008718,
+                "stopReason": "end_turn",
+                "thinkingApprox": 123
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3522,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2364,
+                "outputTokens": 311,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.007838,
+                "stopReason": "end_turn",
+                "thinkingApprox": 109
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 5180,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "lens",
+                "provider": "serpapi",
+                "engine": "google_lens",
+                "ms": 12880,
+                "status": 200
+              }
+            ],
+            "failures": [],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 1958,
+                "brand": "",
+                "productName": "black mini percussion massage gun with ball head attachment",
+                "visiblePrice": null,
+                "currency": "",
+                "quantity": "1 unit",
+                "category": "fitness",
+                "storeName": "",
+                "visibleUrl": "",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 7252,
+                "list": "organic",
+                "rows": 59,
+                "usable": 40,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 7312,
+                "engine": "serper",
+                "candidates": 40,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "Flowlife Flowgun Air Ultralight 340G Massage Gun 20W Brushless Motor, Quiet Technology, Lightweight Massage Gun with 4 I",
+                    "source": "Amazon.se",
+                    "price": 0,
+                    "link": "https://www.amazon.se/-/en/Flowlife-Ultralight-Technology-Lightweight-Interchangeable/dp/B0F5WRT69M",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTpmuFVt7wv2ekRs0DbJ2gyTXhFPEDEZBf02Pl3OWgKwS-8th8v"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Amazon.com: PlayMakar ShocDuo Dual Head Absorption & Reverberation Massage Head for MVP+ Massage Gun : Health & Househol",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/PlayMakar-ShocDuo-Absorption-Reverberation-Massage/dp/B0BHKQFR97",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScW6azhYIT756Xc5l7WDOTR6JAgVTY-6DDA9PJyaI94OF24GhW"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Amazon.com: 6 Speeds Muscle Massage Gun Handheld Electric Body Massager Gun Tool Machine Vibration Cordless 12V Silver",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/clp/B085HNBN8X",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSs40o6uM7lCil_KtzbDQ68VgtTyHE_00yEOle6SmlTF7G2yyn1"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "MVPmini 5 in 1 Percussion Massager with Carrying Case and 4 Silica Rubber Tapotement Massage Heads: Optional Roller Head",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://www.walmart.com/ip/MVPmini-5-in-1-Percussion-Massager-with-Carrying-Case-and-4-Silica-Rubber-Tapotement-Massage-Heads-Optional-Roller-Head-and-HeatTip/5513130387",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSqV8z9S3PxNFN07oIsLvS4E-Qfa_Osd3D8L_bV8Yz3jRq1mCZ6"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Amazon.co.jp: Myofascial Release Gun, New Evolution 7.8 oz (220 g), Ultra Lightweight, Ultra Compact, LIHILIS KINKLE REL",
+                    "source": "amazon.jp",
+                    "price": 0,
+                    "link": "https://www.amazon.co.jp/-/en/Myofascial-Lightweight-LIHILIS-Instruction-Celebration/dp/B0CW39T6FG",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRvpEWNx0Ithq1Hcf39NS0VPjlenCxKKrGwziauMUp-1np4mllI"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Amazon.com: GREENTEC Massage Gun Holder for Hard to Reach Areas. Relieve Muscle Pain in Shoulders, Upper Back, Lower Bac",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/GREENTEC-Massage-Holder，-Massager-Without/dp/B0DRP4614S",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcR8vYiFYZcmIRoIO6Qn_dJodk40dkGDP8z02ck9hxmP3smBmVVG"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "Percussion Mini Massager Body Massagers for sale | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/b/Percussion-Mini-Massager-Body-Massagers/36449/bn_7116689844",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSK3CsvG5DP_zsOXUmsYGa5XD8Ra0riC8pmd0YfPsBJI98mw2do"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Customer reviews for Sealy Massage Gun for Neck, Shoulder & Neck Pain Relief, Deep Tissue Massager w/ 4 Heads, Black | W",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://www.walmart.com/reviews/product/970298226",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSLvRIMFm-2M-PjZqJb7WeqfEfgmbaH_UQ942dhNrEJyG9Bz_wx"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "Mini Muscle Massage Gun, Portable Massage Gun with 30 Speed Levels, 4 Massage Heads, LCD Screen, Professional Electric M",
+                    "source": "Amazon",
+                    "price": 0,
+                    "link": "https://www.amazon.es/-/en/Portable-Professional-Electric-Massager-Relaxation/dp/B0FMY4TKXP",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQ6WJzshvRJPdIs9gloDVbaf3b9IdQin-CEBT3udhBIlpJmv1p6"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "iLive Plug-in Percussive Massager at Lowes.com",
+                    "source": "Lowe's",
+                    "price": 0,
+                    "link": "https://www.lowes.com/pd/iLive-Plug-in-Percussive-Massager/5005326085",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSea7d0jp1L-WKsAIxevhTUw-xtzDX21FGOQNABLrqPPjSGv2Ge"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "xiaomi massage gun tissue handheld electric muscle - Temu Greece",
+                    "source": "Temu",
+                    "price": 0,
+                    "link": "https://www.temu.com/gr-en/xiaomi-massage-gun--tissue-handheld-electric-muscle-massager-percussion-massage--3-attachments---gift-g-601102905505618.html",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTrKJd8GGUTTZu5mIV8bSFdRIyqEZxJAH8TDhDhtFasgN6pf9N7"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Manrungun Sport Percussion Vibration Massage Gun-Effectively Reduce Muscle Stiffness And Soreness - Walmart.com",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://www.walmart.com/ip/Manrungun-Sport-Percussion-Vibration-Massage-Gun-Effectively-Reduce-Muscle-Stiffness-And-Soreness/2078220611",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS-Vy36W8gaZTEBWxsOIC5aO0EyOaFSKInFvoRsJkttvpl8tHZY"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 7344,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 11142,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Flowlife Flowgun Air Ultralight 340G Massage Gun 20W Brushless Motor, Quiet Technology, Lightweight Massage Gun with 4 I",
+                    "source": "Amazon.se",
+                    "price": 0,
+                    "link": "https://www.amazon.se/-/en/Flowlife-Ultralight-Technology-Lightweight-Interchangeable/dp/B0F5WRT69M",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTpmuFVt7wv2ekRs0DbJ2gyTXhFPEDEZBf02Pl3OWgKwS-8th8v",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "Same compact T-shape, side control panel with LED dots and round power button, ball head; the Flowgun Air is a plausible match, but the vent on the back is not "
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Amazon.com: PlayMakar ShocDuo Dual Head Absorption & Reverberation Massage Head for MVP+ Massage Gun : Health & Househol",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/PlayMakar-ShocDuo-Absorption-Reverberation-Massage/dp/B0BHKQFR97",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScW6azhYIT756Xc5l7WDOTR6JAgVTY-6DDA9PJyaI94OF24GhW",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Listing is for a PlayMakar massage head accessory for a different gun (MVP+), not this product"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Amazon.com: 6 Speeds Muscle Massage Gun Handheld Electric Body Massager Gun Tool Machine Vibration Cordless 12V Silver",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/clp/B085HNBN8X",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSs40o6uM7lCil_KtzbDQ68VgtTyHE_00yEOle6SmlTF7G2yyn1",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Full-size pistol-grip gun with a different body shape and a brand logo"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "MVPmini 5 in 1 Percussion Massager with Carrying Case and 4 Silica Rubber Tapotement Massage Heads: Optional Roller Head",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://www.walmart.com/ip/MVPmini-5-in-1-Percussion-Massager-with-Carrying-Case-and-4-Silica-Rubber-Tapotement-Massage-Heads-Optional-Roller-Head-and-HeatTip/5513130387",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSqV8z9S3PxNFN07oIsLvS4E-Qfa_Osd3D8L_bV8Yz3jRq1mCZ6",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "MVPmini has a similar mini T-shape, but it has a side vent and a different panel layout and brand"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Amazon.co.jp: Myofascial Release Gun, New Evolution 7.8 oz (220 g), Ultra Lightweight, Ultra Compact, LIHILIS KINKLE REL",
+                    "source": "amazon.jp",
+                    "price": 0,
+                    "link": "https://www.amazon.co.jp/-/en/Myofascial-Lightweight-LIHILIS-Instruction-Celebration/dp/B0CW39T6FG",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRvpEWNx0Ithq1Hcf39NS0VPjlenCxKKrGwziauMUp-1np4mllI",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "LIHILIS mini gun of the same kind but a different shape and control layout"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Amazon.com: GREENTEC Massage Gun Holder for Hard to Reach Areas. Relieve Muscle Pain in Shoulders, Upper Back, Lower Bac",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/GREENTEC-Massage-Holder，-Massager-Without/dp/B0DRP4614S",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcR8vYiFYZcmIRoIO6Qn_dJodk40dkGDP8z02ck9hxmP3smBmVVG",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Massage gun holder accessory with a generic gun diagram, not the product"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 15394,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 6,
+                    "title": "Percussion Mini Massager Body Massagers for sale | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/b/Percussion-Mini-Massager-Body-Massagers/36449/bn_7116689844",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSK3CsvG5DP_zsOXUmsYGa5XD8Ra0riC8pmd0YfPsBJI98mw2do",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Mini massage gun with similar shape, but the head is attached differently and there is a vent, no visible side control panel. Cannot be tied to IMAGE A."
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Customer reviews for Sealy Massage Gun for Neck, Shoulder & Neck Pain Relief, Deep Tissue Massager w/ 4 Heads, Black | W",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://www.walmart.com/reviews/product/970298226",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSLvRIMFm-2M-PjZqJb7WeqfEfgmbaH_UQ942dhNrEJyG9Bz_wx",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Sealy-branded full-size gun with a different body shape and a hole in the handle top, not the compact T-shape of IMAGE A."
+                  },
+                  {
+                    "rank": 8,
+                    "title": "Mini Muscle Massage Gun, Portable Massage Gun with 30 Speed Levels, 4 Massage Heads, LCD Screen, Professional Electric M",
+                    "source": "Amazon",
+                    "price": 0,
+                    "link": "https://www.amazon.es/-/en/Portable-Professional-Electric-Massager-Relaxation/dp/B0FMY4TKXP",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQ6WJzshvRJPdIs9gloDVbaf3b9IdQin-CEBT3udhBIlpJmv1p6",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Generic mini black gun with a slanted body and no side LED panel, so a different design."
+                  },
+                  {
+                    "rank": 9,
+                    "title": "iLive Plug-in Percussive Massager at Lowes.com",
+                    "source": "Lowe's",
+                    "price": 0,
+                    "link": "https://www.lowes.com/pd/iLive-Plug-in-Percussive-Massager/5005326085",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSea7d0jp1L-WKsAIxevhTUw-xtzDX21FGOQNABLrqPPjSGv2Ge",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "iLive plug-in model with a rounded tube handle and a blue accent line, a different design."
+                  },
+                  {
+                    "rank": 10,
+                    "title": "xiaomi massage gun tissue handheld electric muscle - Temu Greece",
+                    "source": "Temu",
+                    "price": 0,
+                    "link": "https://www.temu.com/gr-en/xiaomi-massage-gun--tissue-handheld-electric-muscle-massager-percussion-massage--3-attachments---gift-g-601102905505618.html",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTrKJd8GGUTTZu5mIV8bSFdRIyqEZxJAH8TDhDhtFasgN6pf9N7",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Xiaomi-style grey gun with a different body shape and no visible side LED strip."
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Manrungun Sport Percussion Vibration Massage Gun-Effectively Reduce Muscle Stiffness And Soreness - Walmart.com",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://www.walmart.com/ip/Manrungun-Sport-Percussion-Vibration-Massage-Gun-Effectively-Reduce-Muscle-Stiffness-And-Soreness/2078220611",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS-Vy36W8gaZTEBWxsOIC5aO0EyOaFSKInFvoRsJkttvpl8tHZY",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Manrungun black gun with a similar kind of shape, but the control layout is not visible and it is a different brand and model."
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 15394,
+                "purpose": "identify",
+                "confidence": "unverified",
+                "rank": 0,
+                "title": "Flowlife Flowgun Air Ultralight 340G Massage Gun 20W Brushless Motor, Quiet Technology, Lightweight Massage Gun with 4 I",
+                "source": "Amazon.se",
+                "price": 0,
+                "link": "https://www.amazon.se/-/en/Flowlife-Ultralight-Technology-Lightweight-Interchangeable/dp/B0F5WRT69M",
+                "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTpmuFVt7wv2ekRs0DbJ2gyTXhFPEDEZBf02Pl3OWgKwS-8th8v"
+              },
+              {
+                "step": "serpapi",
+                "at": 15434,
+                "left": 249,
+                "reserve": 20,
+                "searches": 1,
+                "allowed": true
+              },
+              {
+                "step": "gate",
+                "at": 32057,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 40,
+                    "title": "Flowgun Air Reuse – Percussive Massage Gun | Flowlife",
+                    "source": "Flowlife",
+                    "price": 0,
+                    "link": "https://flowlife.com/en-BG/product/flowgun-air-reuse",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSYJcqwHsLBCcxiwolc_e4SqudfkyZciHsv3Yef12EiNutD8G1o",
+                    "match": "exact",
+                    "tie": "photo",
+                    "why": "Same product photo and design: side-mounted ball head, control panel with LED dots and power button; Flowgun Air"
+                  },
+                  {
+                    "rank": 41,
+                    "title": "Amazon.com: PlayMakar MVPmini Massage Gun HeatTip Accessory ...",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/PlayMakar-MVPmini-Massage-Percussion-Technology/dp/B0BB5Z7Z6X",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScW6azhYIT756Xc5l7WDOTR6JAgVTY-6DDA9PJyaI94OF24GhW",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "PlayMakar mini with different head and body, sold with accessories"
+                  },
+                  {
+                    "rank": 42,
+                    "title": "Flowgun Air – Lightweight Percussive Massage Gun | Flowlife",
+                    "source": "Flowlife",
+                    "price": 0,
+                    "link": "https://flowlife.com/en-HR/product/flowgun-air",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSghOUDFhlmm4AD9fCgJC1tm8YPQrrOCmJ-YR58FFA3iOOqX52-",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "Flowgun Air seen from the back; same body and ball head, but the angle hides the control panel"
+                  },
+                  {
+                    "rank": 43,
+                    "title": "Flowgun Air – Lightweight Percussive Massage Gun | Flowlife",
+                    "source": "Flowlife",
+                    "price": 0,
+                    "link": "https://flowlife.com/en-DK/product/flowgun-air",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRZowgVz3zUjURswcZQsc_kYKyqzmrA35eP134qnOU8LF1GchRo",
+                    "match": "exact",
+                    "tie": "photo",
+                    "why": "Same Flowgun Air image: identical LED dots, power button and ball head"
+                  },
+                  {
+                    "rank": 44,
+                    "title": "Source Portable Fascia Gun Must Massager Vibrator Essentials ...",
+                    "source": "Global Sources",
+                    "price": 0,
+                    "link": "https://www.globalsources.com/Electric-handheld/massage-gun-1198366481p.htm",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQltbGVL4-kPAjytmorZmweoDshEaqQo1zMpxeugsz_KzP2oJfH",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Different shape: cylinder body with a separate handle section"
+                  },
+                  {
+                    "rank": 45,
+                    "title": "Xiaomi Massage Gun - buy at Galaxus",
+                    "source": "galaxus.at",
+                    "price": 0,
+                    "link": "https://www.galaxus.at/en/s6/product/xiaomi-massage-gun-3-steps-300-min-massage-guns-20961105",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTO5q1_64norsaTozAD7ehvGlPs8dr4llSqm7H6flgOz9UNSwng",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Xiaomi massage gun with a long handle; different design"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 32057,
+                "purpose": "identify",
+                "confidence": "exact",
+                "rank": 40,
+                "title": "Flowgun Air Reuse – Percussive Massage Gun | Flowlife",
+                "source": "Flowlife",
+                "price": 0,
+                "link": "https://flowlife.com/en-BG/product/flowgun-air-reuse",
+                "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSYJcqwHsLBCcxiwolc_e4SqudfkyZciHsv3Yef12EiNutD8G1o"
+              },
+              {
+                "step": "escalation",
+                "at": 32057,
+                "to": "serpapi",
+                "ran": true,
+                "candidates": 40,
+                "fresh": 38,
+                "judged": 6,
+                "confidence": "exact",
+                "fromEscalation": true
+              },
+              {
+                "step": "page_price",
+                "at": 32303,
+                "tried": [
+                  {
+                    "url": "https://flowlife.com/en-BG/product/flowgun-air-reuse",
+                    "found": true,
+                    "amount": 79,
+                    "currency": "EUR"
+                  },
+                  {
+                    "url": "https://flowlife.com/en-DK/product/flowgun-air",
+                    "found": true,
+                    "amount": 699,
+                    "currency": "DKK"
+                  }
+                ]
+              },
+              {
+                "step": "alternatives",
+                "at": 32304,
+                "retailerQuery": "Flowgun Air Reuse – Percussive Massage Gun",
+                "unbranded": 0,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "identified",
+                "at": 32304,
+                "engineUsed": "lens_serper+escalated_serpapi+priced_page",
+                "confidence": "exact",
+                "title": "Flowgun Air Reuse – Percussive Massage Gun | Flowlife",
+                "priced": true
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "correct exact"
+      },
+      "costUsd": 0.042584
+    },
+    {
+      "caseId": "car-phone-holder",
+      "intent": "finder",
+      "status": 200,
+      "ms": 32711,
+      "json": {
+        "found": false,
+        "mode": "UNRESOLVED",
+        "priceSource": "estimated",
+        "engineUsed": "none",
+        "matchConfidence": "unverified",
+        "category": "other",
+        "sourceProduct": {
+          "title": "Product not identified",
+          "price": 0,
+          "currency": "USD",
+          "imageUrl": "",
+          "productUrl": "",
+          "affiliateUrl": "",
+          "platform": "unknown"
+        },
+        "analysis": {
+          "retailEstimate": 0,
+          "retailSource": "estimated",
+          "markup": 0,
+          "verdict": "UNVERIFIED",
+          "savings": 0,
+          "savingsPercent": 0,
+          "confidence": "low"
+        },
+        "scanId": null,
+        "scanRef": "muu6kek99c759bee87bd48d0a45422c7",
+        "evaluation": {
+          "cached": false,
+          "ms": 32632,
+          "trace": {
+            "totalMs": 32609,
+            "claudeUsd": 0.049217,
+            "searchesByProvider": {
+              "serper": 2,
+              "serpapi": 1
+            },
+            "creditsByProvider": {
+              "serper": 5
+            },
+            "cache": {
+              "readTokens": 9070,
+              "writeTokens": 1814,
+              "uncachedInputTokens": 11199,
+              "callsReading": 5,
+              "calls": 6
+            },
+            "msByLayer": {
+              "model:extraction": 2153,
+              "model:gate": 21144,
+              "search:lens": 6899,
+              "search:shopping": 1621
+            },
+            "thinkingPerCall": 123,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2153,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 960,
+                "outputTokens": 155,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 1814,
+                "costUsd": 0.008005,
+                "stopReason": "end_turn",
+                "thinkingApprox": 72
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3777,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2202,
+                "outputTokens": 330,
+                "cacheReadTokens": 1814,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0080668,
+                "stopReason": "end_turn",
+                "thinkingApprox": 116
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 5860,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2185,
+                "outputTokens": 617,
+                "cacheReadTokens": 1814,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.010902799999999999,
+                "stopReason": "end_turn",
+                "thinkingApprox": 204
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 4161,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1960,
+                "outputTokens": 346,
+                "cacheReadTokens": 1814,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0077428,
+                "stopReason": "end_turn",
+                "thinkingApprox": 122
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 4188,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1980,
+                "outputTokens": 377,
+                "cacheReadTokens": 1814,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0080928,
+                "stopReason": "end_turn",
+                "thinkingApprox": 141
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3158,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1912,
+                "outputTokens": 222,
+                "cacheReadTokens": 1814,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0064068,
+                "stopReason": "end_turn",
+                "thinkingApprox": 82
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 1795,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "lens",
+                "provider": "serpapi",
+                "engine": "google_lens",
+                "ms": 5104,
+                "status": 200
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 1621,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 2321,
+                "brand": "",
+                "productName": "Windshield suction cup gooseneck phone holder for car, 3.5-6 inch",
+                "visiblePrice": null,
+                "currency": "",
+                "quantity": "1 unit",
+                "category": "accessories",
+                "storeName": "",
+                "visibleUrl": "",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 4190,
+                "list": "organic",
+                "rows": 60,
+                "usable": 40,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 4240,
+                "engine": "serper",
+                "candidates": 40,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "WAOCEO Tablet Stand Tablet Car Holder for Windscreen Dashboard, Universal Car Tablet Holder with Long Arm Suction for 7~",
+                    "source": "Amazon.de",
+                    "price": 0,
+                    "link": "https://www.amazon.de/-/en/WAOCEO-Windscreen-Dashboard-Universal-Suction/dp/B0CLQLT6KY",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRGHvxDdMQGTbyp-kRC7OmQAxXxB8su7njyJKKayCljt4MGo8b7"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Amazon.com: Xobebe Mobile Phone Car Holder 2-in-1 Air Vent & Windshield from Offers 360° Universal Fit. Mount Cellphone ",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/Windshield-Xobebe-Universal-Adjustable-Smartphones/dp/B00S7E2FT0",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSYX4w6mBIGKUivHwvImuzKU8ZJ0i34pxEgw18gOkZkJju3FUCU"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "PRAV® in Car Holder for All 9\" - 11\" Tablet PC Suction Windscreen Windshield Moun T4U2 : Amazon.in: Electronics",
+                    "source": "Amazon.in",
+                    "price": 0,
+                    "link": "https://www.amazon.in/PRAV®-Car-Holder-All-Windscreen/dp/B0D8TS64J9",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSrBLmkjeJmestvIvwaoZKOeuA564nOTLWck_47QWDuMD5wXM1X"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Universal Mini Tablet Holder Car Suction Windshield Mount 360 Rotation | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/281643008350",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcS0KhA-nz0IAB6TVHFHQD5GUxPP-U06QJl3yULZDfn9-9nGzGw4"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Lurrose 1Pc Tablet Suction Cup Mount for Devices Easy Installation Navigator Bracket for Vehicles Stable Design for Trav",
+                    "source": "Amazon.ae",
+                    "price": 0,
+                    "link": "https://www.amazon.ae/Lurrose-Installation-Navigator-Vehicles-Navigation/dp/B0FB164JVC",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRYq9qioEC8d4SztWeCT6dNKG_Kv4P5gC5ARPm4yXdwDr3XnGB2"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "7-11 inch tablet holder, car windshield mount, holder for all brands of tablets : Amazon.ca: Electronics",
+                    "source": "Amazon.ca",
+                    "price": 0,
+                    "link": "https://www.amazon.ca/tablet-holder-windshield-brands-tablets/dp/B0DJP2PG2S",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSDnQ6vR-FaAALs_IX97UGqXW_OzJQ8S-IHnoFXjdxBH7Q0rh9m"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "Amazon.com: DOITOOL 1pc Cup Tablet Stand for Devices Vehicle Navigator Holder Easy to Install Car Mount Bracket for Tabl",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/-/es/DOITOOL-TA08QTXX204110HPW03/dp/B0F1MGWP4H",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQbL6yOoKTxkvnnzT8qCfrXi1q-cbVCSd90e1qYgt3siVKFtgxu"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "K-S-Trade Windshield Holder Compatible With Samsung Galaxy Tab S5e Wi-Fi Car Tablet Suction Cup Car Holder Windshield Ho",
+                    "source": "Amazon.nl",
+                    "price": 0,
+                    "link": "https://www.amazon.nl/-/en/K-S-Trade-Samsung-Galaxy-Tab-Wi-Fi/dp/B07ZTRVF42",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS46lFEjDbD88LgML7ciplKNgtWaLAguPowbVoybXrpmvkQZ6Lk"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "SKISUNO Tablet Stand Large Suction Cup Tablet Suction Cup Black for Abs Vehicle Mounted Navigator : Amazon.ca: Electroni",
+                    "source": "Amazon.ca",
+                    "price": 0,
+                    "link": "https://www.amazon.ca/SKISUNO-Bracket-Navigator-Dashboard-Compatible/dp/B0CNL2FJQR",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTTC55VsWERhuZO7Z-2YFJVgK9HY5ZTGI01xJX-5raMf5JwIiek"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Car Tablet Holder For ipad Pro 10.5 macbook Stand Universal Car Cup 7-11\" Tablet Mount Holder Stand Bracket For Samsung ",
+                    "source": "AliExpress",
+                    "price": 0,
+                    "link": "https://www.aliexpress.com/item/4000753043730.html",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSWsRIPKZXqnnjsz_YftX1ITB8faxucS_0WgtEuipblOkrqgwRb"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "Kwmobile Universal Car Mount For Windshield For Oneplus One Two | Desertcart Angola",
+                    "source": "Desertcart UAE",
+                    "price": 0,
+                    "link": "https://angola.desertcart.com/products/18060565-kwmobile-universal-car-mount-for-windshield-for-one-plus-one-two-adjustable-fits-with-case",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTROVqR1T4e1bKbETijy3c70tEmjiN47DaSkmiwSCo7nzpNdTWa"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Car holder suction cup on glass, holder for tablet 7-10\", leg 6cm: Oem Cth05 - Black",
+                    "source": "Digikas.ee",
+                    "price": 0,
+                    "link": "https://digikas.ee/en/glass-windshield-holders-mounts-for-phones-tablets/12956-car-holder-suction-cup-on-glass-holder-for-tablet-7-10-leg-6cm-oem-cth05-black-4000000502876.html",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT4jM2Ku6M11tjq_DY5SpLoLU5KBM7aXuKXmCB9L3bTF2ZZmbuC"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 4262,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 8137,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "WAOCEO Tablet Stand Tablet Car Holder for Windscreen Dashboard, Universal Car Tablet Holder with Long Arm Suction for 7~",
+                    "source": "Amazon.de",
+                    "price": 0,
+                    "link": "https://www.amazon.de/-/en/WAOCEO-Windscreen-Dashboard-Universal-Suction/dp/B0CLQLT6KY",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRGHvxDdMQGTbyp-kRC7OmQAxXxB8su7njyJKKayCljt4MGo8b7",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "Same black clamp with round grey center disc, two round grey pads, grey corner grips, gooseneck arm and suction base; the title's 7-10.5 inch size does not clea"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Amazon.com: Xobebe Mobile Phone Car Holder 2-in-1 Air Vent & Windshield from Offers 360° Universal Fit. Mount Cellphone ",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/Windshield-Xobebe-Universal-Adjustable-Smartphones/dp/B00S7E2FT0",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSYX4w6mBIGKUivHwvImuzKU8ZJ0i34pxEgw18gOkZkJju3FUCU",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Phone holder with a different clamp and a straight arm"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "PRAV® in Car Holder for All 9\" - 11\" Tablet PC Suction Windscreen Windshield Moun T4U2 : Amazon.in: Electronics",
+                    "source": "Amazon.in",
+                    "price": 0,
+                    "link": "https://www.amazon.in/PRAV®-Car-Holder-All-Windscreen/dp/B0D8TS64J9",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSrBLmkjeJmestvIvwaoZKOeuA564nOTLWck_47QWDuMD5wXM1X",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Different mount with a ball joint and short suction base, no gooseneck arm"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Universal Mini Tablet Holder Car Suction Windshield Mount 360 Rotation | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/281643008350",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcS0KhA-nz0IAB6TVHFHQD5GUxPP-U06QJl3yULZDfn9-9nGzGw4",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Similar clamp but a different flower-shaped center and a different short arm"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Lurrose 1Pc Tablet Suction Cup Mount for Devices Easy Installation Navigator Bracket for Vehicles Stable Design for Trav",
+                    "source": "Amazon.ae",
+                    "price": 0,
+                    "link": "https://www.amazon.ae/Lurrose-Installation-Navigator-Vehicles-Navigation/dp/B0FB164JVC",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRYq9qioEC8d4SztWeCT6dNKG_Kv4P5gC5ARPm4yXdwDr3XnGB2",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Different clamp shape and a short curved arm"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "7-11 inch tablet holder, car windshield mount, holder for all brands of tablets : Amazon.ca: Electronics",
+                    "source": "Amazon.ca",
+                    "price": 0,
+                    "link": "https://www.amazon.ca/tablet-holder-windshield-brands-tablets/dp/B0DJP2PG2S",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSDnQ6vR-FaAALs_IX97UGqXW_OzJQ8S-IHnoFXjdxBH7Q0rh9m",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Different clamp with oval pads and a short arm"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 14051,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 6,
+                    "title": "Amazon.com: DOITOOL 1pc Cup Tablet Stand for Devices Vehicle Navigator Holder Easy to Install Car Mount Bracket for Tabl",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/-/es/DOITOOL-TA08QTXX204110HPW03/dp/B0F1MGWP4H",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQbL6yOoKTxkvnnzT8qCfrXi1q-cbVCSd90e1qYgt3siVKFtgxu",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "short arm, plain centre disc"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "K-S-Trade Windshield Holder Compatible With Samsung Galaxy Tab S5e Wi-Fi Car Tablet Suction Cup Car Holder Windshield Ho",
+                    "source": "Amazon.nl",
+                    "price": 0,
+                    "link": "https://www.amazon.nl/-/en/K-S-Trade-Samsung-Galaxy-Tab-Wi-Fi/dp/B07ZTRVF42",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS46lFEjDbD88LgML7ciplKNgtWaLAguPowbVoybXrpmvkQZ6Lk",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "short arm, different head layout"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "SKISUNO Tablet Stand Large Suction Cup Tablet Suction Cup Black for Abs Vehicle Mounted Navigator : Amazon.ca: Electroni",
+                    "source": "Amazon.ca",
+                    "price": 0,
+                    "link": "https://www.amazon.ca/SKISUNO-Bracket-Navigator-Dashboard-Compatible/dp/B0CNL2FJQR",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTTC55VsWERhuZO7Z-2YFJVgK9HY5ZTGI01xJX-5raMf5JwIiek",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "short arm, plain centre"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Car Tablet Holder For ipad Pro 10.5 macbook Stand Universal Car Cup 7-11\" Tablet Mount Holder Stand Bracket For Samsung ",
+                    "source": "AliExpress",
+                    "price": 0,
+                    "link": "https://www.aliexpress.com/item/4000753043730.html",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSWsRIPKZXqnnjsz_YftX1ITB8faxucS_0WgtEuipblOkrqgwRb",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "gooseneck but different head design"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "Kwmobile Universal Car Mount For Windshield For Oneplus One Two | Desertcart Angola",
+                    "source": "Desertcart UAE",
+                    "price": 0,
+                    "link": "https://angola.desertcart.com/products/18060565-kwmobile-universal-car-mount-for-windshield-for-one-plus-one-two-adjustable-fits-with-case",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTROVqR1T4e1bKbETijy3c70tEmjiN47DaSkmiwSCo7nzpNdTWa",
+                    "match": "similar",
+                    "tie": "text",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "same round disc with phone icon, arrows and two round buttons; arm differs"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Car holder suction cup on glass, holder for tablet 7-10\", leg 6cm: Oem Cth05 - Black",
+                    "source": "Digikas.ee",
+                    "price": 0,
+                    "link": "https://digikas.ee/en/glass-windshield-holders-mounts-for-phones-tablets/12956-car-holder-suction-cup-on-glass-holder-for-tablet-7-10-leg-6cm-oem-cth05-black-4000000502876.html",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT4jM2Ku6M11tjq_DY5SpLoLU5KBM7aXuKXmCB9L3bTF2ZZmbuC",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "short arm, different centre print"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 14051,
+                "purpose": "identify",
+                "confidence": "unverified",
+                "rank": 0,
+                "title": "WAOCEO Tablet Stand Tablet Car Holder for Windscreen Dashboard, Universal Car Tablet Holder with Long Arm Suction for 7~",
+                "source": "Amazon.de",
+                "price": 0,
+                "link": "https://www.amazon.de/-/en/WAOCEO-Windscreen-Dashboard-Universal-Suction/dp/B0CLQLT6KY",
+                "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRGHvxDdMQGTbyp-kRC7OmQAxXxB8su7njyJKKayCljt4MGo8b7"
+              },
+              {
+                "step": "serpapi",
+                "at": 14051,
+                "left": 248,
+                "reserve": 20,
+                "searches": 1,
+                "allowed": true
+              },
+              {
+                "step": "gate",
+                "at": 23508,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 40,
+                    "title": "K-S-Trade Car Holder For Samsung Galaxy Tab S6 Lite LTE Car ...",
+                    "source": "Amazon UK",
+                    "price": 0,
+                    "link": "https://www.amazon.co.uk/K-S-Trade-Samsung-Galaxy-Tab-Lite-Black/dp/B089T4JLJ2",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRClotme0EJhOdS5z0CVph7olrlSthxmawW-vb4Pn-erWYrjSsL",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Same kind of tablet holder with a short suction base. Image A has a gooseneck arm and buttons on the arms, and the center label differs."
+                  },
+                  {
+                    "rank": 41,
+                    "title": "K-S-Trade Car Holder For Samsung Galaxy Tab Active Pro ...",
+                    "source": "Amazon UK",
+                    "price": 0,
+                    "link": "https://www.amazon.co.uk/K-S-Trade®-Tab-Windshield-Dashboard-Navigation/dp/B083MV6TZ8",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQYKmMRdqiJGCsG5RifA9sgOER6JQ4Wn-6S7RHPqEQulBrKpsfl",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Short suction arm and a different center label. Image A has a flexible gooseneck."
+                  },
+                  {
+                    "rank": 43,
+                    "title": "Suporte de celular para cama: como escolher um modelo ...",
+                    "source": "Geriatria e Gerontologia",
+                    "price": 0,
+                    "link": "https://rbgg.com.br/suporte-de-celular-para-cama-como-escolher-um-modelo-articulado-para-idosos/",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTB6Xl9eh_bkSOVepnFS9LOblX3oR04ZrKnTVJsGN2Ld2Yivb9E",
+                    "match": "similar",
+                    "tie": "photo",
+                    "gate": "likely",
+                    "guard": "not_for_sale",
+                    "why": "Same photo as Image A, but it is a blog article, not a product for sale. Fails the product-for-sale requirement."
+                  },
+                  {
+                    "rank": 45,
+                    "title": "WAOCEO Tablet Holder Tablet Car Mount Holder for Windshield ...",
+                    "source": "Amazon UK",
+                    "price": 0,
+                    "link": "https://www.amazon.co.uk/WAOCEO-Windshield-Dashboard-Universal-bracket/dp/B0CLQLT6KY",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcS32kg5BrNt_w3JZiOX2gakXTu49M9yPXD578vODBOtb2EwI-as",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Gooseneck arm with a suction cup, but the arm is thicker and the clamp has different pads and no round grey buttons."
+                  },
+                  {
+                    "rank": 44,
+                    "title": "Phones Holders & Charges | Moonraker",
+                    "source": "Moonraker",
+                    "price": 0,
+                    "link": "https://moonrakeronline.com/truck-accessories/cab-interior/phones-holders-charges",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRGnuzzTxRp1kpvexfvdZ2-kxxF-UB_alefgkEXO_rIrN8BC9vI",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Short ball-joint base, with a different clamp and label."
+                  },
+                  {
+                    "rank": 46,
+                    "title": "OBI Supporto auto per smartphone con fessura di ventilazione ...",
+                    "source": "OBI",
+                    "price": 0,
+                    "link": "https://www.obi.ch/it/allestimento-per-interni/obi-supporto-auto-per-smartphone-con-fessura-di-ventilazione-8-9-15-2-cm/p/5089933",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRPgEpZJkaTDlbG9krPj1T4jEYRQICzlHexUxLPW8G6vBq0tTfB",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Air-vent phone holder, a different type of mount."
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 27780,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 47,
+                    "title": "Suport auto PROCELL tableta 7-10,1 inch cu ventuza ...",
+                    "source": "Anvelope Autobon",
+                    "price": 0,
+                    "link": "https://www.anvelope-autobon.ro/accesorii/produs/procell-suport-auto-procell-tableta-7-101-inch-cu-ventuza_395/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQUHhoa9H7bb9LFbJF_j6mJSTJ2--rWdpTwXW5x11whGGeYm0zL",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Tablet holder with a short suction arm; IMAGE A has a long gooseneck and a 3.5-6 inch phone-size marking."
+                  },
+                  {
+                    "rank": 49,
+                    "title": "Bracketron, Car Phone Holder, 7.5\" Gooseneck, Black ...",
+                    "source": "Walmart",
+                    "price": 20,
+                    "link": "https://www.walmart.com/ip/Bracketron-TripGrip-Flex-Car-Windshield-and-Vent-Phone-Mount-Adjustable-Cell-Phone-Mount-Fits-Most-Phones/13566155996",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTkOn7Qy4KdGzdnC3WyQ3ZUP0X96YZ9C9j93zWwhge7O0QXUI1n",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Phone holder with a different clamp design and a gooseneck; the center has no round rotating dial."
+                  },
+                  {
+                    "rank": 48,
+                    "title": "Автодержатель для смартфона PERFEO 514 30 007 251 - выгодная ...",
+                    "source": "ВсеИнструменты.ру",
+                    "price": 0,
+                    "link": "https://www.vseinstrumenti.ru/product/avtoderzhatel-dlya-smartfona-perfeo-514-30-007-251-1195517/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRxtTgUe7HuM2TWKOhT6RJm8KYUWyyxF3XlinhIeObfS6eSQ5ux",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "no_brand_likely",
+                    "why": "Same gooseneck suction holder with a round center dial and two round pads; the dial text is too small to confirm."
+                  },
+                  {
+                    "rank": 50,
+                    "title": "Accessories :: Mobile Accessories :: Mobile Holders ...",
+                    "source": "myG",
+                    "price": 0,
+                    "link": "https://www.myg.in/accessories/mobile-accessories/mobile-chargers-and-cables-en/salpido-universal-360-table-suction-mount-sl-44/",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSOGaZVz2viA3LJapUUbROxZiAW3VdCuwO2k5e6ktKSy-UhxtK1",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Tablet holder with a short ball-joint arm and oval pads; it lacks the long gooseneck and round side buttons."
+                  },
+                  {
+                    "rank": 51,
+                    "title": "Maxguard car bracket car holder M8 – maxguard",
+                    "source": "maxguard",
+                    "price": 0,
+                    "link": "https://www.maxguard.net.au/products/maxguard-m8-car-bracket-car-holder",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTOf-DsOkB8OQBAU1DVtzJEC8tz8IO9ZowtXdGnHcuQTzP0bwE7",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Short-stem suction mount with a different base; the clamp is a similar type but the model differs."
+                  },
+                  {
+                    "rank": 53,
+                    "title": "scozzi Car Tablet Holder Suction Cup Windscreen Holder ...",
+                    "source": "Amazon.nl",
+                    "price": 0,
+                    "link": "https://www.amazon.nl/-/en/scozzi-Suction-Windscreen-Compatible-Tab/dp/B0BX6W7JNK",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTWOWzulToOTjLCiy6m6abBz2BD7qLtyKJNZ4Wudd1qDVT4bVsC",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Tablet holder with a short suction arm and a Scozzi brand; IMAGE A has a gooseneck."
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 27780,
+                "purpose": "identify",
+                "confidence": "unverified",
+                "rank": 49,
+                "title": "Bracketron, Car Phone Holder, 7.5\" Gooseneck, Black ...",
+                "source": "Walmart",
+                "price": 20,
+                "link": "https://www.walmart.com/ip/Bracketron-TripGrip-Flex-Car-Windshield-and-Vent-Phone-Mount-Adjustable-Cell-Phone-Mount-Fits-Most-Phones/13566155996",
+                "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTkOn7Qy4KdGzdnC3WyQ3ZUP0X96YZ9C9j93zWwhge7O0QXUI1n"
+              },
+              {
+                "step": "escalation",
+                "at": 27780,
+                "to": "serpapi",
+                "ran": true,
+                "candidates": 40,
+                "fresh": 37,
+                "judged": 12,
+                "confidence": "unverified",
+                "fromEscalation": true
+              },
+              {
+                "step": "generic_search",
+                "at": 29405,
+                "query": "Windshield suction cup gooseneck phone holder for car, 3.5-6 inch 1 unit",
+                "found": 4
+              },
+              {
+                "step": "gate",
+                "at": 32609,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 4,
+                "candidates": [
+                  {
+                    "rank": 32,
+                    "title": "360 Degree Rotation Suction Cup Car Phone Holder Flexible Long Arm Car Phone Clamp Holder Mount Bracket Windshield Dashb",
+                    "source": "Walmart - Viveous",
+                    "price": 9.1,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Windshield+suction+cup+gooseneck+phone+holder+for+car%2C+3.5-6+inch+1+unit+*+*+*+*&prds=localAnnotatedOfferId:1,catalogid:5168397104729260058,gpcid:8179158851",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcT_HOPoP1bXfxS_c2yWSfci5p9InQfOt7Am2VA1r8XhLxriG_0wfdMRFtTpD9Ua_DhG-P3y7LOgCjSlY5DhZgG5R4oFQmEU9efbuo5WXHjJ06Lc1X7EFqhM",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Different clamp with spring arms and side grips; Image A has a round-dial cradle with grey pads"
+                  },
+                  {
+                    "rank": 33,
+                    "title": "Gooseneck Suction Cup Mount Phone Holder Windshield/Dash",
+                    "source": "Bonanza - LatestBuy's Booth",
+                    "price": 48.03,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Windshield+suction+cup+gooseneck+phone+holder+for+car%2C+3.5-6+inch+1+unit+*+*+*+*&prds=localAnnotatedOfferId:1,catalogid:16236097342860325646,gpcid:817356705",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSHPJEFxSvs0OcKJFKb8zItkilBmuOPr1j7om0Ebtics9cHtDOqE6dkBwIZdoygeOFyhS2__Te30_oUWUIlbYFUoULO-OCnplEbB5BTLYEpavg66e6Us1eolQ",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Gooseneck suction mount, but the cradle lacks the rotating 3.5-6 inch dial and grey grip pads"
+                  },
+                  {
+                    "rank": 35,
+                    "title": "Universal Car Windshield Gooseneck Stand Mount Holder Suction Cup For",
+                    "source": "eBay - unikorna_us",
+                    "price": 24.13,
+                    "link": "",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcQnJzWa2eNljRRegCNPNgniAb58QzBjWYGTLY1GlncnROVQJArqV45NlbjtrWH4jP_Vbxc0OoWj-QKlyKEvv6FcftH24_Dag9Jnh8PZWV1GytAXrQVdINXW",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Green-accented auto-clamp holder with a looped neck, a different design"
+                  },
+                  {
+                    "rank": 38,
+                    "title": "360° Car Windshield Dashboard Suction Cup Gooseneck Phone Stand For",
+                    "source": "eBay - busyauto23",
+                    "price": 23.89,
+                    "link": "",
+                    "image": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcSVIcQDWxPUao2boVcKwIwo5lVtqHTGDEdvgji8zI-zibXhrxTalZ7bXJ_3w36RTocDJvSP6pKTp39EvAt4Bayg7lGd-kBbB85pV2d5N2Pt0mGfIs7cy2Ys",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Different cradle with branded top and side clamps, no rotating dial"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 32609,
+                "purpose": "identify",
+                "confidence": "unverified",
+                "rank": 33,
+                "title": "Gooseneck Suction Cup Mount Phone Holder Windshield/Dash",
+                "source": "Bonanza - LatestBuy's Booth",
+                "price": 48.03,
+                "link": "https://www.google.com/search?ibp=oshop&q=Windshield+suction+cup+gooseneck+phone+holder+for+car%2C+3.5-6+inch+1+unit+*+*+*+*&prds=localAnnotatedOfferId:1,catalogid:16236097342860325646,gpcid:817356705",
+                "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSHPJEFxSvs0OcKJFKb8zItkilBmuOPr1j7om0Ebtics9cHtDOqE6dkBwIZdoygeOFyhS2__Te30_oUWUIlbYFUoULO-OCnplEbB5BTLYEpavg66e6Us1eolQ"
+              },
+              {
+                "step": "alternatives",
+                "at": 32609,
+                "retailerQuery": "Windshield suction cup gooseneck phone holder for car, 3.5-6 inch",
+                "unbranded": 0,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "identified",
+                "at": 32609,
+                "engineUsed": "lens_serper",
+                "confidence": "unverified",
+                "title": "WAOCEO Tablet Stand Tablet Car Holder for Windscreen Dashboard, Universal Car Tablet Holder with Long Arm Suction for 7~",
+                "priced": false
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "miss",
+        "detail": "no match"
+      },
+      "costUsd": 0.064217
+    },
+    {
+      "caseId": "airpods-pro-2",
+      "intent": "verdict",
+      "status": 200,
+      "ms": 41084,
+      "json": {
+        "found": true,
+        "mode": "FINDER",
+        "priceSource": "estimated",
+        "engineUsed": "lens_serper+escalated_serpapi+priced_serper",
+        "matchConfidence": "likely",
+        "category": "tech",
+        "sourceProduct": {
+          "title": "Apple Airpods Pro A2700, A2699, A2698 (g124595-1 (io) By-9x)",
+          "price": 99,
+          "currency": "USD",
+          "imageUrl": "/api/proxy-image?url=https%3A%2F%2Fencrypted-tbn3.gstatic.com%2Fshopping%3Fq%3Dtbn%3AANd9GcQEOUrgvWzy0q1BvlwoJy0XKd4yd6ulrVLdSpECquMIfFBkn_QUWgZlkRuikRE55i6M7_xi1y6jPuTeICgOsVn5dj2wWwW36a1NAtabG0pGLSl80HcLGirW&s=bc5b35063aaab3033767aac98dd71dd7",
+          "productUrl": "",
+          "affiliateUrl": "",
+          "linkIsDirect": false,
+          "platform": "eBay"
+        },
+        "analysis": {
+          "retailEstimate": 174.99,
+          "retailSource": "estimated",
+          "markup": 77,
+          "verdict": "UNVERIFIED",
+          "savings": 75.99,
+          "savingsPercent": 43,
+          "confidence": "medium"
+        },
+        "scanId": null,
+        "scanRef": "muu6lckr3086aa6efd74748c336a890d",
+        "evaluation": {
+          "cached": false,
+          "ms": 40995,
+          "trace": {
+            "totalMs": 40967,
+            "claudeUsd": 0.058187,
+            "searchesByProvider": {
+              "serper": 3,
+              "serpapi": 1
+            },
+            "creditsByProvider": {
+              "serper": 7
+            },
+            "cache": {
+              "readTokens": 14580,
+              "writeTokens": 2430,
+              "uncachedInputTokens": 12438,
+              "callsReading": 6,
+              "calls": 7
+            },
+            "msByLayer": {
+              "model:extraction": 2214,
+              "model:gate": 27045,
+              "search:lens": 8176,
+              "search:shopping": 2544
+            },
+            "thinkingPerCall": 135,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2214,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 960,
+                "outputTokens": 153,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 2430,
+                "costUsd": 0.009525,
+                "stopReason": "end_turn",
+                "thinkingApprox": 73
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3690,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2061,
+                "outputTokens": 323,
+                "cacheReadTokens": 2430,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.007838,
+                "stopReason": "end_turn",
+                "thinkingApprox": 138
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3999,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2037,
+                "outputTokens": 343,
+                "cacheReadTokens": 2430,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.00799,
+                "stopReason": "end_turn",
+                "thinkingApprox": 144
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3930,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1977,
+                "outputTokens": 313,
+                "cacheReadTokens": 2430,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.00757,
+                "stopReason": "end_turn",
+                "thinkingApprox": 109
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 4322,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1973,
+                "outputTokens": 330,
+                "cacheReadTokens": 2430,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.007732,
+                "stopReason": "end_turn",
+                "thinkingApprox": 127
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 7001,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1756,
+                "outputTokens": 691,
+                "cacheReadTokens": 2430,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.010908,
+                "stopReason": "end_turn",
+                "thinkingApprox": 245
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 4103,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1674,
+                "outputTokens": 279,
+                "cacheReadTokens": 2430,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.006624,
+                "stopReason": "end_turn",
+                "thinkingApprox": 109
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 2141,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "lens",
+                "provider": "serpapi",
+                "engine": "google_lens",
+                "ms": 6035,
+                "status": 200
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 1646,
+                "status": 200,
+                "credits": 2
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 898,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 2467,
+                "brand": "Apple",
+                "productName": "Apple AirPods Pro wireless earbuds with silicone ear tips",
+                "visiblePrice": null,
+                "currency": "",
+                "quantity": "1 pair",
+                "category": "tech",
+                "storeName": "",
+                "visibleUrl": "",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 4738,
+                "list": "organic",
+                "rows": 59,
+                "usable": 40,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 4785,
+                "engine": "serper",
+                "candidates": 40,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "オーディオ機器 AirPods pro第二世代 本体 ワイヤレスイヤホン ホワイト",
+                    "source": "plancherultime.com",
+                    "price": 0,
+                    "link": "https://www.plancherultime.com/?v=6345181290027",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSVwH9wyEo7VlkqI69Pf52OM4Gyp0RqL_q5T-Eq_kxO8POobCvw"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Buy Apple Airpods Pro 1st Gen LEFT Side Airpod Only - Original Apple Airpods Pro 1st",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/114297836968",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSHSwAjEKzqrfu9bsmAGEfOCc-OTAtKLj_WUleMl1_dtuX5aEuV"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Is this earbud authentic? [Vinted] : r/AreMyAirpodsAuthentic",
+                    "source": "Reddit",
+                    "price": 0,
+                    "link": "https://www.reddit.com/r/AreMyAirpodsAuthentic/comments/1jct6na/is_this_earbud_authentic_vinted/",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQX2TmBS9CXFh9IL8eUNq0iElUCPH7hZ95m436QLTQyMJwPsLwM"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Original Apple AirPods Pro - LEFT Side AirPods Only (A2084) OEM *A GRADE* | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/277076752744",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRvWzFb6FmGhmNUCit64BN3ra2ampoMIpTODk9lXTZS_zCrGaqN"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Original Apple AirPods Pro 1st Generation - LEFT Side Only (A2084) - Very Good | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com.hk/itm/203375633706",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSFibtQ42noApj71a4BAJWGs1AmPA3NAjVhsHHY696SsSbtDvQ-"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "NEW Apple AirPods Pro 1st Generation with MagSafe Wireless Charging Case for Sale in Citrus Heights, CA - OfferUp",
+                    "source": "OfferUp",
+                    "price": 0,
+                    "link": "https://offerup.com/item/detail/5bbfa9a6-d2fd-3124-ab38-a91137b89138",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTdgC-WUBRtA00Tzgt7i2mUdSFRPoQnNio9BqZjkU5am-QecJwn"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "Corn True Wireless Stereo Pro Earbuds, 360 mAh, White - EB015",
+                    "source": "راية",
+                    "price": 0,
+                    "link": "https://www.rayashop.com/en/corn-true-wireless-stereo-pro-earbuds-white-eb015-1298",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRo4Hkl12SW3_G5oCGsSQwutbVO4BfSkvnIL-g_2HS1uikgkK80"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Maxon Pro-4 AirPods with ANC + Wireless Charging & 4Hrs Playtime",
+                    "source": "Earbuds.pk",
+                    "price": 0,
+                    "link": "https://earbuds.pk/product/maxon-pro-4-airpods/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRpqWwOEa7fS4q3kMYh5U0oSfsgwOSE4TA8_ZalTBAMOVaOEEPM"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "AirPods Pro 3rd Generation Right Earbud Replacement A3064 – 100% Genuine Apple | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/366353030153",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRz0TbVu8EERI4RkzzKIjhFLmS2M5FiW761rDCCgeQa3FEhoqS9"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Apple AirPods Pro 3 (3rd Gen) Original OEM Replacement Earbud Pod A3063 - Right | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/227019813899",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTy7FfQZQJqVg9lZHsnNgBCTW5hqyLN5m9pCulWKhF8VjazMWBh"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "Apple AirPods Left Side replacement Earphone 2nd generation – Afashionistastore",
+                    "source": "Afashionistastore",
+                    "price": 0,
+                    "link": "https://afashionistastore.com/fr/products/apple-airpods-left-side-replacement-earphone-2nd-generation",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRDkCR81P93Zj2rn5gbnWiWF_y8hhgVvzty_8un3UvDWohehi6Z"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Pro3 AirPod Replacement 3rd Generation \"Right\" Model A3065/A3122 Wireless Earbud | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/227281668265",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSOD4aA4VQF7sA1bB2iopW4tZpTeiUdLEDxiMqqXFDVs-yySuWt"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 4806,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 8555,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 1,
+                    "title": "Buy Apple Airpods Pro 1st Gen LEFT Side Airpod Only - Original Apple Airpods Pro 1st",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/114297836968",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSHSwAjEKzqrfu9bsmAGEfOCc-OTAtKLj_WUleMl1_dtuX5aEuV",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "part_listing",
+                    "why": "AirPods Pro 1st gen: same stem with oval vent and silicone tip; left side, but IMAGE A shows both buds"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Original Apple AirPods Pro - LEFT Side AirPods Only (A2084) OEM *A GRADE* | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/277076752744",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRvWzFb6FmGhmNUCit64BN3ra2ampoMIpTODk9lXTZS_zCrGaqN",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "part_listing",
+                    "why": "AirPods Pro 1st gen (A2084) with the same oval vent and tip design"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Original Apple AirPods Pro 1st Generation - LEFT Side Only (A2084) - Very Good | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com.hk/itm/203375633706",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSFibtQ42noApj71a4BAJWGs1AmPA3NAjVhsHHY696SsSbtDvQ-",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "part_listing",
+                    "why": "AirPods Pro 1st gen with the same oval vent and tip design"
+                  },
+                  {
+                    "rank": 0,
+                    "title": "オーディオ機器 AirPods pro第二世代 本体 ワイヤレスイヤホン ホワイト",
+                    "source": "plancherultime.com",
+                    "price": 0,
+                    "link": "https://www.plancherultime.com/?v=6345181290027",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSVwH9wyEo7VlkqI69Pf52OM4Gyp0RqL_q5T-Eq_kxO8POobCvw",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Title says 2nd gen; the stem has a different design"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "NEW Apple AirPods Pro 1st Generation with MagSafe Wireless Charging Case for Sale in Citrus Heights, CA - OfferUp",
+                    "source": "OfferUp",
+                    "price": 0,
+                    "link": "https://offerup.com/item/detail/5bbfa9a6-d2fd-3124-ab38-a91137b89138",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTdgC-WUBRtA00Tzgt7i2mUdSFRPoQnNio9BqZjkU5am-QecJwn",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Shows 2nd gen-style buds with a force sensor, and the title is generic"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "AirPods Pro 3rd Generation Right Earbud Replacement A3064 – 100% Genuine Apple | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/366353030153",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRz0TbVu8EERI4RkzzKIjhFLmS2M5FiW761rDCCgeQa3FEhoqS9",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "AirPods Pro 3rd gen (A3064), a different model"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 12612,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 9,
+                    "title": "Apple AirPods Pro 3 (3rd Gen) Original OEM Replacement Earbud Pod A3063 - Right | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/227019813899",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTy7FfQZQJqVg9lZHsnNgBCTW5hqyLN5m9pCulWKhF8VjazMWBh",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "part_listing",
+                    "why": "AirPods Pro-style stem with black force-sensor strip and silicone tip; title says Pro 3 gen, which may not match the Pro 1 shown"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "Corn True Wireless Stereo Pro Earbuds, 360 mAh, White - EB015",
+                    "source": "راية",
+                    "price": 0,
+                    "link": "https://www.rayashop.com/en/corn-true-wireless-stereo-pro-earbuds-white-eb015-1298",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRo4Hkl12SW3_G5oCGsSQwutbVO4BfSkvnIL-g_2HS1uikgkK80",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Generic clone earbud with mesh panel, unbranded Corn product"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "Apple AirPods Left Side replacement Earphone 2nd generation – Afashionistastore",
+                    "source": "Afashionistastore",
+                    "price": 0,
+                    "link": "https://afashionistastore.com/fr/products/apple-airpods-left-side-replacement-earphone-2nd-generation",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRDkCR81P93Zj2rn5gbnWiWF_y8hhgVvzty_8un3UvDWohehi6Z",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Title says 2nd gen AirPods, which have no silicone tip, so a different model"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Maxon Pro-4 AirPods with ANC + Wireless Charging & 4Hrs Playtime",
+                    "source": "Earbuds.pk",
+                    "price": 0,
+                    "link": "https://earbuds.pk/product/maxon-pro-4-airpods/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRpqWwOEa7fS4q3kMYh5U0oSfsgwOSE4TA8_ZalTBAMOVaOEEPM",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Maxon clone earbuds with a logo, not Apple"
+                  },
+                  {
+                    "rank": 12,
+                    "title": "Buy Apple AirPods Pro 3 (3rd Gen) Replacement - Left Side only A3064 - Very Good",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/297922119292",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcS2J9n5yT9Ttoi2OYLVvxW-K9krg4dl9JIXaScTJ7vZ6scV1FQw",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Title says Pro 3 (A3064) with a mesh sensor and a different shape"
+                  },
+                  {
+                    "rank": 13,
+                    "title": "Apple Airpods Pro: (Right SIDE ONLY) for Replacement Pro 1st Generation | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com.my/itm/125596900273",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTiEMDGjj3vQWJXlf7cSJ45MirgnR_G8D4jVYQJ800oE3oJpAdu",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "exact",
+                    "guard": "part_listing",
+                    "why": "AirPods Pro 1st gen right earbud with the same stem, black sensor strip and tip"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 12612,
+                "purpose": "identify",
+                "confidence": "unverified",
+                "rank": 1,
+                "title": "Buy Apple Airpods Pro 1st Gen LEFT Side Airpod Only - Original Apple Airpods Pro 1st",
+                "source": "eBay",
+                "price": 0,
+                "link": "https://www.ebay.com/itm/114297836968",
+                "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSHSwAjEKzqrfu9bsmAGEfOCc-OTAtKLj_WUleMl1_dtuX5aEuV"
+              },
+              {
+                "step": "serpapi",
+                "at": 12612,
+                "left": 247,
+                "reserve": 20,
+                "searches": 1,
+                "allowed": true
+              },
+              {
+                "step": "gate",
+                "at": 22851,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 42,
+                    "title": "Apple AirPods Pro 2, Wireless Active Noise Cancelling ...",
+                    "source": "Apple AirPods Pro 2, Wireless Active Noise Cancelling ...",
+                    "price": 0,
+                    "link": "https://www.bestbuy.com/product/apple-airpods-pro-2-wireless-active-noise-cancelling-earbuds-with-hearing-aid-feature-white/JJGCQ88C8X/sku/10129617?ref=212&loc=marketplace",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSeuB1y-RT-SrvARLZklmpASkHdAesS9tNLum9ldSANyuxAV9hK",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Title says AirPods Pro 2; Image A shows the first-generation design (the Pro 2 has a different stem and tips), so the model differs"
+                  },
+                  {
+                    "rank": 44,
+                    "title": "New AirPods Pro earbuds could debut at Apple event this week ...",
+                    "source": "Mashable",
+                    "price": 0,
+                    "link": "https://mashable.com/article/apple-airpods-pro-iphone-14-event",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTxqaqSqFYmK9an8rAlUHBS72MhekMYjggxkG0wqJJ49A60OTIs",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Mashable news article, not a product listing"
+                  },
+                  {
+                    "rank": 45,
+                    "title": "Apple AirPods Pro Review - Major HiFi",
+                    "source": "Major HiFi",
+                    "price": 0,
+                    "link": "https://majorhifi.com/apple-airpods-pro-review/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSGRywRQy_q5ZL4NQh_kc7OSg5FbLWMS-NbbkEojTCbWhKe5OCm",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Review page, not a product for sale"
+                  },
+                  {
+                    "rank": 43,
+                    "title": "Next-gen AirPods Pro to pack H3 chip | Cult of Mac",
+                    "source": "Cult of Mac",
+                    "price": 0,
+                    "link": "https://www.cultofmac.com/news/next-gen-airpods-pro-to-pack-h3-chip",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQU3URHgUWi8boFfoSBajs2f-lStDvTuz7GoxHOCZ-haIVRtt6E",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Cult of Mac news article, not a product listing"
+                  },
+                  {
+                    "rank": 48,
+                    "title": "Apple AirPods Pro 3, Wireless Active Noise Cancelling ...",
+                    "source": "Best Buy",
+                    "price": 0,
+                    "link": "https://www.bestbuy.com/product/apple-airpods-pro-3-wireless-active-noise-cancelling-earbuds-with-heart-rate-sensing-feature-white/JJGCQLYK5F",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTK0-XPfN52-4RaDT3vWHt00RWQMIx_g-_r5-p0gGll1z87mih5",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Title says AirPods Pro 3; the image shows a different design with a mesh vent and a different stem"
+                  },
+                  {
+                    "rank": 49,
+                    "title": "Apple Airpods Pro 1st RIGHT and LEFT Side Airpods - Original ...",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/124255722649",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRHq6rIyM49x5lYGY8ExqBJfj6ipiiULt-niAm4qJs-J0oWKpBt",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "part_listing",
+                    "why": "First-generation AirPods Pro with the same stem force sensor and tip shape; eBay listing, title consistent"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 27220,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 46,
+                    "title": "White Airpods Pro Wireless Earbuds – Unclaimed Baggage",
+                    "source": "Unclaimed Baggage",
+                    "price": 50,
+                    "link": "https://www.unclaimedbaggage.com/products/airpods-pro-62",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcS7yALsJhcyYHhQoDc64yuVhx-6ZjzU0b0XEwEffj-nAhnYQ1UC",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "brand_veto",
+                    "why": "AirPods Pro shape with silicone tips and black force sensor; same model, generation unconfirmed"
+                  },
+                  {
+                    "rank": 52,
+                    "title": "AirPods - Apple",
+                    "source": "Apple",
+                    "price": 0,
+                    "link": "https://www.apple.com/airpods/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQ22a84TYB615GO1g7mlHluZnFY4liMKe1JTD28RRsd1BcrWNOQ",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Apple marketing page, not a specific product listing of this item; render image"
+                  },
+                  {
+                    "rank": 53,
+                    "title": "Refurbished Airpods Airpods Apple Gen 3rd Generation Airpods ...",
+                    "source": "kiswok",
+                    "price": 0,
+                    "link": "https://www.kiswok.com/?p=17568792031470",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ6ssudz9ptyS4HZiBvFZkJbSA64W1UotB29ZcSmxiZ9pzGPPoq",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Title says 3rd generation AirPods, which have no silicone tips; image looks like Pro though, conflicting"
+                  },
+                  {
+                    "rank": 51,
+                    "title": "Is It Safe to Wear Earbuds While Sleeping? - The New York Times",
+                    "source": "The New York Times",
+                    "price": 0,
+                    "link": "https://www.nytimes.com/2026/05/12/well/earbuds-safety-sleeping.html",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRVQu61LQnGK9UuelnbZ0ugMB9mfEdEgeL2c93wdseMqumLdTYg",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "News article, not a product listing"
+                  },
+                  {
+                    "rank": 56,
+                    "title": "APPLE AIRPODS PRO A2700, A2699, A2698 (G124595-1 (IO) BY-9X ...",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/134510308888",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSG10aDoiPs0sq9940gTIfi-OTVxlgfU6K4BZTyai09kQGSUrLx",
+                    "match": "likely",
+                    "tie": "part",
+                    "why": "AirPods Pro with oval sensor and silicone tip; model numbers A2698/A2699 are Pro 2 vs Pro 1 unclear"
+                  },
+                  {
+                    "rank": 54,
+                    "title": "RCA WAVE-48 TWS Bluetooth In-Ear Earbuds with Mics, On-Ear ...",
+                    "source": "Walmart",
+                    "price": 30,
+                    "link": "https://www.walmart.com/ip/RCA-WAVE-48-TWS-Bluetooth-In-Ear-Earbuds-with-Mics-On-Ear-Controls-ANC-Charging-Case-with-Screen-up-to-20-Hours-Play-Time-White/20669254757",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSwMVNet_WjunGp5YwlXKbLhW2oGmU8dB4rf05SJiChpE18SsEf",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "RCA third-party lookalike earbuds, different brand"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 27220,
+                "purpose": "identify",
+                "confidence": "likely",
+                "rank": 56,
+                "title": "APPLE AIRPODS PRO A2700, A2699, A2698 (G124595-1 (IO) BY-9X ...",
+                "source": "eBay",
+                "price": 0,
+                "link": "https://www.ebay.com/itm/134510308888",
+                "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSG10aDoiPs0sq9940gTIfi-OTVxlgfU6K4BZTyai09kQGSUrLx"
+              },
+              {
+                "step": "escalation",
+                "at": 27220,
+                "to": "serpapi",
+                "ran": true,
+                "candidates": 40,
+                "fresh": 40,
+                "judged": 12,
+                "confidence": "likely",
+                "fromEscalation": true
+              },
+              {
+                "step": "page_price",
+                "at": 27255,
+                "tried": [
+                  {
+                    "url": "https://www.ebay.com/itm/134510308888",
+                    "found": false,
+                    "amount": null,
+                    "currency": null
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 35940,
+                "purpose": "pricing",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 4,
+                "candidates": [
+                  {
+                    "rank": 3,
+                    "title": "Apple Airpods Pro A2700, A2699, A2698 (g124595-1 (io) By-9x)",
+                    "source": "eBay",
+                    "price": 99,
+                    "link": "",
+                    "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcQEOUrgvWzy0q1BvlwoJy0XKd4yd6ulrVLdSpECquMIfFBkn_QUWgZlkRuikRE55i6M7_xi1y6jPuTeICgOsVn5dj2wWwW36a1NAtabG0pGLSl80HcLGirW",
+                    "match": "likely",
+                    "tie": "part",
+                    "why": "AirPods Pro with stem vent; generation unconfirmed"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Apple Airpods Pro 2nd Gen with Magsafe Charging Case A2699 A2698 A2700 MFHP4LL/A",
+                    "source": "PayMore Cumberland",
+                    "price": 174.99,
+                    "link": "",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcRxDw1XN85pnOokcFv6RNgb17sUhn8j-mAKjjROes0a78i-Dtcv48PTpaSwl6fSuK5iVPmElBR4dlnEwjIWEV-Se4Anwa7r5WJvLbZc7xHmUjKabVzlqpzepg",
+                    "match": "likely",
+                    "tie": "part",
+                    "why": "AirPods Pro 2nd gen earbuds match design; generation unconfirmed"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Apple Airpods Pro 2nd Gen Lightning Complete Set A2698 A2699 A2700",
+                    "source": "eBay",
+                    "price": 79.99,
+                    "link": "",
+                    "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcSVS7Kb1erpMNXq5LQkrpx-BUYSKIcgxURWVI8wlkadwCl-ZpBBdw3WBeztCVHjqGdJHj1zp-bV1F18CbPiutJrtWslerHCrAxZrBGGZzbwBBKH_-8pRFCFGQ",
+                    "match": "likely",
+                    "tie": "part",
+                    "why": "AirPods Pro earbuds with same vent/stem; generation unconfirmed"
+                  },
+                  {
+                    "rank": 33,
+                    "title": "Apple Airpods Pro A2700, A2699, A2698 (G124595-1 (Io) by-9X)",
+                    "source": "eBay",
+                    "price": 149.95,
+                    "link": "",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSEkGSLyeHPaKgcjhw9bjhJeGz5RURYDnEnCtdGGnzkNh_enra2DVYz-2f_C5gbWvzIXso1oa_rrdu4aAZVU-WQFmB2JMvuSMVUWvGLkz11nJ3uPv2W9budEg",
+                    "match": "likely",
+                    "tie": "part",
+                    "why": "earbuds only, same stem vent and tips; generation unconfirmed"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 35940,
+                "purpose": "pricing",
+                "confidence": "likely",
+                "rank": 3,
+                "title": "Apple Airpods Pro A2700, A2699, A2698 (g124595-1 (io) By-9x)",
+                "source": "eBay",
+                "price": 99,
+                "link": "",
+                "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcQEOUrgvWzy0q1BvlwoJy0XKd4yd6ulrVLdSpECquMIfFBkn_QUWgZlkRuikRE55i6M7_xi1y6jPuTeICgOsVn5dj2wWwW36a1NAtabG0pGLSl80HcLGirW"
+              },
+              {
+                "step": "pricing",
+                "at": 35940,
+                "adopted": true,
+                "confidence": "likely"
+              },
+              {
+                "step": "alternatives",
+                "at": 36841,
+                "retailerQuery": "Apple Airpods Pro A2700, A2699, A2698 (g124595-1 (io) By-9x)",
+                "unbranded": 40,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "gate",
+                "at": 40967,
+                "purpose": "rebrand+retailer",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 4,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Apple AirPods Pro White with Magsafe Charging Case In Ear Headphones MLWK3AM/A",
+                    "source": "Walmart",
+                    "price": 253,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Apple+AirPods+Pro+wireless+earbuds+with+silicone+ear+tips+tech+1+pair&prds=localAnnotatedOfferId:1,catalogid:16009161307122264238,gpcid:7653949458363387390,pv",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSDNDA7txeqW-Myg-KWR0KYc4bhXupKhwemLCM-O2hF9nSQB73O1qPadKh73c1Mnlo7svgqKoTFD4CLDLTGMcZyFzxwvMuTFirNSRphJtE",
+                    "match": "likely",
+                    "tie": "part",
+                    "why": "AirPods Pro with the same stem, black vent and silicone tip; the case is not in IMAGE A and the title says MagSafe case"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "AirPods Pro Apple",
+                    "source": "eBay",
+                    "price": 38,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Apple+AirPods+Pro+wireless+earbuds+with+silicone+ear+tips+tech+1+pair&prds=localAnnotatedOfferId:1,catalogid:6883422599141817139,gpcid:2026503356983009469,pvo",
+                    "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcRQKZeNtwS7BDozqnbOObBgBpWl23eQHdukRz4M-mIuI7H881jCdJfdyX0EflG8oSFVvXXN7L0Ri9a5LbKlgfg5SGfrpuv_JekHdGUh7rdq",
+                    "match": "likely",
+                    "tie": "part",
+                    "why": "AirPods Pro with the same stem, tips and design; the case is not in IMAGE A and the title does not specify the generation"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Apple AirPods Pro 1st Gen Replacement – Left, Right or Charging Case Left AirPod Pro",
+                    "source": "Walmart - TheRightOne",
+                    "price": 49.99,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Apple+AirPods+Pro+wireless+earbuds+with+silicone+ear+tips+tech+1+pair&prds=localAnnotatedOfferId:1,catalogid:4880435140606315223,gpcid:15009229517585803354,pv",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcRNadgBMuqUaIVBqlxj5sI3JkdvXNnX_SIUS3Uv45Wj9zc6WRobum3-jlxcuzgusTRlvUQWvcET4OQGttZDNdFbmbwn5WAyOmaG7EQJx-f5KZgYwy6z16KPJA",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "part_listing",
+                    "why": "Single AirPod Pro 1st gen bud with the same stem, vent and tip; this is only the left bud and IMAGE A shows a pair"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Apple AirPods Pro",
+                    "source": "eBay",
+                    "price": 84,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Apple+AirPods+Pro+wireless+earbuds+with+silicone+ear+tips+tech+1+pair&prds=localAnnotatedOfferId:1,catalogid:18187242513988350226,gpcid:2759896684717838652,pv",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcTGGqDhhVEYTLM0Paaj4T3NLIT0lH_IAaBAXtasNvwWjgL3SQ17Vo99mbVS-MIIdMMbm465ea-CI8ZXMMonwlg2ZDysKwo6S9xr8lZQrzGR",
+                    "match": "likely",
+                    "tie": "part",
+                    "why": "AirPods Pro with the same stem, vent and tips; the case is not in IMAGE A and the title is generic"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 40967,
+                "purpose": "rebrand+retailer",
+                "confidence": "likely",
+                "rank": 0,
+                "title": "Apple AirPods Pro White with Magsafe Charging Case In Ear Headphones MLWK3AM/A",
+                "source": "Walmart",
+                "price": 253,
+                "link": "https://www.google.com/search?ibp=oshop&q=Apple+AirPods+Pro+wireless+earbuds+with+silicone+ear+tips+tech+1+pair&prds=localAnnotatedOfferId:1,catalogid:16009161307122264238,gpcid:7653949458363387390,pv",
+                "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSDNDA7txeqW-Myg-KWR0KYc4bhXupKhwemLCM-O2hF9nSQB73O1qPadKh73c1Mnlo7svgqKoTFD4CLDLTGMcZyFzxwvMuTFirNSRphJtE"
+              },
+              {
+                "step": "identified",
+                "at": 40967,
+                "engineUsed": "lens_serper+escalated_serpapi+priced_serper",
+                "confidence": "likely",
+                "title": "Apple Airpods Pro A2700, A2699, A2698 (g124595-1 (io) By-9x)",
+                "priced": true
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "correct likely"
+      },
+      "costUsd": 0.075187
+    }
+  ],
+  "freeAllowance": {
+    "before": 2,
+    "after": 2
+  },
+  "serpapiLeftAfter": null,
+  "scanSpendUsd": 0.245659,
+  "finishedAt": "2026-10-04T18:55:42.313Z",
+  "spend": {
+    "claudeUsd": 0.18565899999999996,
+    "serpapiSearches": 4,
+    "serperCredits": 20,
+    "serpapiPerSearch": 0.01,
+    "searchUsd": 0.06,
+    "totalUsd": 0.24565899999999996,
+    "spentBeforeUsd": 6.5909,
+    "capUsd": 25
+  }
+}
