@@ -332,13 +332,16 @@ const SCENARIO_VERDICT = {
 const SCENARIO_SIMILAR_TIER = {
   name: "Unconfirmed tier is decided on rank, not price",
   intent: "finder",
+  // A brand read off the photo, and carried by both plausible listings: with
+  // no brand read, the match guards hold every "likely" to a lookalike (see
+  // SCENARIO_ESCALATION), and this tier would not exist to be decided.
   vision: {
-    productName: "linen midi dress", brand: "", visiblePrice: null, currency: "USD",
+    productName: "linen midi dress", brand: "Linenworks", visiblePrice: null, currency: "USD",
     quantity: "", category: "fashion", platform: "instagram", storeName: "", visibleUrl: "",
     priceConfidence: "none", imageQuality: "good",
   },
   lens: [
-    { title: "Sand-Washed Linen Midi Dress", source: "studiolinen.test", link: "https://studiolinen.test/midi", thumbnail: "https://img.test/dress-ranked", price: { value: "$60.00", extracted_value: 60.0, currency: "$" } },
+    { title: "Linenworks Sand-Washed Linen Midi Dress", source: "studiolinen.test", link: "https://studiolinen.test/midi", thumbnail: "https://img.test/dress-ranked", price: { value: "$60.00", extracted_value: 60.0, currency: "$" } },
     { title: "Cotton Poplin Shirt Dress", source: "a.test", link: "https://a.test/poplin", thumbnail: "https://img.test/dress-a", price: { value: "$48.00", extracted_value: 48.0, currency: "$" } },
     { title: "Pleated Satin Slip Dress", source: "b.test", link: "https://b.test/satin", thumbnail: "https://img.test/dress-b", price: { value: "$72.00", extracted_value: 72.0, currency: "$" } },
     { title: "Ribbed Knit Bodycon Dress", source: "c.test", link: "https://c.test/ribbed", thumbnail: "https://img.test/dress-c", price: { value: "$39.00", extracted_value: 39.0, currency: "$" } },
@@ -346,7 +349,7 @@ const SCENARIO_SIMILAR_TIER = {
     { title: "Wrap Front Jersey Dress", source: "e.test", link: "https://e.test/wrap", thumbnail: "https://img.test/dress-e", price: { value: "$44.00", extracted_value: 44.0, currency: "$" } },
     { title: "Sleeveless Shift Dress", source: "f.test", link: "https://f.test/shift", thumbnail: "https://img.test/dress-f", price: { value: "$66.00", extracted_value: 66.0, currency: "$" } },
     // rank 7 - cheapest, and only a lookalike.
-    { title: "Fast Fashion Linen Look Midi Dress", source: "g.test", link: "https://g.test/lookalike", thumbnail: "https://img.test/dress-cheap", price: { value: "$19.00", extracted_value: 19.0, currency: "$" } },
+    { title: "Linenworks Linen Look Midi Dress, Fast Fashion Copy", source: "g.test", link: "https://g.test/lookalike", thumbnail: "https://img.test/dress-cheap", price: { value: "$19.00", extracted_value: 19.0, currency: "$" } },
   ],
   shopping: () => [],
   amazon: () => [],
@@ -684,6 +687,113 @@ const SCENARIO_RETAILER_POOLS = {
 };
 
 // ════════════════════════════════════════════════════════════════
+// MATCH GUARDS AND THE SERPAPI ESCALATION: the production evaluation's own
+// failures (run 5). A Flowlife Flowgun Air whose photo shows no brand:
+// Serper's Lens brought only other brands' guns, the gate called two of them
+// "likely" and a Cult Flex gun "exact" on shape alone. The guards hold all
+// three to lookalikes (no brand read: "likely" is not a match; no tie: not
+// "exact" either), and with nothing verified, SerpApi's Lens is asked once:
+// its exact-image match, the brand's own page, is the product.
+// ════════════════════════════════════════════════════════════════
+const FLOWGUN_LOOKALIKES = [
+  { title: "MVPmini 5 in 1 Percussion Massager with Carrying Case", source: "Walmart", link: "https://walmart.test/mvpmini", thumbnail: "https://img.test/mvpmini", price: { value: "$39.99", extracted_value: 39.99, currency: "$" } },
+  { title: "Playmakar MVP Mini Percussion Massage Gun MVP-500", source: "eBay", link: "https://ebay.test/playmakar", thumbnail: "https://img.test/playmakar", price: { value: "$29.99", extracted_value: 29.99, currency: "$" } },
+  { title: "Cult Flex Portable Deep Tissue Massage Gun", source: "cultstore.test", link: "https://cultstore.test/flex", thumbnail: "https://img.test/cult-flex", price: { value: "$49.99", extracted_value: 49.99, currency: "$" } },
+];
+const SCENARIO_ESCALATION = {
+  name: "No brand read and only lookalikes on Serper: the guards hold them, SerpApi's Lens finds the product",
+  intent: "finder",
+  guardOnly: true,
+  vision: {
+    productName: "black mini percussion massage gun with ball head", brand: "", visiblePrice: null, currency: "",
+    quantity: "", category: "fitness", platform: "unknown", storeName: "", visibleUrl: "",
+    priceConfidence: "none", imageQuality: "good",
+  },
+  lens: FLOWGUN_LOOKALIKES,
+  // SerpApi returns the same lookalikes again (judged once, not twice) and
+  // Google's exact-image match ahead of them.
+  serpapiExact: [
+    { title: "Flowgun Air – Lightweight Percussive Massage Gun | Flowlife", source: "Flowlife", link: "https://flowlife.test/flowgun-air", thumbnail: "https://img.test/flowgun-air", price: { value: "$89.00", extracted_value: 89.0, currency: "$" } },
+  ],
+  serpapiLens: FLOWGUN_LOOKALIKES,
+  shopping: () => [],
+  amazon: () => [],
+  verdicts: {
+    "https://img.test/mvpmini": "likely",
+    "https://img.test/playmakar": "likely",
+    "https://img.test/cult-flex": "exact",
+    "https://img.test/flowgun-air": "exact",
+  },
+  ties: { "https://img.test/cult-flex": "none", "https://img.test/flowgun-air": "photo" },
+  expect: { titleIncludes: "Flowgun Air", price: 89.0, confidence: "exact", mode: "FINDER", engineIncludes: "escalated_serpapi" },
+  expectStats: (stats) => [
+    ...(stats.serpapiLensCalls !== 1 ? [`SerpApi's Lens ran ${stats.serpapiLensCalls} time(s); the escalation asks it exactly once`] : []),
+    ...(stats.verified.filter(v => v.includes("cult-flex")).length !== 1 ? ["a listing both providers returned was judged twice"] : []),
+  ],
+};
+
+// The same scan with SerpApi at its reserve: no escalation, and the honest
+// answer is the best-ranked lookalike (the engine ranks the listing sharing
+// most words with the read first), labelled as one. Never the Cult Flex gun
+// as "exact".
+const SCENARIO_ESCALATION_HELD = {
+  ...SCENARIO_ESCALATION,
+  name: "The same scan with SerpApi at its reserve: no escalation, an honest lookalike",
+  serpapiLeft: 20,
+  expect: { titleIncludes: "Playmakar", price: 29.99, confidence: "unverified", mode: "FINDER" },
+  expectStats: (stats) => (stats.serpapiLensCalls > 0 ? [`SerpApi's Lens ran ${stats.serpapiLensCalls} time(s) at its reserve`] : []),
+};
+
+// And with SerpApi's balance unknown (its account lookup failing): an
+// unknown balance is not a balance above the reserve.
+const SCENARIO_ESCALATION_UNKNOWN = {
+  ...SCENARIO_ESCALATION_HELD,
+  name: "The same scan with SerpApi's balance unknown: no escalation",
+  serpapiLeft: null,
+  expectStats: (stats) => [
+    ...(stats.serpapiLensCalls > 0 ? [`SerpApi's Lens ran ${stats.serpapiLensCalls} time(s) with its balance unknown`] : []),
+    ...(stats.serpapiAccountLookups === 0 ? ["the balance was never looked up"] : []),
+  ],
+};
+
+// And on a degraded day (the model budget spent): no escalation either.
+const SCENARIO_ESCALATION_DEGRADED = {
+  ...SCENARIO_ESCALATION_HELD,
+  name: "The same scan on a degraded day: no escalation, an honest lookalike",
+  serpapiLeft: 200,
+  spendToday: 10_000,
+  expectStats: (stats) => (stats.serpapiLensCalls > 0 ? [`SerpApi's Lens ran ${stats.serpapiLensCalls} time(s) on a degraded day`] : []),
+};
+
+// A brand read off the photo vetoes another brand's listing, and a listing
+// for one earbud is not the pair in the photo, whatever the gate answered.
+// (Run 5: the gate called four "LEFT Side Only" AirPods listings "likely".)
+const SCENARIO_BRAND_AND_PART = {
+  name: "Another brand's listing and a single-earbud listing are never a match",
+  intent: "finder",
+  guardOnly: true,
+  vision: {
+    productName: "Apple AirPods Pro wireless earbuds", brand: "Apple", visiblePrice: null, currency: "",
+    quantity: "", category: "tech", platform: "unknown", storeName: "", visibleUrl: "",
+    priceConfidence: "none", imageQuality: "good",
+  },
+  lens: [
+    { title: "Original Apple AirPods Pro - LEFT Side Only (A2084)", source: "eBay", link: "https://ebay.test/left-only", thumbnail: "https://img.test/left-only", price: { value: "$41.29", extracted_value: 41.29, currency: "$" } },
+    { title: "TWS Pro Wireless Earbuds with Noise Cancelling", source: "Temu", link: "https://temu.test/tws-pro", thumbnail: "https://img.test/tws-pro", price: { value: "$12.99", extracted_value: 12.99, currency: "$" } },
+    { title: "Apple AirPods Pro (2nd generation) with MagSafe Case", source: "Best Buy", link: "https://bestbuy.test/airpods-pro-2", thumbnail: "https://img.test/airpods-pro-2", price: { value: "$189.99", extracted_value: 189.99, currency: "$" } },
+  ],
+  shopping: () => [],
+  amazon: () => [],
+  verdicts: {
+    "https://img.test/left-only": "exact",
+    "https://img.test/tws-pro": "exact",
+    "https://img.test/airpods-pro-2": "exact",
+  },
+  ties: { "https://img.test/left-only": "part", "https://img.test/tws-pro": "part", "https://img.test/airpods-pro-2": "logo" },
+  expect: { titleIncludes: "AirPods Pro (2nd generation)", price: 189.99, confidence: "exact", mode: "FINDER" },
+};
+
+// ════════════════════════════════════════════════════════════════
 // The mocked internet.
 // ════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════
@@ -753,6 +863,14 @@ function imageResponse(url) {
     json: async () => ({}),
     text: async () => "",
   };
+}
+
+// What the mocked gate names as the tie: a scenario can set one per
+// candidate; otherwise a match is tied by a distinctive part and anything
+// else by nothing, the way a gate following its prompt answers.
+function tieFor(scenario, candidateUrl, match) {
+  if (scenario.ties && candidateUrl in scenario.ties) return scenario.ties[candidateUrl];
+  return match === "exact" || match === "likely" ? "part" : "none";
 }
 
 function installFetch(scenario, stats) {
@@ -828,6 +946,7 @@ function installFetch(scenario, stats) {
             const full = JSON.stringify(candidateUrls.map((candidateUrl, i) => ({
               candidate: i + 1,
               match: scenario.verdicts[candidateUrl],
+              tie: tieFor(scenario, candidateUrl, scenario.verdicts[candidateUrl]),
               why: "mocked",
             })));
             // Cut mid-array, the way a max_tokens ceiling would.
@@ -841,7 +960,7 @@ function installFetch(scenario, stats) {
           const match = scenario.verdicts[candidateUrl];
           if (!match) throw new Error(`scenario "${scenario.name}" has no verification verdict for ${candidateUrl}`);
           stats.verified.push(`${match.padEnd(9)} ${candidateUrl.replace("https://img.test/", "")}`);
-          return { candidate: i + 1, match, why: "mocked" };
+          return { candidate: i + 1, match, tie: tieFor(scenario, candidateUrl, match), why: "mocked" };
         });
         return jsonResponse({ usage, content: [{ type: "text", text: JSON.stringify(verdicts) }] });
       }
@@ -856,14 +975,22 @@ function installFetch(scenario, stats) {
     }
 
     // The SerpApi backup's free balance lookup (SEARCH PROVIDERS in scan.ts).
-    if (url.startsWith("https://serpapi.com/account.json")) return jsonResponse({ total_searches_left: 200 });
+    // A scenario can hold it at a number, or make the lookup fail (null).
+    if (url.startsWith("https://serpapi.com/account.json")) {
+      stats.serpapiAccountLookups++;
+      if (scenario.serpapiLeft === null) return { ok: false, status: 503, headers: { get: () => "application/json" }, json: async () => ({}), text: async () => "down" };
+      return jsonResponse({ total_searches_left: scenario.serpapiLeft ?? 200 });
+    }
 
     if (url.startsWith("https://serpapi.com/search.json")) {
       const params = new URL(url).searchParams;
       const engine = params.get("engine");
       if (engine === "google_lens") {
         stats.lensCalls++;
-        return jsonResponse({ visual_matches: scenario.lens });
+        stats.serpapiLensCalls++;
+        // SerpApi's own Lens can differ from Serper's: Google's exact-image
+        // matches come first, which is what the escalation asks it for.
+        return jsonResponse({ exact_matches: scenario.serpapiExact || [], visual_matches: scenario.serpapiLens || scenario.lens });
       }
       if (engine === "google_shopping") {
         stats.serpapiShoppingCalls++;
@@ -941,6 +1068,7 @@ function freshStats() {
   return {
     visionCalls: 0, gateCalls: 0, opusGateCalls: 0, candidatesJudged: 0, faultsInjected: 0,
     lensCalls: 0, retailerCalls: 0, imageFetches: 0, redisCalls: 0, serpapiShoppingCalls: 0,
+    serpapiLensCalls: 0, serpapiAccountLookups: 0,
     verified: [], models: [],
   };
 }
@@ -957,6 +1085,9 @@ async function run(engine, scenario, opts = {}) {
     store.set(`spend:model:${day}`, String(opts.spendToday));
   }
   resetSpendModeCache();
+  // The SerpApi balance is cached for ten minutes per instance; every
+  // scenario starts from its own.
+  engine.resetSerpApiBalance?.();
   const photo = opts.photo || REFERENCE_PHOTO;
   const result = await engine.scanProduct(photo, "image/jpeg", "us", scenario.intent);
   return { result, stats };
@@ -993,6 +1124,9 @@ function checkExpected(got, expected) {
   }
   if (typeof expected.found === "boolean" && got.found !== expected.found) problems.push(`found ${got.found} is not ${expected.found}`);
   if (expected.failure === false && got.failure) problems.push(`the scan failed (${got.failure}); it should have stood`);
+  if (expected.engineIncludes && !String(got.engine || "").includes(expected.engineIncludes)) {
+    problems.push(`engine "${got.engine}" does not include "${expected.engineIncludes}"`);
+  }
   return problems;
 }
 
@@ -1009,6 +1143,7 @@ const SCENARIOS = [
   SCENARIO_SPIKE, SCENARIO_DEGRADED, SCENARIO_TRUNCATED, SCENARIO_CALL_FAILS,
   SCENARIO_LOOKALIKE, SCENARIO_REUSED_PHOTO, SCENARIO_PRICED_FROM_PAGE, SCENARIO_PRICE_SEARCH_DOWN,
   SCENARIO_TIER_PAGE_PRICE, SCENARIO_LIKELY_PRICE, SCENARIO_RETAILER_POOLS, SCENARIO_GLASSES_NO_SWEEP,
+  SCENARIO_ESCALATION, SCENARIO_ESCALATION_HELD, SCENARIO_ESCALATION_UNKNOWN, SCENARIO_ESCALATION_DEGRADED, SCENARIO_BRAND_AND_PART,
 ];
 
 for (const scenario of SCENARIOS) {

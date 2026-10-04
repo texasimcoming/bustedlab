@@ -133,7 +133,7 @@ section("A VERDICT REACHES THE LEDGER ONLY FROM A VISITOR");
         ? JSON.stringify({ productName: "ceramic table lamp", brand: "Lumo", visiblePrice: 60, currency: "USD", quantity: "", category: "home",
           platform: "instagram", storeName: "", visibleUrl: "", priceConfidence: "visible", imageQuality: "good" })
         : prompt.includes("candidate product listing image")
-          ? JSON.stringify([{ candidate: 1, match: "exact", why: "same lamp" }])
+          ? JSON.stringify([{ candidate: 1, match: "exact", tie: "logo", why: "same lamp" }])
           : "lumo ceramic table lamp";
       return reply({ stop_reason: "end_turn", usage: { input_tokens: 1000, output_tokens: 200 }, content: [{ type: "text", text }] });
     }
@@ -222,7 +222,7 @@ globalThis.fetch = async (input, init = {}) => {
     sent.push(body);
     const isGate = JSON.stringify(body.messages[0].content).includes("candidate product listing image");
     const text = isGate
-      ? JSON.stringify([{ candidate: 1, match: "exact", why: "same" }, { candidate: 2, match: "different", why: "other" }])
+      ? JSON.stringify([{ candidate: 1, match: "exact", tie: "logo", why: "same" }, { candidate: 2, match: "different", tie: "none", why: "other" }])
       : JSON.stringify({ productName: "ceramic table lamp", brand: "", visiblePrice: 49.99, currency: "EUR", imageQuality: "good" });
     return new Response(JSON.stringify({
       stop_reason: "end_turn", usage: { input_tokens: 2000, output_tokens: 400 },
@@ -268,10 +268,25 @@ for (const model of ["claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"]
   check("with the default effort when none is named", last?.output_config?.effort === "low");
 }
 {
+  // With the scan's first read, the verdicts come back after the match
+  // guards, the gate's own answer kept beside a changed one.
+  const candidates = [
+    { image: "https://images.example/1.jpg", title: "Other Brand Ceramic Lamp", source: "Shop", link: "https://shop.example/lamp" },
+    { image: "https://images.example/2.jpg", title: "Floor Lamp", source: "Shop", link: "https://shop.example/floor" },
+  ];
+  const vetoed = await replay({ op: "gate", model: "claude-sonnet-5-5", image, candidates, read: { brand: "Lumo", productName: "ceramic table lamp" } });
+  const v = vetoed.json?.verdicts?.[0];
+  check("gate replay with a read: another brand's 'exact' comes back held by the brand veto",
+    vetoed.status === 200 && v?.match === "similar" && v?.gateMatch === "exact" && v?.guard === "brand_veto" && v?.tie === "logo", vetoed.text.slice(0, 300));
+  candidates[0].title = "Lumo Ceramic Table Lamp";
+  const kept = await replay({ op: "gate", model: "claude-sonnet-5-5", image, candidates, read: { brand: "Lumo", productName: "ceramic table lamp" } });
+  check("and the same answer on a listing carrying the brand stands", kept.json?.verdicts?.[0]?.match === "exact" && !kept.json?.verdicts?.[0]?.guard, kept.text.slice(0, 300));
+}
+{
   const fable = (await importSrc("lib/model-budget.ts")).priceUsage("claude-fable-5-1", { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_read_input_tokens: 1_000_000 });
   check("Fable 5.1 is priced at $10 in, $50 out, cache reads 0.025x", Math.abs(fable - 60.25) < 1e-9, String(fable));
 }
-check("every replay is logged", Number(redis.peek(`eval:replay:${new Date().toISOString().slice(0, 10)}`)) === 4);
+check("every replay is logged", Number(redis.peek(`eval:replay:${new Date().toISOString().slice(0, 10)}`)) === 6);
 
 section("REPLAYS STOP WHEN THEY SHOULD");
 {

@@ -178,6 +178,7 @@ import { calculateVerdict } from "@/lib/verdict";
 // module so scripts/eval-gate.mjs can measure the REAL prompt against real
 // photographs rather than a copy of it.
 import { buildBatchPrompt, coerceVerdict, salvageVerdictObjects } from "@/lib/gate-prompt";
+import { guardMatch, type GuardName, type GuardRead } from "@/lib/match-guards";
 import { proxyImagePath } from "@/lib/image-proxy";
 import {
   currentSpendMode, priceUsage, recordModelSpend, reportModelFailure,
@@ -673,6 +674,11 @@ interface ShoppingMatch {
 interface VerificationResult {
   match: "exact" | "likely" | "similar" | "different";
   reasoning: string;
+  /** What the gate said ties the candidate to the photo. See buildBatchPrompt. */
+  tie?: string;
+  /** The gate's own answer, when a match guard changed it. See match-guards.ts. */
+  gateMatch?: "exact" | "likely" | "similar" | "different";
+  guard?: GuardName | null;
 }
 
 /** What the gate is shown for one candidate: its image, and its listing text where known. */
@@ -991,7 +997,7 @@ async function verifyVisualMatchBatch(
   layer: FailureLayer = "gate",
   effort: Effort | null = gateEffort()
 ): Promise<BatchOutcome> {
-  const unavailable = (): VerificationResult => ({ match: "different", reasoning: "verification unavailable" });
+  const unavailable = (): VerificationResult => ({ match: "different", reasoning: "verification unavailable", tie: "none" });
   const results: VerificationResult[] = candidates.map(unavailable);
   let judged = 0;
   if (candidates.length === 0) return { results, ok: false };
@@ -1176,7 +1182,7 @@ async function searchLens(imageUrl: string): Promise<{ match: ShoppingMatch | nu
   return { match: value, engine: index === 0 ? "serper" : index === 1 ? "serpapi" : "" };
 }
 
-async function searchLensViaSerpApi(imageUrl: string): Promise<ShoppingMatch | null> {
+async function searchLensViaSerpApi(imageUrl: string, severity: Severity = "identity"): Promise<ShoppingMatch | null> {
   if (!process.env.SERPAPI_KEY) return null;
 
   try {
@@ -1191,10 +1197,10 @@ async function searchLensViaSerpApi(imageUrl: string): Promise<ShoppingMatch | n
     const res = await searchFetch("lens", "serpapi", "google_lens", `https://serpapi.com/search.json?${params}`, {
       signal: AbortSignal.timeout(14000),
     });
-    if (!res.ok) return searchFailed("lens", "serpapi", res, null, "identity");
+    if (!res.ok) return searchFailed("lens", "serpapi", res, null, severity);
     const data = await res.json();
     const failure = serpApiError(data);
-    if (failure) return searchFailed("lens", "serpapi", null, new Error(failure), "identity");
+    if (failure) return searchFailed("lens", "serpapi", null, new Error(failure), severity);
 
     // ── THE IDENTIFICATION FIX ──
     // Lens answers "what is this object". It only sometimes also answers
@@ -1263,7 +1269,7 @@ async function searchLensViaSerpApi(imageUrl: string): Promise<ShoppingMatch | n
 
     return buildShoppingMatch(await pricesInUsd(candidates));
   } catch (err) {
-    return searchFailed("lens", "serpapi", null, err, "identity");
+    return searchFailed("lens", "serpapi", null, err, severity);
   }
 }
 
@@ -2152,19 +2158,48 @@ async function judgeCandidates(
   for (let i = 0; i < candidates.length; i += VERIFY_BATCH_MAX) {
     const slice = candidates.slice(i, i + VERIFY_BATCH_MAX);
     const { outcome, judge } = await judgeSlice(slice.map(c => ({ imageUrl: c.imageUrl, title: c.title, source: c.source })));
-    slice.forEach((candidate, j) => checked.push({ candidate, result: outcome.results[j], judge }));
+    // Every answer passes the match guards before anything acts on it.
+    const results = slice.map((candidate, j) => guardResult(outcome.results[j], candidate, options.hints));
+    slice.forEach((candidate, j) => checked.push({ candidate, result: results[j], judge }));
     traceStep("gate", {
       purpose: options.purpose || "identify",
       judge: judge || null,
       loaded: outcome.loaded ?? null,
       candidates: slice.map((c, j) => ({
         ...traceCandidate(c),
-        match: outcome.results[j]?.match,
-        why: String(outcome.results[j]?.reasoning || "").slice(0, 160),
+        match: results[j]?.match,
+        tie: results[j]?.tie ?? null,
+        ...(results[j]?.guard ? { gate: results[j].gateMatch, guard: results[j].guard } : {}),
+        why: String(results[j]?.reasoning || "").slice(0, 160),
       })),
     });
   }
   return checked;
+}
+
+/**
+ * What the first read saw, as the match guards take it. A link scan has no
+ * first read (its hints carry no brand field at all), so the brand rules
+ * have nothing to compare there; a photo scan always passes its brand, read
+ * or empty.
+ */
+function guardReadOf(hints?: IdentityHints): GuardRead {
+  return { brand: hints?.brand, productName: hints?.productName || "" };
+}
+
+/** One gate answer after the match guards (see match-guards.ts). */
+function guardResult(
+  result: VerificationResult,
+  candidate: Pick<ShoppingCandidate, "title" | "source" | "productUrl">,
+  hints?: IdentityHints
+): VerificationResult {
+  if (!result) return result;
+  const { match, guard } = guardMatch(
+    { match: result.match, tie: result.tie },
+    { title: candidate.title, source: candidate.source, link: candidate.productUrl },
+    guardReadOf(hints)
+  );
+  return guard ? { ...result, match, gateMatch: result.match, guard } : result;
 }
 
 /** A candidate as the evaluation trace shows it: enough to judge it, and to replay it. */
@@ -2319,14 +2354,22 @@ async function priceFromListingPage(url: string): Promise<{ usd: number; amount:
   return converted && converted.usd > 0.5 ? { usd: converted.usd, amount, currency } : null;
 }
 
-async function verifyCandidates(
+/** A candidate pool after the gate, before it is settled into one answer. */
+interface JudgedPool {
+  pool: ShoppingMatch;
+  /** The listings sent to the gate, in the order they were judged. */
+  ordered: ShoppingCandidate[];
+  checked: Checked[];
+}
+
+async function judgePool(
   match: ShoppingMatch,
   reference: { data: string; mimeType: string },
   options: GateOptions = {}
-): Promise<Verified> {
+): Promise<JudgedPool> {
   const window = options.window ?? VERIFY_WINDOW;
   const ordered = rankForVerification(match.candidates.filter(isListingCandidate), options.hints).slice(0, window);
-  if (ordered.length === 0) return { best: match.candidates[0], confidence: "unverified" };
+  if (ordered.length === 0) return { pool: match, ordered, checked: [] };
 
   const checked = await judgeCandidates(ordered.slice(0, VERIFY_WAVE_ONE), reference, options);
 
@@ -2340,7 +2383,92 @@ async function verifyCandidates(
   if (!confirmed && secondWave.length > 0 && (!options.budget || options.budget.allows(VERIFY_WAVE_COST_MS))) {
     checked.push(...(await judgeCandidates(secondWave, reference, options)));
   }
-  return settleVerdict(checked, ordered, options);
+  return { pool: match, ordered, checked };
+}
+
+function settlePool(judged: JudgedPool, options: GateOptions): Verified {
+  if (judged.ordered.length === 0) return { best: judged.pool.candidates[0], confidence: "unverified" };
+  return settleVerdict(judged.checked, judged.ordered, options);
+}
+
+async function verifyCandidates(
+  match: ShoppingMatch,
+  reference: { data: string; mimeType: string },
+  options: GateOptions = {}
+): Promise<Verified> {
+  return settlePool(await judgePool(match, reference, options), options);
+}
+
+// ════════════════════════════════════════════════════════════════
+// ESCALATION: THE CHEAPEST PROVIDER FIRST, THE BETTER ONE WHEN THE CHEAP
+// ONE CANNOT VERIFY.
+//
+// Serper's Lens costs three credits, a fraction of a cent, and answers most
+// scans. What it does not return is Google's "exact matches": the pages that
+// show this very photo, which is where SerpApi found the right listing for
+// the Yellowstone hat and the Flowgun Air in the production evaluation. So
+// when not one candidate Serper brought survives the gate and its guards (no
+// "exact", no "likely"), SerpApi's Lens is asked once, the listings it adds
+// are judged the same way, and the two sets are settled together.
+//
+// It runs only while SerpApi has more than SERPAPI_RESERVE searches left
+// this month (an unknown balance is not one: see serpApiAllowed), only when
+// the time budget leaves room for a search and a gate wave, never on a
+// degraded day (its model budget is spent), and never when SerpApi already
+// answered this scan. Every run and every skip is an
+// "escalation" trace step, the search is counted like any other, and a
+// SerpApi failure here is logged and recorded as advisory: the scan still
+// has Serper's answer.
+// ════════════════════════════════════════════════════════════════
+const ESCALATION_COST_MS = 14_000 + VERIFY_WAVE_COST_MS;
+
+async function escalateLens(
+  image: { data: string; mimeType: string },
+  first: JudgedPool | null,
+  reference: { data: string; mimeType: string },
+  gate: GateOptions,
+  budget: Budget
+): Promise<{ pool: ShoppingMatch; verified: Verified; fromEscalation: boolean } | null> {
+  const skip = (reason: string): null => {
+    traceStep("escalation", { to: "serpapi", ran: false, reason });
+    return null;
+  };
+  if (!process.env.SERPAPI_KEY) return skip("no SerpApi key");
+  // A degraded day has spent its model budget: no extra gate waves on it.
+  if (gate.mode === "degraded") return skip("degraded: the day's model budget is spent");
+  if (!budget.allows(ESCALATION_COST_MS)) return skip("time budget");
+  if (!(await serpApiAllowed(1))) return skip("SerpApi at its reserve, or its balance unknown");
+  const url = await uploadForLensSearch(image.data, image.mimeType);
+  if (!url) return skip("the photo could not be uploaded for Lens");
+  let second: ShoppingMatch | null = null;
+  try {
+    second = await searchLensViaSerpApi(url, "advisory");
+  } finally {
+    await discardLensUpload(url);
+  }
+  // Only listings the first set did not already judge, ranked after it.
+  const key = (c: ShoppingCandidate) => normalizeListingUrl(c.productUrl) || c.imageUrl;
+  const seen = new Set((first?.pool.candidates || []).map(key));
+  const offset = first?.pool.candidates.length ?? 0;
+  const fresh = (second?.candidates || []).filter(c => !seen.has(key(c))).map((c, i) => ({ ...c, rank: offset + i }));
+  const added = buildShoppingMatch(fresh);
+  if (!added) {
+    traceStep("escalation", { to: "serpapi", ran: true, candidates: second?.candidates.length ?? 0, fresh: 0, confidence: "unverified" });
+    return null;
+  }
+  const judged = await judgePool(added, reference, gate);
+  const merged: JudgedPool = {
+    pool: first ? { ...first.pool, candidates: [...first.pool.candidates, ...fresh] } : added,
+    ordered: [...(first?.ordered || []), ...judged.ordered],
+    checked: [...(first?.checked || []), ...judged.checked],
+  };
+  const verified = settlePool(merged, gate);
+  const fromEscalation = fresh.includes(verified.best);
+  traceStep("escalation", {
+    to: "serpapi", ran: true, candidates: second?.candidates.length ?? 0, fresh: fresh.length,
+    judged: judged.checked.length, confidence: verified.confidence, fromEscalation,
+  });
+  return { pool: merged.pool, verified, fromEscalation };
 }
 
 /**
@@ -2529,7 +2657,10 @@ async function reuseIdentification(
   );
   // A failed confirmation call is not a confirmation. Falling through to the
   // full gate costs money; accepting an unconfirmed reuse costs correctness.
-  if (!confirmation.ok || confirmation.results[0].match !== "exact") return null;
+  // The confirmation passes the same match guards as any gate answer.
+  if (!confirmation.ok) return null;
+  const confirmed = guardResult(confirmation.results[0], hit.entry, gate.hints);
+  if (confirmed.match !== "exact") return null;
 
   return {
     title: hit.entry.title,
@@ -2843,7 +2974,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   // What the vision pass read off the photo. Used to ORDER candidates for
   // the identification gate and to build fallback queries — never to
   // filter a candidate out. See rankForVerification.
-  const hints: IdentityHints = { brand: vision.brand, productName: vision.productName };
+  const hints: IdentityHints = { brand: vision.brand || "", productName: vision.productName };
 
   let shopping: ShoppingMatch | null = null;
   let engineUsed = "none";
@@ -2860,9 +2991,13 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
 
   // ── Try Lens first: match on pixels, not words ──
   const lensImageUrl = await uploadForLensSearch(imageBase64, mimeType);
+  // Whether Serper's Lens answered this scan (with matches or with none),
+  // which is what makes the SerpApi escalation below worth asking.
+  let serperAnswered = false;
   if (lensImageUrl) {
     const lens = await searchLens(lensImageUrl);
     shopping = lens.match;
+    serperAnswered = lens.engine === "serper" || (lens.engine === "" && !!process.env.SERPER_API_KEY && !hasFailed("lens"));
     if (shopping) engineUsed = `lens_${lens.engine}`;
     // The temporary public copy exists only for the duration of the Lens
     // call. It goes as soon as that call is done.
@@ -2892,8 +3027,10 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
     }
   }
 
+  let lensJudged: JudgedPool | null = null;
   if (shopping && !servedFromIdentityCache) {
-    const verified = await verifyCandidates(shopping, reference, gate);
+    lensJudged = await judgePool(shopping, reference, gate);
+    const verified = settlePool(lensJudged, gate);
     // Honest pass-through: a genuinely unverified visual match stays
     // unverified. It used to be silently upgraded to "likely" here, which
     // rendered as "VISUAL MATCH CONFIRMED" on a product that was never
@@ -2902,6 +3039,19 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
     confidence = verified.confidence;
     identifiedTier = verified.tier || [];
     shopping = applyVerifiedCandidate(shopping, verified);
+  }
+
+  // ── Escalation: Serper's Lens could not verify anything, so SerpApi's
+  //    Lens (with Google's exact-image matches) is asked once, while it is
+  //    above its reserve. See ESCALATION. ──
+  if (serperAnswered && !servedFromIdentityCache && confidence === "unverified") {
+    const escalated = await escalateLens({ data: imageBase64, mimeType }, lensJudged, reference, gate, budget);
+    if (escalated && (escalated.verified.confidence !== "unverified" || !shopping)) {
+      shopping = applyVerifiedCandidate(escalated.pool, escalated.verified);
+      confidence = escalated.verified.confidence;
+      identifiedTier = escalated.verified.tier || [];
+      if (escalated.fromEscalation) engineUsed = engineUsed === "none" ? "lens_serpapi_escalated" : `${engineUsed}+escalated_serpapi`;
+    }
   }
 
   // ── Product-page discovery: if Lens found nothing and vision saw a store
@@ -3357,9 +3507,21 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
     // ── Step 3: visual verification — only possible with a real photo.
     //    Without one, confidence honestly stays "unverified" (FINDER). ──
     if (pageImage) {
-      const verified = await verifyCandidates(shopping, pageReference!, gate);
+      const judged = await judgePool(shopping, pageReference!, gate);
+      const verified = settlePool(judged, gate);
       confidence = verified.confidence;
       shopping = applyVerifiedCandidate(shopping, verified);
+
+      // The same escalation as the photo path, when the pool came from
+      // Serper's Lens and nothing in it could be verified. See ESCALATION.
+      if (confidence === "unverified" && engineUsed === "url_lens_serper") {
+        const escalated = await escalateLens(pageImage, judged, pageReference!, gate, budget);
+        if (escalated && escalated.verified.confidence !== "unverified") {
+          shopping = applyVerifiedCandidate(escalated.pool, escalated.verified);
+          confidence = escalated.verified.confidence;
+          if (escalated.fromEscalation) engineUsed = `${engineUsed}+escalated_serpapi`;
+        }
+      }
 
       // Identify, then price — same second step as the image pipeline. A
       // Lens match confirmed against this page's own product photo can
@@ -3745,18 +3907,27 @@ export async function replayExtraction(
   };
 }
 
+/**
+ * One gate call on stored candidates, answered as a scan would act on it:
+ * each verdict after the match guards, with the gate's own answer kept
+ * beside it when a guard changed it. `read` is what the scan's first read
+ * saw (omitted, the brand rules do not apply, as on a link scan).
+ */
 export async function replayGate(
   reference: { data: string; mimeType: string },
-  candidates: GateCandidate[],
+  candidates: (GateCandidate & { link?: string })[],
   model: string,
-  effort: Effort | null
+  effort: Effort | null,
+  read?: { brand: string; productName: string }
 ): Promise<ReplayCall & { verdicts: VerificationResult[]; loaded: number }> {
   const capped = await capForModel(reference);
-  const { value, trace } = await runTraced(() =>
-    verifyVisualMatchBatch(capped, candidates.slice(0, VERIFY_BATCH_MAX), model, "gate", effort)
+  const sent = candidates.slice(0, VERIFY_BATCH_MAX);
+  const { value, trace } = await runTraced(() => verifyVisualMatchBatch(capped, sent, model, "gate", effort));
+  const verdicts = value.results.map((result, i) =>
+    guardResult(result, { title: sent[i].title || "", source: sent[i].source || "", productUrl: sent[i].link || "" }, read)
   );
   return {
     ok: value.ok, kind: value.call?.kind || (value.ok ? "ok" : "no-images"), status: value.call?.status ?? 0,
-    detail: value.call?.detail || "", call: trace.calls[0] ?? null, verdicts: value.results, loaded: value.loaded ?? 0,
+    detail: value.call?.detail || "", call: trace.calls[0] ?? null, verdicts, loaded: value.loaded ?? 0,
   };
 }

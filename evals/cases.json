@@ -59,12 +59,24 @@
       "brand": "Apple",
       "identity": {
         "all": [
-          "airpods"
+          "airpod"
         ],
         "any": [
           "pro"
+        ],
+        "none": [
+          "left side",
+          "right side",
+          "left ear",
+          "right ear",
+          "left airpod",
+          "right airpod",
+          "side only",
+          "replacement",
+          "case only"
         ]
-      }
+      },
+      "note": "The photo shows the pair of earbuds. A listing for one earbud, a replacement part or the case alone is a different product (run 5: the gate called four 'LEFT Side Only' listings 'likely' and noted 'single bud vs pair' itself). 'airpod' also matches the singular 'Airpod' some sellers write."
     },
     {
       "id": "switch-oled",
@@ -254,8 +266,12 @@
           "mount",
           "phone stand",
           "cradle"
+        ],
+        "none": [
+          "tablet"
         ]
-      }
+      },
+      "note": "A 3.5 to 6 inch windshield phone holder. A tablet holder (7 to 11 inch) is a different product (run 5: the gate called one 'likely' while noting the size conflicts)."
     },
     {
       "id": "raku-pitcher",
@@ -349,14 +365,16 @@
       "brand": "Stanley",
       "identity": {
         "all": [
-          "stanley"
+          "quencher"
         ],
         "any": [
-          "quencher",
-          "tumbler"
+          "stanley",
+          "h2.0",
+          "flowstate"
         ]
       },
-      "expectCurrency": "EUR"
+      "expectCurrency": "EUR",
+      "note": "The Stanley Quencher H2.0 FlowState. Some listings name the product line without the brand (an Amazon listing titled 'Quencher H2.0 FlowState Tumbler 40oz'), so the line's own name also identifies it."
     },
     {
       "id": "flowgun-go-eur",

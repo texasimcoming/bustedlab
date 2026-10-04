@@ -15,8 +15,11 @@ import { isPrivateHostname } from "@/lib/net-guard";
  *     "image": { "data": "<base64>", "mimeType": "image/jpeg" } }
  *   { "op": "gate", "model": "claude-opus-5-5", "effort": "low",
  *     "image": { ... the photo ... },
- *     "candidates": [{ "image": "https://...", "title": "...", "source": "..." }, ...] }
- *   (a candidate may also be a bare image URL)
+ *     "candidates": [{ "image": "https://...", "title": "...", "source": "...", "link": "https://..." }, ...],
+ *     "read": { "brand": "...", "productName": "..." } }
+ *   (a candidate may also be a bare image URL; "read" is what the scan's
+ *   first read saw, and with it the verdicts come back after the match
+ *   guards exactly as a scan would act on them: see match-guards.ts)
  *
  * The production evaluation (scripts/production-eval.mjs) runs a labelled
  * scan, takes the candidates the real gate saw from its trace, and replays
@@ -58,18 +61,27 @@ export async function POST(req: NextRequest) {
   }
   const mimeType = typeof image.mimeType === "string" && IMAGE_TYPES.has(image.mimeType) ? image.mimeType : "";
   if (!mimeType) return badRequest("image.mimeType must be a jpeg, png, webp or gif type");
-  let candidates: { imageUrl: string; title?: string; source?: string }[] = [];
+  let candidates: { imageUrl: string; title?: string; source?: string; link?: string }[] = [];
+  let read: { brand: string; productName: string } | undefined;
   if (op === "gate") {
     const raw = Array.isArray(body.candidates) ? body.candidates : [];
     candidates = raw.slice(0, 8).map((c: unknown) => {
       if (typeof c === "string") return { imageUrl: c };
-      const o = (c || {}) as { image?: unknown; title?: unknown; source?: unknown };
+      const o = (c || {}) as { image?: unknown; title?: unknown; source?: unknown; link?: unknown };
       return {
         imageUrl: typeof o.image === "string" ? o.image : "",
         title: typeof o.title === "string" ? o.title.slice(0, 200) : undefined,
         source: typeof o.source === "string" ? o.source.slice(0, 80) : undefined,
+        link: typeof o.link === "string" ? o.link.slice(0, 300) : undefined,
       };
     });
+    const r = body.read as { brand?: unknown; productName?: unknown } | undefined;
+    if (r && typeof r === "object") {
+      read = {
+        brand: typeof r.brand === "string" ? r.brand.slice(0, 80) : "",
+        productName: typeof r.productName === "string" ? r.productName.slice(0, 200) : "",
+      };
+    }
     if (candidates.length === 0) return badRequest("candidates must list one to eight image URLs");
     for (const { imageUrl } of candidates) {
       let parsed: URL;
@@ -89,7 +101,7 @@ export async function POST(req: NextRequest) {
   const photo = { data: image.data, mimeType };
   const result = op === "extract"
     ? await replayExtraction(photo, model, effort)
-    : await replayGate(photo, candidates, model, effort);
+    : await replayGate(photo, candidates, model, effort, read);
   await logEvaluationUse("replay", {
     op, model, effort, ok: result.ok, kind: result.kind, ms: Date.now() - started,
     claudeUsd: result.call?.costUsd ?? 0, candidates: candidates.length || undefined,

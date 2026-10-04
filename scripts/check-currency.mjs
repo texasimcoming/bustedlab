@@ -84,7 +84,7 @@ globalThis.fetch = async (input, init = {}) => {
     }
     const count = body.messages[0].content.filter(b => b.type === "image").length - 1;
     return json({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(
-      Array.from({ length: count }, (_, i) => ({ candidate: i + 1, match: "exact", why: "same lamp" }))) }] });
+      Array.from({ length: count }, (_, i) => ({ candidate: i + 1, match: "exact", tie: "logo", why: "same lamp" }))) }] });
   }
   // Lens on Serper, the primary (SEARCH PROVIDERS in scan.ts): one match,
   // its price a string in the listing's own currency.

@@ -64,9 +64,11 @@ Set in Vercel project settings, then redeploy:
   run on the degraded path (enhancement layers dropped, capped at "likely")
   instead of failing. `npm run cost-model` shows what each value bounds.
 - `SERPER_API_KEY` (primary search: Lens and Shopping)
-- `SERPAPI_KEY` (last-resort backup, used only when Serper fails)
+- `SERPAPI_KEY` (the backup when Serper fails, and the Lens escalation: one
+  SerpApi Lens search when nothing Serper's Lens found survives the gate)
 - `SERPAPI_RESERVE` (optional, default 20): SerpApi is not used once its
-  remaining monthly searches are at or under this.
+  remaining monthly searches are at or under this, or while its balance
+  cannot be read.
 - `RETAILER_SWEEP` (optional, off): `1` turns on the Amazon, Walmart and eBay
   price check, three SerpApi searches a scan.
 - `BLOB_READ_WRITE_TOKEN` (create a Blob store in the project first)
