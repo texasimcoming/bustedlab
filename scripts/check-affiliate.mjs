@@ -85,6 +85,22 @@ section("THE DISCLOSURE IS ON EVERY RESULT");
   check("and not behind any condition: its box opens straight after the closed result branches", !/\($/.test(lead) && /(\)\}|<\/div>)$/.test(lead), lead.slice(-120));
 }
 
+section("THE PRIVACY PAGE NAMES THE ACTIVE NETWORK, AND ONLY THEN");
+check("off by default: no network to name", aff.activeAffiliateNetwork({}) === null);
+check("a malformed key: links go out direct, so no network is named",
+  aff.activeAffiliateNetwork({ AFFILIATE_PROVIDER: "skimlinks", AFFILIATE_KEY: "123456" }) === null);
+check("Sovrn on: named with the redirect host its links pass through",
+  /Sovrn/.test(aff.activeAffiliateNetwork(SOVRN)?.name || "") && aff.activeAffiliateNetwork(SOVRN)?.redirectHost === new URL(aff.wrapOutboundLink(MERCHANT, aff.affiliateConfig(SOVRN))).hostname);
+check("Skimlinks on: named with the redirect host its links pass through",
+  aff.activeAffiliateNetwork(SKIM)?.name === "Skimlinks" && aff.activeAffiliateNetwork(SKIM)?.redirectHost === new URL(aff.wrapOutboundLink(MERCHANT, aff.affiliateConfig(SKIM))).hostname);
+{
+  const page = readFileSync(new URL("../src/app/privacy/page.tsx", import.meta.url), "utf8");
+  check("the privacy page takes the network from the same switch the scan route uses", /const affiliate = activeAffiliateNetwork\(\);/.test(page));
+  check("and names no network itself, so it cannot claim one that is off", !/Sovrn|Skimlinks|viglink|skimresources/i.test(page));
+  check("both mentions render only when a network is on",
+    (page.match(/\{affiliate && /g) || []).length === 2 && (page.match(/affiliate\.name/g) || []).length >= 2);
+}
+
 section("PREFLIGHT");
 {
   const route = await importSrc("app/api/preflight/route.ts");

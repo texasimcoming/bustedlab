@@ -49,6 +49,25 @@ export function affiliateConfig(env: Record<string, string | undefined> = proces
   return KEY_SHAPE[provider].test(key) ? { provider, key } : null;
 }
 
+/**
+ * How the privacy page names each network: who it is, the host a wrapped
+ * link passes through, and its own privacy policy (checked 2026-10-04).
+ */
+export const AFFILIATE_NETWORKS: Record<AffiliateProvider, { name: string; redirectHost: string; policy: string }> = {
+  sovrn: { name: "Sovrn Commerce", redirectHost: "redirect.viglink.com", policy: "sovrn.com/privacy-policy/privacy-policy" },
+  skimlinks: { name: "Skimlinks", redirectHost: "go.skimresources.com", policy: "skimlinks.com/privacy-policy" },
+};
+
+/**
+ * The network links are wrapped through right now, or null when they go out
+ * direct (the default, and also when the key is malformed). The privacy page
+ * names it from this, so the page says what the scan route does.
+ */
+export function activeAffiliateNetwork(env: Record<string, string | undefined> = process.env) {
+  const config = affiliateConfig(env);
+  return config ? AFFILIATE_NETWORKS[config.provider] : null;
+}
+
 /** The wrapped link for a direct merchant URL, or the URL itself. */
 export function wrapOutboundLink(url: string, config: AffiliateConfig | null, sourcePage = "https://www.bustedlab.com/"): string {
   if (!config || !url) return url;
