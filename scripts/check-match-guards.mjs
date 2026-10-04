@@ -102,13 +102,13 @@ check("a tie is read as one of its kinds, anything else as none",
 
 // ── Every stored answer ───────────────────────────────────────────────────
 const runs = readdirSync(RESULTS).map(f => f.match(/^run-(\d+)\.json$/)?.[1]).filter(Boolean).map(Number).sort((a, b) => a - b);
-const rows = storedAnswers(RESULTS, runs)
+const claims = (m) => m === "exact" || m === "likely";
+const answered = storedAnswers(RESULTS, runs)
   .filter(r => !RETIRED.has(r.caseId))
   .map(r => ({ ...r, c: CASES.find(c => c.id === r.caseId) }))
-  .filter(r => r.c && r.read && (r.gate === "exact" || r.gate === "likely"));
-
+  .filter(r => r.c && r.read);
 const keyOf = (r) => `${r.caseId} ${String(r.listing.link || r.listing.title).toLowerCase()}`;
-for (const r of rows) {
+for (const r of answered) {
   r.right = isRightProduct(r.c, r.listing);
   r.host = !isListing(r.listing.link);
   r.a = !!r.read.brand && !carriesBrand(r.read.brand, r.listing);
@@ -117,10 +117,16 @@ for (const r of rows) {
   // What the engine now does with this answer. For a replay, recomputed from
   // the gate's own answer and tie, and compared with what was recorded.
   r.after = guardMatch({ match: r.gate, tie: r.source === "replay" ? r.tie : undefined }, r.listing, r.read);
-  r.held = r.host || r.after.match !== r.gate;
+  r.held = r.host || !claims(r.after.match);
 }
+const rows = answered.filter(r => claims(r.gate));
 const replays = rows.filter(r => r.source === "replay");
-const replayed = new Map(replays.map(r => [keyOf(r), r]));
+// Every candidate the current gate judged again, whatever it answered: a
+// replay that now says "similar" settles a stored wrong "exact" as surely as
+// a guard does. A call that failed (unjudged) settles nothing.
+const replayed = new Map(answered
+  .filter(r => r.source === "replay" && ["exact", "likely", "similar", "different"].includes(r.gate))
+  .map(r => [keyOf(r), r]));
 const caughtBy = (r) => [r.host && "host", r.a && "brand", r.b && "no-brand", r.d && "part", r.source === "replay" && r.after.guard === "no_tie" && "tie"].filter(Boolean).join("+") || "none";
 const fmt = (r) => `${era(r).padEnd(4)} r${r.run} ${`${r.caseId}/${r.intent || "-"}`.padEnd(32)} ${r.purpose.padEnd(16)} ${r.gate.toUpperCase().padEnd(6)} ` +
   `"${r.listing.title.slice(0, 64)}" | brand read "${r.read.brand}" | held by: ${caughtBy(r)}`;
@@ -132,7 +138,7 @@ for (const r of wrong) {
   let status = r.held ? "held" : "PENDING";
   if (!r.held) {
     const rep = replayed.get(keyOf(r));
-    if (rep) status = rep.held ? `held on replay (${caughtBy(rep)})` : "NOT HELD ON REPLAY";
+    if (rep) status = !rep.held ? "NOT HELD ON REPLAY" : claims(rep.gate) ? `held on replay (${caughtBy(rep)})` : `the gate now says ${rep.gate}`;
     else pending[era(r)].push(r);
   }
   console.log(`  [${status}] ${fmt(r)}`);

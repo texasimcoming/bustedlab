@@ -627,9 +627,9 @@ async function replayStep() {
 //   sets: [{ run: 5, caseId: "flowlife-flowgun-air", intent: "finder", purposes: ["identify"] }, ...] }
 // Each set is the candidates one stored scan's gate saw (its trace), for the
 // purposes named (identify by default). Within a case they are deduplicated by
-// link, pages on non-listing hosts are dropped (the engine never sends them),
-// and they go eight to a call to the shipped gate with that scan's own first
-// read, so every verdict comes back after the match guards exactly as a scan
+// link across sets, pages on non-listing hosts are dropped (the engine never
+// sends them), and they go eight to a call to the shipped gate with the
+// case's stored first read, so every verdict comes back after the match guards exactly as a scan
 // would act on it. No search is repeated. A call is started only if even an
 // expensive one (the dearest so far times 1.5, at least 3 cents) cannot cross
 // capUsd. scripts/check-match-guards.mjs then judges the answers.
@@ -637,8 +637,9 @@ async function storedReplayStep() {
   const cfg = run.replay;
   const [model, effort] = String(cfg.model || "claude-sonnet-5-5@low").split("@");
   const cap = Number(cfg.capUsd) || 0.30;
-  const jobs = [];
-  const seen = new Map(); // case id -> links already queued
+  // Per case: the candidates of every set naming it, deduplicated, with the
+  // first set's read (the same photo, so the same read), eight to a call.
+  const byCase = new Map(); // case id -> { read, photo, links, queue }
   for (const set of cfg.sets) {
     const file = resolve(RESULTS, `run-${set.run}.json`);
     if (!existsSync(file)) { log(`replay: no run-${set.run}.json`); continue; }
@@ -648,15 +649,23 @@ async function storedReplayStep() {
     const ext = steps.find(x => x.step === "extraction");
     const photo = photos.get(set.caseId);
     if (!ext || !photo) { log(`replay: ${set.caseId} from run ${set.run}: ${ext ? "no photo" : "no stored read"}`); continue; }
-    const read = { brand: ext.brand || "", productName: ext.productName || "" };
+    if (!byCase.has(set.caseId)) {
+      byCase.set(set.caseId, { read: { brand: ext.brand || "", productName: ext.productName || "" }, photo, links: new Set(), queue: [] });
+    }
+    const entry = byCase.get(set.caseId);
     const purposes = set.purposes || ["identify"];
-    const links = seen.get(set.caseId) || new Set();
-    seen.set(set.caseId, links);
-    const fresh = steps
-      .filter(x => x.step === "gate" && purposes.includes(x.purpose || "identify"))
-      .flatMap(g => (g.candidates || []).map(k => ({ ...k, purpose: g.purpose || "identify" })))
-      .filter(k => isListing(k.link) && !links.has(k.link || k.image) && links.add(k.link || k.image));
-    for (let i = 0; i < fresh.length; i += 8) jobs.push({ set, read, photo, batch: fresh.slice(i, i + 8) });
+    for (const g of steps.filter(x => x.step === "gate" && purposes.includes(x.purpose || "identify"))) {
+      for (const k of g.candidates || []) {
+        const key = k.link || k.image;
+        if (!isListing(k.link) || entry.links.has(key)) continue;
+        entry.links.add(key);
+        entry.queue.push({ ...k, purpose: g.purpose || "identify", from: set.run, intent: set.intent || "" });
+      }
+    }
+  }
+  const jobs = [];
+  for (const [caseId, entry] of byCase) {
+    for (let i = 0; i < entry.queue.length; i += 8) jobs.push({ caseId, read: entry.read, photo: entry.photo, batch: entry.queue.slice(i, i + 8) });
   }
   log(`replay: ${jobs.length} gate call(s) on ${model}@${effort}`);
   const answers = [];
@@ -680,7 +689,7 @@ async function storedReplayStep() {
     job.batch.forEach((k, i) => {
       const v = verdicts[i] || {};
       answers.push({
-        caseId: job.set.caseId, intent: job.set.intent || "", purpose: k.purpose, from: job.set.run, read: job.read,
+        caseId: job.caseId, intent: k.intent, purpose: k.purpose, from: k.from, read: job.read,
         title: k.title, source: k.source, link: k.link, price: k.price || 0,
         gate: v.gateMatch || v.match || "unjudged", match: v.match || "unjudged", guard: v.guard || null, tie: v.tie ?? null,
         why: String(v.reasoning || "").slice(0, 200), status: res.status, ok: res.json?.ok ?? false, loaded: res.json?.loaded ?? null,
