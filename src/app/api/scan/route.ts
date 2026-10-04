@@ -25,6 +25,7 @@ import {
 import { after } from "next/server";
 import { recordScanFailure, type FailureReason } from "@/lib/analytics";
 import { countCompletedScan } from "@/lib/scan-counters";
+import { withAffiliateLink } from "@/lib/affiliate";
 import { isEvaluationRequest, logEvaluationUse } from "@/lib/eval-log";
 import { summarizeTrace, type ScanTrace } from "@/lib/scan-trace";
 import { Ratelimit } from "@upstash/ratelimit";
@@ -460,7 +461,11 @@ export async function POST(req: NextRequest) {
       result, evaluation, isPaid, email, ip, browserId, servedFromCache, cacheKey,
     }));
     const response = NextResponse.json({
-      ...result,
+      // The "Go to this price" link is the only thing an affiliate network
+      // can wrap, and only here, on a result already decided, cached and
+      // recorded with the direct link. Off unless AFFILIATE_PROVIDER and
+      // AFFILIATE_KEY are set. See src/lib/affiliate.ts.
+      ...withAffiliateLink(result),
       scanId,
       // What "Wrong product? Tell us" reports against: the ledger id when the
       // verdict has one, otherwise a fresh reference for this answer. Nothing
