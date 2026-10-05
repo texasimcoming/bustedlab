@@ -335,6 +335,20 @@ export function briefMarkdown({ date, numbers: n, fixes, summary, base }) {
   return lines.join("\n");
 }
 
+// ── deploy scope ─────────────────────────────────────────────────────────
+// What a production deploy changed decides whether the watchdog pays for a
+// diagnose (about 2 cents of Claude). Docs, the evaluation reports and data
+// (evals/), and the GitHub workflows never reach a request the site serves,
+// so a deploy that changed only those gets the free hourly checks instead.
+// Anything else, or a list that could not be read, gets the diagnose.
+const NO_RUNTIME_CHANGE = /^(docs\/|evals\/|\.github\/)|^[^/]+\.md$/;
+
+export function deployNeedsDiagnose(files) {
+  const changed = (files || []).map(f => String(f).trim()).filter(Boolean);
+  if (changed.length === 0) return true;
+  return !changed.every(f => NO_RUNTIME_CHANGE.test(f));
+}
+
 // ── content pack ─────────────────────────────────────────────────────────
 const HASHTAGS = {
   beauty: ["#beautydupes", "#makeuphacks"], skincare: ["#skincaredupes", "#skincare"], fitness: ["#fitnessgear", "#gymtok"],

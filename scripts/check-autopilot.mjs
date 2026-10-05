@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  evaluateHourly, evaluateDiagnose, redact, briefNumbers, leverageFixes, briefMarkdown,
+  evaluateHourly, evaluateDiagnose, redact, briefNumbers, leverageFixes, briefMarkdown, deployNeedsDiagnose,
   contentPack, allowedNumbers, summaryIsGrounded,
 } from "./lib/autopilot.mjs";
 
@@ -144,6 +144,19 @@ check("the engine section carries escalations, their outcomes, SerpApi searches,
   const only = leverageFixes(briefNumbers({ scanCosts: STATS.scanCosts }));
   check("escalations skipped at the SerpApi reserve are a fix candidate",
     only.length === 1 && /3 scan\(s\) Serper could not verify skipped the SerpApi escalation/.test(only[0]), only.join(" | "));
+}
+
+section("WATCHDOG: A PAID DIAGNOSE ONLY FOR A DEPLOY THAT CHANGED RUNTIME CODE");
+check("docs, evaluation reports and data, workflows and top-level markdown: no paid diagnose",
+  deployNeedsDiagnose(["docs/PROJECT.md", "evals/results/run-9.json", "evals/run.json", ".github/workflows/check.yml", "DEPLOY.md"]) === false);
+check("any source file, script, config or dependency change: diagnose",
+  deployNeedsDiagnose(["docs/PROJECT.md", "src/lib/scan.ts"]) && deployNeedsDiagnose(["package.json"]) && deployNeedsDiagnose(["scripts/watchdog.mjs"]) &&
+  deployNeedsDiagnose(["src/app/privacy/page.tsx"]) && deployNeedsDiagnose(["docs/x.md", "next.config.ts"]));
+check("a file list that could not be read: diagnose, to be safe", deployNeedsDiagnose([]) && deployNeedsDiagnose(undefined));
+{
+  const wf = readFileSync(new URL("../.github/workflows/watchdog.yml", import.meta.url), "utf8");
+  check("the workflow reads the deploy's own changes and passes the answer to the check",
+    /fetch-depth: 2/.test(wf) && /git diff --name-only HEAD\^1 HEAD/.test(wf) && /scripts\/deploy-scope\.mjs/.test(wf) && /steps\.scope\.outputs\.diagnose != 'false'/.test(wf));
 }
 
 section("THE ONE MODEL-WRITTEN PARAGRAPH");
