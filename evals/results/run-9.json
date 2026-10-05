@@ -1,0 +1,1437 @@
+{
+  "run": 9,
+  "note": "Same-market verdicts and link-scan brand guards (PR #23, merge 38f1677; diagnose passed on it in the watchdog's deploy run): the Stanley euro screenshot once more (it should now be the cheapest-link card, not a verdict), then three production link scans: a small direct-to-consumer brand's own page, an Amazon product page, a niche brand's page. Run cap $0.25 all-in, inside the prompt's $0.30 of Claude ($0.0463 spent before this run).",
+  "base": "https://www.bustedlab.com",
+  "startedAt": "2026-10-05T00:44:03.849Z",
+  "steps": {
+    "preflight": {
+      "status": 200,
+      "ms": 1092,
+      "json": {
+        "ready": true,
+        "environment": "production",
+        "blockers": [],
+        "warnings": [
+          {
+            "check": "email",
+            "detail": "The Resend key is send-only, so the domain could not be checked. Confirm bustedlab.com shows as verified in Resend."
+          }
+        ],
+        "ok": [
+          "redis",
+          "checkout (lemonsqueezy, overlay)",
+          "base url",
+          "model key",
+          "search key",
+          "identity salt"
+        ],
+        "next": "GET /api/diagnose with the same token: real calls to every model and provider",
+        "limits": {
+          "dailyModelBudgetUsd": 2,
+          "paidScansPerAccountPerDay": 500,
+          "freeUncachedScansPerDay": 50
+        }
+      },
+      "text": ""
+    }
+  },
+  "photos": {
+    "stanley-quencher-eur": {
+      "source": {
+        "shopify": "https://eu.stanley1913.com/fr/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+        "currency": "EUR"
+      },
+      "page": "https://eu.stanley1913.com/fr/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+      "title": "Quencher® H2.0 FlowState™ Tumbler | 1.18L",
+      "license": "",
+      "author": "",
+      "description": "",
+      "askingPrice": {
+        "amount": 55,
+        "currency": "EUR"
+      },
+      "width": 1080,
+      "height": 2340,
+      "bytes": 98583,
+      "sha256": "a78c1a394a83d519"
+    }
+  },
+  "scans": [
+    {
+      "caseId": "stanley-quencher-eur",
+      "intent": "verdict",
+      "status": 200,
+      "ms": 34932,
+      "json": {
+        "found": true,
+        "mode": "FINDER",
+        "priceSource": "screenshot",
+        "engineUsed": "lens_serper+priced_page",
+        "matchConfidence": "exact",
+        "category": "home",
+        "sourceProduct": {
+          "title": "Quencher H2.0 FlowState Tumbler | 1.18L | Stanley 1913 NL",
+          "price": 6189.33,
+          "currency": "USD",
+          "imageUrl": "/api/proxy-image?url=https%3A%2F%2Fencrypted-tbn3.gstatic.com%2Fimages%3Fq%3Dtbn%3AANd9GcR07KwQ5_NShUQSuH1QcpHG3in1zZVd5Azx_NhvBo3hoFeXlI0U&s=b74b1f8d93ad3a347f389aac21d54e56",
+          "productUrl": "https://eu.stanley1913.com/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+          "affiliateUrl": "https://eu.stanley1913.com/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+          "linkIsDirect": true,
+          "platform": "Stanley 1913"
+        },
+        "analysis": {
+          "retailEstimate": 61.89,
+          "retailSource": "screenshot",
+          "markup": -99,
+          "verdict": "UNVERIFIED",
+          "savings": -6127.44,
+          "savingsPercent": -9901,
+          "confidence": "high",
+          "retailOriginal": {
+            "amount": 55,
+            "currency": "EUR",
+            "rate": 0.88862607,
+            "asOf": "2026-10-03"
+          }
+        },
+        "scanId": null,
+        "scanRef": "muuj27wc63ed5878d6d43405b48f9d15",
+        "evaluation": {
+          "cached": false,
+          "ms": 34656,
+          "trace": {
+            "totalMs": 34592,
+            "claudeUsd": 0.023082,
+            "searchesByProvider": {
+              "serper": 3,
+              "serpapi": 1
+            },
+            "creditsByProvider": {
+              "serper": 5
+            },
+            "cache": {
+              "readTokens": 2956,
+              "writeTokens": 1478,
+              "uncachedInputTokens": 5293,
+              "callsReading": 2,
+              "calls": 3
+            },
+            "msByLayer": {
+              "model:extraction": 2265,
+              "model:gate": 7154,
+              "search:lens": 3329,
+              "search:shopping": 20767
+            },
+            "thinkingPerCall": 120,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2265,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 960,
+                "outputTokens": 171,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 1478,
+                "costUsd": 0.007325,
+                "stopReason": "end_turn",
+                "thinkingApprox": 89
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3673,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2108,
+                "outputTokens": 367,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0081816,
+                "stopReason": "end_turn",
+                "thinkingApprox": 147
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3481,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2225,
+                "outputTokens": 283,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0075756,
+                "stopReason": "end_turn",
+                "thinkingApprox": 123
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 3329,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 8003,
+                "status": 0
+              },
+              {
+                "layer": "shopping",
+                "provider": "serpapi",
+                "engine": "google_shopping",
+                "ms": 12001,
+                "status": 0
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 763,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "status": 0,
+                "kind": "timeout",
+                "detail": "The operation was aborted due to timeout",
+                "severity": "advisory"
+              },
+              {
+                "layer": "shopping",
+                "provider": "serpapi",
+                "status": 0,
+                "kind": "timeout",
+                "detail": "The operation was aborted due to timeout",
+                "severity": "advisory"
+              }
+            ],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 2454,
+                "brand": "Stanley",
+                "productName": "Quencher® H2.0 FlowState™ Tumbler 1.18L",
+                "visiblePrice": 55,
+                "currency": "EUR",
+                "quantity": "1 unit",
+                "category": "home",
+                "storeName": "Stanley 1913",
+                "visibleUrl": "eu.stanley1913.com",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 5880,
+                "list": "organic",
+                "rows": 12,
+                "usable": 12,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 5927,
+                "engine": "serper",
+                "candidates": 12,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "Quencher H2.0 FlowState Tumbler | 1.18L | Stanley 1913 NL",
+                    "source": "Stanley 1913",
+                    "price": 0,
+                    "link": "https://eu.stanley1913.com/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcR07KwQ5_NShUQSuH1QcpHG3in1zZVd5Azx_NhvBo3hoFeXlI0U"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Stanley Quencher H2.0FlowState Stainless Steel Vacuum Insulated Cup with Lid and Straw, for Water, Iced Tea, Coffee, Smo",
+                    "source": "Amazon.nl",
+                    "price": 0,
+                    "link": "https://www.amazon.nl/-/en/Quencher-H2-0FlowState-Stainless-Insulated-Smoothies/dp/B0D2ZBCYLL",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQ2CDbpvhr1x1Kcdd_6bZ-UU3yShQ9_AXZeIL4TZk4ql2jK4zTl"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Stanley Quencher H2.0 FlowState Drinking Bottle with Straw, 1.2 L, Thermal Mug, Cools for 11 Hours, 48 Hours, Ice-Cooled",
+                    "source": "Amazon.ca",
+                    "price": 0,
+                    "link": "https://www.amazon.ca/Stanley-Quencher-FlowState-Ice-Cooled-Dishwasher/dp/B0CNTWY3VM",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSU6cNlL50Y7ZQRIiOfVntJ9K4lNW1b2LYTh-DOtN1Zz7gk2BCG"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Women's Puma Speedcat Cat Casual Shoes | JD Sports",
+                    "source": "jdsports.com",
+                    "price": 0,
+                    "link": "https://www.jdsports.com/pdp/womens-puma-speedcat-cat-casual-shoes/prod2871929/40098631/200",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRfEl-JDbDTmatNxTqwzE7qi5SSjJoh_6ab0obm1Ivd_8Q9rp12"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Hydration has never looked this beautiful. The Stanley Quencher H2.0 is perfect for busy days, workouts, road trips and ",
+                    "source": "Instagram",
+                    "price": 0,
+                    "link": "https://www.instagram.com/p/DdJDrOOok-9/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSeVK2a2NzpGdwrk5cApi8PeR3ino4mQv-8E5QF-3Ger_x_sQcH"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "JD Sports (3111 W Chandler Blvd), Delivered by DoorDash",
+                    "source": "DoorDash",
+                    "price": 0,
+                    "link": "https://www.doordash.com/store/jd-sports-chandler-34520093/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcS7wXh7y4GbiYeOXEgQXju4VXefUvlRr7dRs9-5k2qH2O5Sadmk"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "Gifts for Nanas Bow Glass Cup with Lids and Straws - 50% 𝐎𝐟𝐟 𝐂𝐨𝐝𝐞 → ISTCYBU4 𝐆𝐫𝐚𝐛 𝐢𝐭 𝐍𝐨𝐰 (𝐀𝐃) [https:/",
+                    "source": "Facebook",
+                    "price": 0,
+                    "link": "https://www.facebook.com/groups/thefrugalfaculty/posts/777201608335884/",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTm1AhQZW7ys5Kc_TaEyuOm8XtjqmoKob74Cnxcih-M7ZbSDikI"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "You can STILL get this pink Stanley for UNDER $30 todayyy👏💖👏💖👇",
+                    "source": "Facebook",
+                    "price": 0,
+                    "link": "https://www.facebook.com/groups/shehasdeals/posts/4197809680494263/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSnLBSpZXBRVW_JnvstmLFP293MPIyH5eouFJiUShMi8-wTowwh"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "25 Cheap Mother's Day Gifts You Can Buy Before May 12",
+                    "source": "pedestrian.tv",
+                    "price": 0,
+                    "link": "https://www.pedestrian.tv/style/cheap-mothers-day-gifts-australia/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcR3px72F2Xc6duG3axNfIuGybBgqC2VjaMGQ0F6Ws09FHhX0xwL"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "15 last-minute Valentine's Day gifts your significant other will love | Fox News",
+                    "source": "Fox News",
+                    "price": 0,
+                    "link": "https://www.foxnews.com/deals/amazon-valentines-day-gifts-last-minute",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQgSbc7gFUvA4UA5lavHqWG1yIcBZoETdR7usZ5Kcm_3-e4Swjc"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "Buy Stanley Water Bottles Online | lazada.sg",
+                    "source": "Lazada Singapore",
+                    "price": 0,
+                    "link": "https://www.lazada.sg/shop-sports-water-bottles/stanley/",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRS2A0ij7Mk8wEUlnQTa-3p2Xh2s-w4p9_dmb9Gor63ySShXUxz"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "myChameleon, Online Shop | Shopee Malaysia",
+                    "source": "Shopee Malaysia",
+                    "price": 0,
+                    "link": "https://shopee.com.my/mychameleon",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRFdvaIZ322KmkSRBTY3v3kuv7BRKNA74aTbaWXnuem_ceYnbpW"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 5947,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 9704,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Quencher H2.0 FlowState Tumbler | 1.18L | Stanley 1913 NL",
+                    "source": "Stanley 1913",
+                    "price": 0,
+                    "link": "https://eu.stanley1913.com/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcR07KwQ5_NShUQSuH1QcpHG3in1zZVd5Azx_NhvBo3hoFeXlI0U",
+                    "match": "exact",
+                    "tie": "logo",
+                    "why": "Same Stanley Quencher H2.0 FlowState 1.18L in rose quartz pink; title matches"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Stanley Quencher H2.0FlowState Stainless Steel Vacuum Insulated Cup with Lid and Straw, for Water, Iced Tea, Coffee, Smo",
+                    "source": "Amazon.nl",
+                    "price": 0,
+                    "link": "https://www.amazon.nl/-/en/Quencher-H2-0FlowState-Stainless-Insulated-Smoothies/dp/B0D2ZBCYLL",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQ2CDbpvhr1x1Kcdd_6bZ-UU3yShQ9_AXZeIL4TZk4ql2jK4zTl",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Title says Tropical Teal 40 oz and the image is a bundle with a carry-all accessory"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Stanley Quencher H2.0 FlowState Drinking Bottle with Straw, 1.2 L, Thermal Mug, Cools for 11 Hours, 48 Hours, Ice-Cooled",
+                    "source": "Amazon.ca",
+                    "price": 0,
+                    "link": "https://www.amazon.ca/Stanley-Quencher-FlowState-Ice-Cooled-Dishwasher/dp/B0CNTWY3VM",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSU6cNlL50Y7ZQRIiOfVntJ9K4lNW1b2LYTh-DOtN1Zz7gk2BCG",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Shows two sizes together in a lifestyle image; title says 1.2 L and cannot be tied to the single 1.18L"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Women's Puma Speedcat Cat Casual Shoes | JD Sports",
+                    "source": "jdsports.com",
+                    "price": 0,
+                    "link": "https://www.jdsports.com/pdp/womens-puma-speedcat-cat-casual-shoes/prod2871929/40098631/200",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRfEl-JDbDTmatNxTqwzE7qi5SSjJoh_6ab0obm1Ivd_8Q9rp12",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Title is a Puma shoe listing, which contradicts the Stanley image"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "JD Sports (3111 W Chandler Blvd), Delivered by DoorDash",
+                    "source": "DoorDash",
+                    "price": 0,
+                    "link": "https://www.doordash.com/store/jd-sports-chandler-34520093/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcS7wXh7y4GbiYeOXEgQXju4VXefUvlRr7dRs9-5k2qH2O5Sadmk",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "DoorDash store listing for JD Sports, not a product page; the cup has a different lid"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "Buy Stanley Water Bottles Online | lazada.sg",
+                    "source": "Lazada Singapore",
+                    "price": 0,
+                    "link": "https://www.lazada.sg/shop-sports-water-bottles/stanley/",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRS2A0ij7Mk8wEUlnQTa-3p2Xh2s-w4p9_dmb9Gor63ySShXUxz",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Light pink 40 oz bundle with box and extra straw; lid and color differ, so it cannot be confirmed as the same listing"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 9704,
+                "purpose": "identify",
+                "confidence": "exact",
+                "rank": 0,
+                "title": "Quencher H2.0 FlowState Tumbler | 1.18L | Stanley 1913 NL",
+                "source": "Stanley 1913",
+                "price": 0,
+                "link": "https://eu.stanley1913.com/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+                "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcR07KwQ5_NShUQSuH1QcpHG3in1zZVd5Azx_NhvBo3hoFeXlI0U"
+              },
+              {
+                "step": "page_price",
+                "at": 10252,
+                "tried": [
+                  {
+                    "url": "https://eu.stanley1913.com/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+                    "found": true,
+                    "amount": 5500,
+                    "currency": "EUR"
+                  }
+                ]
+              },
+              {
+                "step": "serpapi",
+                "at": 18286,
+                "left": 245,
+                "reserve": 20,
+                "searches": 1,
+                "allowed": true
+              },
+              {
+                "step": "alternatives",
+                "at": 31054,
+                "retailerQuery": "Quencher H2.0 FlowState Tumbler",
+                "unbranded": 29,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "gate",
+                "at": 34583,
+                "purpose": "rebrand+retailer",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 4,
+                "candidates": [
+                  {
+                    "rank": 1,
+                    "title": "Stanley 30 oz Quencher H2.0 Flowstate Tumbler",
+                    "source": "Sierra",
+                    "price": 20,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Quencher%C2%AE+H2.0+FlowState%E2%84%A2+Tumbler+1.18L&prds=localAnnotatedOfferId:1,catalogid:9475756267611927372,gpcid:11541524279536271606,pvo:2,pvt:hg&gl=us&",
+                    "image": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcSu1KSM3h3gsoaqz7W0qpxxy8QywgX_x4zbdGHmETpFNaGBEIjIl8rMLkQ1_7RidPNBEvw5JASDu0DoOciOuc_HvzuaACa__ccqfVLEyQCh",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Stanley Quencher but teal colour, 30 oz title, dark lid; IMAGE A is 1.18L pink"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Stanley Quencher H2.0 Flowstate Tumbler",
+                    "source": "Academy Sports + Outdoors",
+                    "price": 45,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Quencher%C2%AE+H2.0+FlowState%E2%84%A2+Tumbler+1.18L&prds=localAnnotatedOfferId:1,catalogid:1586776607641551012,gpcid:15481138607466710125,pvo:2,pvt:hg&gl=us&",
+                    "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcRjGm48dC1WeB37bg5p_eX4rs5x9Y_WExjf3xPf4PzZ20nXHl4mBAxGr2Vh4AZQVyHbvTGhL-klSftkPvSh-oYwIMqRlATNr6QOVlfoxzsg",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Blue gradient colourway, different finish and handle colour"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "LoveShackFancy Stanley 1913 The Quencher H2.0 Flowstate Tumbler Women",
+                    "source": "LoveShackFancy",
+                    "price": 65,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Quencher%C2%AE+H2.0+FlowState%E2%84%A2+Tumbler+1.18L&prds=localAnnotatedOfferId:1,catalogid:17542880653022098280,gpcid:16094909137077648606,pvo:2,pvt:hg&gl=us",
+                    "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcRP0-Gp4dxzE3FIJB7dOOM5KLTC0bCBo1HsLXq89-_FVKexr4WVag2U2K49kKuCzu5wSxUpAsnlX8I3zk_US7u0S_xTaBsAuQLDDv7TqjAx29E1GswxR5lh",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "LoveShackFancy collab pink print with bow straw topper; not the plain rose quartz"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Stanley The Quencher H2.0 Flowstate 40-Ounce Tumbler in Rose Quartz at Nordstrom",
+                    "source": "Nordstrom",
+                    "price": 40,
+                    "link": "",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcQ8exSGIpceKrchCH4vXRrds9H20P0XCxlU-SHdC9EdvQmDIMDZTnPrY0LoAJsnLbWwn29xnENgu9PNFOYmst1x6JawtiGLJ_SZvWRTUIXeLAoS5-H7w8wq",
+                    "match": "likely",
+                    "tie": "logo",
+                    "why": "Rose Quartz Stanley Quencher H2.0 FlowState, same colour and layout; 40 oz title vs 1.18L (40 oz) is consistent, but the image looks like a smaller 30 oz body, "
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 34583,
+                "purpose": "rebrand+retailer",
+                "confidence": "likely",
+                "rank": 4,
+                "title": "Stanley The Quencher H2.0 Flowstate 40-Ounce Tumbler in Rose Quartz at Nordstrom",
+                "source": "Nordstrom",
+                "price": 40,
+                "link": "",
+                "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcQ8exSGIpceKrchCH4vXRrds9H20P0XCxlU-SHdC9EdvQmDIMDZTnPrY0LoAJsnLbWwn29xnENgu9PNFOYmst1x6JawtiGLJ_SZvWRTUIXeLAoS5-H7w8wq"
+              },
+              {
+                "step": "identified",
+                "at": 34583,
+                "engineUsed": "lens_serper+priced_page",
+                "confidence": "exact",
+                "title": "Quencher H2.0 FlowState Tumbler | 1.18L | Stanley 1913 NL",
+                "priced": true
+              },
+              {
+                "step": "market",
+                "at": 34591,
+                "asking": "EUR",
+                "source": "EUR",
+                "same": true
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "correct exact"
+      },
+      "costUsd": 0.038082
+    }
+  ],
+  "freeAllowance": {
+    "before": 2,
+    "after": 2
+  },
+  "serpapiLeftAfter": null,
+  "scanSpendUsd": 0.038082,
+  "links": [
+    {
+      "id": "flowlife-flowgun-air",
+      "kind": "small direct-to-consumer brand",
+      "url": "https://www.flowlife.com/en-GB/product/flowgun-air",
+      "intent": "verdict",
+      "page": {
+        "read": true,
+        "title": "Flowgun Air",
+        "brand": "",
+        "price": 79,
+        "currency": "GBP"
+      },
+      "status": 502,
+      "ms": 30339,
+      "json": {
+        "error": "scan_incomplete",
+        "reason": "shopping",
+        "message": "That scan could not be completed on our side. It did not use a free scan. Try again.",
+        "evaluation": {
+          "failure": {
+            "reason": "shopping",
+            "layers": [
+              "shopping:serper:0",
+              "shopping:serpapi:0"
+            ]
+          },
+          "trace": {
+            "totalMs": 30107,
+            "claudeUsd": 0.021142,
+            "searchesByProvider": {
+              "serper": 3,
+              "serpapi": 1
+            },
+            "creditsByProvider": {
+              "serper": 5
+            },
+            "cache": {
+              "readTokens": 0,
+              "writeTokens": 0,
+              "uncachedInputTokens": 7811,
+              "callsReading": 0,
+              "calls": 3
+            },
+            "msByLayer": {
+              "model:query": 1697,
+              "model:gate": 4988,
+              "search:lens": 1572,
+              "search:shopping": 21202
+            },
+            "thinkingPerCall": 72,
+            "calls": [
+              {
+                "layer": "query",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 1697,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 3068,
+                "outputTokens": 63,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.006766,
+                "stopReason": "end_turn",
+                "thinkingApprox": 29
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2571,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2369,
+                "outputTokens": 228,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.007018,
+                "stopReason": "end_turn",
+                "thinkingApprox": 87
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2417,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2374,
+                "outputTokens": 261,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.007358,
+                "stopReason": "end_turn",
+                "thinkingApprox": 99
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 1572,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 8002,
+                "status": 0
+              },
+              {
+                "layer": "shopping",
+                "provider": "serpapi",
+                "engine": "google_shopping",
+                "ms": 12001,
+                "status": 0
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 1199,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "status": 0,
+                "kind": "timeout",
+                "detail": "The operation was aborted due to timeout",
+                "severity": "identity"
+              },
+              {
+                "layer": "shopping",
+                "provider": "serpapi",
+                "status": 0,
+                "kind": "timeout",
+                "detail": "The operation was aborted due to timeout",
+                "severity": "identity"
+              }
+            ],
+            "steps": [
+              {
+                "step": "serper_lens",
+                "at": 3658,
+                "list": null,
+                "rows": 0,
+                "usable": 0,
+                "priced": 0,
+                "fields": [],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "serpapi",
+                "at": 11737,
+                "left": 244,
+                "reserve": 20,
+                "searches": 1,
+                "allowed": true
+              },
+              {
+                "step": "gate",
+                "at": 27608,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Merlin High-Flow Blow Gun Kit",
+                    "source": "Harbor Freight Tools",
+                    "price": 16.99,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Flowgun+Air&prds=localAnnotatedOfferId:1,catalogid:4449835843956478051,gpcid:18049271896984957024,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcRQQU50YHKHzhVgs5Kbt-rHtF0drZr4hzPYFGol8oOVlVJc-sDg0T1K67YchyaMfZRzV1zjO4ppyWFVAQwDGK9hXK0bgk4YRmHaOVIqytCZ8skiHHT0S8Zw",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "blow gun kit, not a massage gun"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Husky High Performance Blow Gun with Ultimate Flow Tip",
+                    "source": "Home Depot",
+                    "price": 19.98,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Flowgun+Air&prds=localAnnotatedOfferId:1,catalogid:16386063173226368996,gpcid:15455808605685466914,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcQnpDHbfOkmHzPIaQcFMAE8sYygJUPjT02M72QjTceJqGAJvDOQc0jXBG0B7nzH8g5Qy3b1IRb5j8wWxKv9uoOIY2nDMU-BVpnvIW1t0_0130bK6vujPDG3pg",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "air blow gun, not a massage gun"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "High Volume Air Blow Gun with Powerful Flow Nozzle Retro Red Air Nozzle Blower Gun with 4.9 inch Stainless Steel Extensi",
+                    "source": "Walmart - Seller",
+                    "price": 24.98,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Flowgun+Air&prds=localAnnotatedOfferId:1,catalogid:2595480978026325658,gpcid:4276792080323279247,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcQ-Nz1kJ8qVnJhCCVAhX7qDaKBF72YhOAkSDgvl7EICADqBjy_nkfjfmRucvB6aiq7uwxLKLCBZX35QhV4JxEDBi6BYfXd3tI2ihZvm7eqZ",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "air blow gun, different product type"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Graco 235627 K16B 4000 PSI Flow Gun Air Tool",
+                    "source": "eBay - pomonapawn2012",
+                    "price": 499.95,
+                    "link": "",
+                    "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcRiI5j6SzYSdgFgnk1r0hm__yu2GtkoOw_Rn_ojJ6ajeX27_UpxSwM7GbZkYcHXGnCmxBktru4NEF7YbX8GGMlqoRplbFyFbzzpyTsQDN1rxiyuua_jjVsB_w",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "spray flow gun, different product type"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "Merlin Blow Gun Kit",
+                    "source": "Harbor Freight Tools",
+                    "price": 6.99,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Flowgun+Air&prds=localAnnotatedOfferId:1,catalogid:13057809946895333701,gpcid:12037966403089880723,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcThtyZYEnsyLA9sFPanUQRgDr0IBZIwQcz3T-t-otrlcrgS5dGq17GMbPh_vV9wDAafAO-5IYbNMp8Y3roHiX2oU-0dUTQUdI7F7aKnaaK7paQItM0zAANH2g",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "air blow gun kit, not a massage gun"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Aquatys Blowgun Air Gun Red",
+                    "source": "Diveinn.com",
+                    "price": 29.49,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Flowgun+Air&prds=localAnnotatedOfferId:1,catalogid:15918165817734426917,gpcid:1917059458654506544,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcR3F5mnDlPFRI7dADv6KBMGeu3QpIOTQJx1z8pW6s9iA8HAOZsvbvlhz-7bDNW60a4IeBiz_Bei80ZuPKwGncFun8PSs_9ZBVQD_dntv2k3QG8baR1MTH_c2g",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "air blow gun, different product type"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 30094,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 6,
+                    "title": "Tru-Flate 18-612 Hi-Flo Blowgun",
+                    "source": "Ace Hardware",
+                    "price": 29.99,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Flowgun+Air&prds=localAnnotatedOfferId:1,catalogid:2788184507354778436,gpcid:4833592266985120397,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcQ1hwWAjy-TwcCkxuXnGrZAuxBuzCfK3fB5IfD2BMUgdn8teM226_CU8HDo-G3oUFuKwv2MoP4V6QMsLqPI_yqvHHJPvdzfbzOhjAQbgWrFDs_5sCQrBxc5Nw",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "air blow gun, not a massage gun"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Klutch High-Flow Air Blow Gun, 230 Max. PSI, 3/8Inch NPT Air Inlet",
+                    "source": "Northern Tool",
+                    "price": 19.99,
+                    "link": "",
+                    "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcTl1Z0Skh--BoYfun9gwSzFSqzQwiFB4F-Yn8fjb362r0KIh-FH_38v06-UzIzV84A2gVbo0_XH30UAtIKn2afYqp1FzQFq7Psp-p5L0FP8fhmeKkIoccA",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "air blow gun, not a massage gun"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "Milton Turbo Blow Gun Engine Cleaner",
+                    "source": "bomgaars.com",
+                    "price": 40.99,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Flowgun+Air&prds=localAnnotatedOfferId:1,catalogid:14349629645121954541,gpcid:2276109243778439064,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcT7xZcFHDr6-hJJCTg3Uh2rAa0giZy5XBqKCIyoofc5b7aQkdXvMZ_4yJlO08sznN_2eCf46AJ5ZnKdzHiltTQSJowPboMUMMDy4yxoiYcxlQ4v4ENh4w0a",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "air blow gun, not a massage gun"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "Merlin Air Blow Gun With Extensions",
+                    "source": "Harbor Freight Tools",
+                    "price": 8.99,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Flowgun+Air&prds=localAnnotatedOfferId:1,catalogid:7548489475135725044,gpcid:15470728357268307425,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSdOdmTuBN-NtfNEuSKpeOrguBANCRlo1lHwF3q7oRGGQwjfuzyr4tsAUgftYXCyPUzMkcs1t5tgPo53M_tLOQwOInTV9n8u72Sj8VHD7mgdBTIHciJ66le",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "air blow gun, not a massage gun"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "Freeman High Flow Blow Gun with Venturi Nozzle phfbg",
+                    "source": "Home Depot",
+                    "price": 14,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Flowgun+Air&prds=localAnnotatedOfferId:1,catalogid:5741677619027743980,gpcid:13054482140908731087,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcRzPFibsM00ZQ7LzAb5NxV20u50lpjX3SdP3jNlYgqpjoKBHTquUAy4B-XFA5qkmOU3lvGPfHzIfbWDtkHDnWf6XoHPRJ7Ofz1qnvohPb15LgQpxOMNWvhePw",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "air blow gun, not a massage gun"
+                  },
+                  {
+                    "rank": 11,
+                    "title": "Industrial Air Blow Gun with Brass Adjustable Air Flow Nozzle and 2 Steel Air Flow Extension",
+                    "source": "eBay - almo_taya",
+                    "price": 27.74,
+                    "link": "https://www.google.com/search?ibp=oshop&q=Flowgun+Air&prds=localAnnotatedOfferId:1,catalogid:11882606278409571477,gpcid:17938034176188884523,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcR9GOD9n-U_o-Vl5SvHtEknqVfvOGBWqtzSgHpBFN2ZAUilHlZzi1Vva3uhGHfWMv7e7HDIN9LSNqmnGQuVITJgO8up6BeAduu9p7t5EBKPojp0NezRYmifLw",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "air blow gun, not a massage gun"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 30095,
+                "purpose": "identify",
+                "confidence": "unverified",
+                "rank": 0,
+                "title": "Merlin High-Flow Blow Gun Kit",
+                "source": "Harbor Freight Tools",
+                "price": 16.99,
+                "link": "https://www.google.com/search?ibp=oshop&q=Flowgun+Air&prds=localAnnotatedOfferId:1,catalogid:4449835843956478051,gpcid:18049271896984957024,pvo:2,pvt:hg&gl=us&udm=28&pvorigin=2",
+                "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcRQQU50YHKHzhVgs5Kbt-rHtF0drZr4hzPYFGol8oOVlVJc-sDg0T1K67YchyaMfZRzV1zjO4ppyWFVAQwDGK9hXK0bgk4YRmHaOVIqytCZ8skiHHT0S8Zw"
+              },
+              {
+                "step": "market",
+                "at": 30106,
+                "asking": "GBP",
+                "source": "USD",
+                "same": false
+              }
+            ]
+          }
+        }
+      },
+      "matched": {
+        "title": "Merlin High-Flow Blow Gun Kit",
+        "source": "Harbor Freight Tools",
+        "confidence": "unverified"
+      },
+      "costUsd": 0.036142,
+      "claudeUsd": 0.021142
+    },
+    {
+      "id": "amazon-airpods-pro-2",
+      "kind": "Amazon product page",
+      "url": "https://www.amazon.com/dp/B0D1XD1ZV3",
+      "intent": "verdict",
+      "page": {
+        "read": true,
+        "title": "Amazon.com: Apple AirPods Pro 2 Wireless Earbuds, Active Noise Cancellation, Hearing Aid Feature, Bluetooth Headphones, Transparency, Personalized Spatial Audio",
+        "brand": "",
+        "price": "",
+        "currency": ""
+      },
+      "status": 200,
+      "ms": 6562,
+      "json": {
+        "found": true,
+        "mode": "FINDER",
+        "priceSource": "estimated",
+        "engineUsed": "url_serper",
+        "matchConfidence": "unverified",
+        "category": "tech",
+        "sourceProduct": {
+          "title": "Apple AirPods Pro 2 Wireless Earbuds with Active Noise Cancellation, Hearing Aid Feature…",
+          "price": 4.49,
+          "currency": "USD",
+          "imageUrl": "/api/proxy-image?url=https%3A%2F%2Fencrypted-tbn3.gstatic.com%2Fshopping%3Fq%3Dtbn%3AANd9GcTYTdMyCmVjduXZPM-OvjDq4HOYfFkDpZRbOIXjG6XPwcxXeV9xRYe1eSfpwwwqkYErLDHNwFjDgBlZ1nWVWl0WgtDwZXuwl6KJJJ6mDJgRuaHfGiDODlI19Q&s=0ec052fb2aa139a4848fbc8bb223601a",
+          "productUrl": "",
+          "affiliateUrl": "",
+          "linkIsDirect": false,
+          "platform": "Shopzo BD"
+        },
+        "analysis": {
+          "retailEstimate": 459,
+          "retailSource": "estimated",
+          "markup": 10123,
+          "verdict": "UNVERIFIED",
+          "savings": 454.51,
+          "savingsPercent": 99,
+          "confidence": "low"
+        },
+        "scanId": null,
+        "scanRef": "muuj37qu964d008e3fca058a0e3bfc4b",
+        "evaluation": {
+          "cached": false,
+          "ms": 6268,
+          "trace": {
+            "totalMs": 6243,
+            "claudeUsd": 0.014192,
+            "searchesByProvider": {
+              "serper": 1
+            },
+            "creditsByProvider": {
+              "serper": 2
+            },
+            "cache": {
+              "readTokens": 0,
+              "writeTokens": 0,
+              "uncachedInputTokens": 6361,
+              "callsReading": 0,
+              "calls": 2
+            },
+            "msByLayer": {
+              "model:text": 1813,
+              "model:query": 1472,
+              "search:shopping": 1371
+            },
+            "thinkingPerCall": 34,
+            "calls": [
+              {
+                "layer": "text",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 1813,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2713,
+                "outputTokens": 81,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.006236,
+                "stopReason": "end_turn",
+                "thinkingApprox": 41
+              },
+              {
+                "layer": "query",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 1472,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 3648,
+                "outputTokens": 66,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.007956,
+                "stopReason": "end_turn",
+                "thinkingApprox": 27
+              }
+            ],
+            "searches": [
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 1371,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [],
+            "steps": []
+          }
+        }
+      },
+      "matched": null,
+      "costUsd": 0.016192,
+      "claudeUsd": 0.014192
+    },
+    {
+      "id": "fellow-stagg-ekg",
+      "kind": "niche brand",
+      "url": "https://fellowproducts.com/products/stagg-ekg-electric-pour-over-kettle",
+      "intent": "verdict",
+      "page": {
+        "read": true,
+        "title": "Stagg EKG Electric Kettle",
+        "brand": "Fellow",
+        "price": 199.95,
+        "currency": "USD"
+      },
+      "status": 200,
+      "ms": 18755,
+      "json": {
+        "found": false,
+        "mode": "UNRESOLVED",
+        "priceSource": "estimated",
+        "engineUsed": "none",
+        "matchConfidence": "unverified",
+        "category": "other",
+        "sourceProduct": {
+          "title": "Product not identified",
+          "price": 0,
+          "currency": "USD",
+          "imageUrl": "",
+          "productUrl": "",
+          "affiliateUrl": "",
+          "platform": "unknown"
+        },
+        "analysis": {
+          "retailEstimate": 0,
+          "retailSource": "estimated",
+          "markup": 0,
+          "verdict": "UNVERIFIED",
+          "savings": 0,
+          "savingsPercent": 0,
+          "confidence": "low"
+        },
+        "scanId": null,
+        "scanRef": "muuj3pecfbdbb2cec7d8ac18bc7a99e9",
+        "evaluation": {
+          "cached": false,
+          "ms": 18523,
+          "trace": {
+            "totalMs": 18494,
+            "claudeUsd": 0.03852,
+            "searchesByProvider": {
+              "serper": 2
+            },
+            "creditsByProvider": {
+              "serper": 5
+            },
+            "cache": {
+              "readTokens": 5084,
+              "writeTokens": 2542,
+              "uncachedInputTokens": 9689,
+              "callsReading": 2,
+              "calls": 4
+            },
+            "msByLayer": {
+              "model:query": 1519,
+              "model:gate": 11951,
+              "search:lens": 2530,
+              "search:shopping": 637
+            },
+            "thinkingPerCall": 105,
+            "calls": [
+              {
+                "layer": "query",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 1519,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 4036,
+                "outputTokens": 50,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.008572,
+                "stopReason": "end_turn",
+                "thinkingApprox": 20
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 5780,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2260,
+                "outputTokens": 630,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 2542,
+                "costUsd": 0.017175,
+                "stopReason": "end_turn",
+                "thinkingApprox": 219
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 4020,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2058,
+                "outputTokens": 380,
+                "cacheReadTokens": 2542,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0084244,
+                "stopReason": "end_turn",
+                "thinkingApprox": 139
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2151,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1335,
+                "outputTokens": 117,
+                "cacheReadTokens": 2542,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0043484,
+                "stopReason": "end_turn",
+                "thinkingApprox": 42
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 2530,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 637,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [],
+            "steps": [
+              {
+                "step": "serper_lens",
+                "at": 5650,
+                "list": "organic",
+                "rows": 59,
+                "usable": 40,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 11590,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Amazon.com: Fellow Stagg EKG Pro Gooseneck Electric Kettle, Brew Timer, 0.9 Liter",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/clp/B0DG5X91XS",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSZPvok88-gBjB6X8UNvY6UkIyPs0LNXQWbxe_1xkUmap4aK2NJ",
+                    "match": "likely",
+                    "tie": "part",
+                    "why": "Fellow Stagg EKG body and forked handle; colour and wood differ"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Aoibox 0 9L Electric Gooseneck Kettle with Precise Temperature Control and Stainless Steel Interior in Hunter Green in t",
+                    "source": "Lowe's",
+                    "price": 0,
+                    "link": "https://www.lowes.com/pd/Aoibox-0-9L-Electric-Gooseneck-Kettle-with-Precise-Temperature-Control-and-Stainless-Steel-Interior-in-Hunter-Green/6363320",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT_qVoEWr9PekL-aMLdolu393Q6c4_hk8-5oeZE25B0c_puk9-X",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Aoibox clone with different base and knob"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Amazon.com: Gooseneck Electric Kettle 0.9L, 1200W Fast Boil Kettle with ±1°F Temperature Control, 304 Stainless Steel Te",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/Gooseneck-Electric-Temperature-Control-Stainless/dp/B0G1YDHKPG",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT8xrCHH2__OUMcLDI_sykhjZvloRN2CkRfvUKYBwzINAtxvsJd",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Generic black gooseneck clone, different handle and base"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Amazon.com: Bamiyune Electric Gooseneck Kettle Electric Kettle Temperature Control Pour Over 1200w Electric Kettle with ",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/Bamiyune-Electric-Gooseneck-Kettle-Temperature/dp/B0GR4SP7WC",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRE8pMjB4UKBKPowrxFbwUOeTroR1F-CyOYq2v6Dm1qk551zO_U",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Generic clone, different handle and base"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "INTASTING Gooseneck Electric Kettle with ±1   Temperature Control, 0.9L | Fast Heating, Stainless Steel Interior, for Po",
+                    "source": "Amazon.com",
+                    "price": 0,
+                    "link": "https://www.amazon.com/clp/B0FPRH16G4",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRyEa_up4oOHDeuS56xgyFKm5vSO_7lqcDt_k2UCfDqO9-Bj5JX",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "INTASTING brand, different handle"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Electric kettle,Water Boiler Stainless Coffee And Tea And Water Boiler 0.9l Pour Over Kettle 1200w And Over Coffee And P",
+                    "source": "Walmart",
+                    "price": 0,
+                    "link": "https://www.walmart.com/ip/Electric-kettle-Water-Boiler-Stainless-Coffee-Tea-Water-Boiler-0-9l-Pour-Kettle-1200w-Coffee-Pour-Coffee-1200w-Water-Temperature-Lcd-Display-Dsfen/9557669063",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQpn83FdXX7K_CS_ppssADLSh8syyKueOLldo8-3i1sxxFYBOp0",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Generic black clone, different handle and base"
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 15687,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 6,
+                    "title": "Hervidor eléctrico, tetera para café y té, interior de acero inoxidable NEW US. | eBay",
+                    "source": "eBay",
+                    "price": 0,
+                    "link": "https://www.ebay.com/itm/155727956314",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSd6r1QFBaXTzXKGKCgyypyH7shAhOTFuXSUyem4pZBK--8yBa8",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Stagg-like clone, metal handle, shiny teal finish, no walnut wood parts"
+                  },
+                  {
+                    "rank": 12,
+                    "title": "Fellow Stagg EKG Pro Electric Kettle - Luce Coffee Roasters",
+                    "source": "Luce Coffee Roasters",
+                    "price": 0,
+                    "link": "https://lucecoffeeroasters.com/shop/stagg-ekg-electric/",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQoJf119Y4-G7Y6Hvt8SlNP6DzGQXC1fepOFQvE70T9HH3x1Num",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Fellow Stagg EKG Pro in grey-green with light maple handle and knob; the Pro has a different base and controls, and the colour and wood differ"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Best Gifts for Coffee Lovers | GiftHint",
+                    "source": "gifthint.co",
+                    "price": 0,
+                    "link": "https://gifthint.co/gifts/interests/coffee",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRd-HZEnfQqryPijfLq_ADVc8DJyuJlHypYpl6UZdZ2YbwBJT2n",
+                    "match": "similar",
+                    "tie": "part",
+                    "gate": "likely",
+                    "guard": "brand_veto",
+                    "why": "Dark green Stagg EKG with walnut handle and walnut lid knob; the listing is a gift roundup, so the exact model can't be confirmed"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "0.9L Gooseneck Electric Kettle,Food Grade 304 Stainless Steel - Bed Bath & Beyond - 39135450",
+                    "source": "Bed Bath & Beyond",
+                    "price": 0,
+                    "link": "https://www.bedbathandbeyond.com/Home-Garden/0.9L-Gooseneck-Electric-Kettle-Food-Grade-304-Stainless-Steel/39135450/product.html",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRbR6n39QipQjSUru9rXPMa7HaYG5aY0IVwkPND02ouSG-yoHaw",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Offany brand, mint green, plastic handle, different base with display"
+                  },
+                  {
+                    "rank": 13,
+                    "title": "Fellow Stagg EKG - Stone Blue with wooden handle | WB.coffee",
+                    "source": "WB.coffee",
+                    "price": 0,
+                    "link": "https://www.wb.coffee/nl/shop/1219bl90-fellow-stagg-ekg-stone-blue-with-wooden-handle-43253",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQB1hthshaQQROmVj9IIYLar2B9egGwNAMB3PqjTa8lVo_Swjjl",
+                    "match": "similar",
+                    "tie": "part",
+                    "why": "Fellow Stagg EKG with walnut handle in stone blue, a different colourway from the green in image A"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "Non Toxic Tea Best Kettle Without Plastic Best Electric Tea Kettles Of 2025, Tested And Reviewed",
+                    "source": "www.nesrevi.dk",
+                    "price": 0,
+                    "link": "https://nesrevi.dk/product-similar-image/?18094764031960",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSd_m3aJKdlUs-x3Xm-EIgZ-AgnjSOyTm3kTEhPvoPcO4igUIYL",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Green Stagg with a black handle and a yellow dial, and the page is a review article, not a product listing"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 15687,
+                "purpose": "identify",
+                "confidence": "likely",
+                "rank": 0,
+                "title": "Amazon.com: Fellow Stagg EKG Pro Gooseneck Electric Kettle, Brew Timer, 0.9 Liter",
+                "source": "Amazon.com",
+                "price": 0,
+                "link": "https://www.amazon.com/clp/B0DG5X91XS",
+                "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSZPvok88-gBjB6X8UNvY6UkIyPs0LNXQWbxe_1xkUmap4aK2NJ"
+              },
+              {
+                "step": "gate",
+                "at": 18493,
+                "purpose": "pricing",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 1,
+                "candidates": [
+                  {
+                    "rank": 6,
+                    "title": "Fellow Stagg EKG Pro Electric Gooseneck Kettle - Smoke Green w/ Map...",
+                    "source": "Brewtay Coffee",
+                    "price": 199.95,
+                    "link": "",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcTU3-zhRLn4o7Q-ZdvogAZSkXnI8H8I4zo07D6BGA9G5Q7t9ndausMdD1Qlbk32bKQE6hT32-jP80BKAOzhaubJ0VE7hjddNiZzTrd-Dw3dZjcNS2kHA0zq-A",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Same Fellow Stagg EKG kettle shape, but the candidate is a lighter Smoke Green with maple wood. Image A is a dark green with walnut. The colourway and wood diff"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 18493,
+                "purpose": "pricing",
+                "confidence": "unverified",
+                "rank": 6,
+                "title": "Fellow Stagg EKG Pro Electric Gooseneck Kettle - Smoke Green w/ Map...",
+                "source": "Brewtay Coffee",
+                "price": 199.95,
+                "link": "",
+                "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcTU3-zhRLn4o7Q-ZdvogAZSkXnI8H8I4zo07D6BGA9G5Q7t9ndausMdD1Qlbk32bKQE6hT32-jP80BKAOzhaubJ0VE7hjddNiZzTrd-Dw3dZjcNS2kHA0zq-A"
+              }
+            ]
+          }
+        }
+      },
+      "matched": {
+        "title": "Fellow Stagg EKG Pro Electric Gooseneck Kettle - Smoke Green w/ Map...",
+        "source": "Brewtay Coffee",
+        "confidence": "unverified"
+      },
+      "costUsd": 0.04352,
+      "claudeUsd": 0.03852
+    }
+  ],
+  "finishedAt": "2026-10-05T00:45:54.108Z",
+  "spend": {
+    "claudeUsd": 0.096936,
+    "serpapiSearches": 2,
+    "serperCredits": 17,
+    "serpapiPerSearch": 0.01,
+    "searchUsd": 0.037000000000000005,
+    "totalUsd": 0.133936,
+    "spentBeforeUsd": 6.917600000000001,
+    "capUsd": 25
+  }
+}
