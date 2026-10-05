@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildFunnel, readEvents, readScanFailures, readWrongProduct, CLIENT_EVENTS } from "@/lib/analytics";
+import { buildFunnel, readEvents, readScanCosts, readScanFailures, readWrongProduct, CLIENT_EVENTS } from "@/lib/analytics";
 import { getLedgerSize, readCspViolations, readGlobalScansHistory, GLOBAL_DAILY_CAP } from "@/lib/redis";
 import { readModelSpendHistory, currentSpendMode, DAILY_MODEL_BUDGET_USD } from "@/lib/model-budget";
 import { serperCreditsLeft, serpApiSearchesLeft } from "@/lib/provider-balance";
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   const requested = Number(req.nextUrl.searchParams.get("days") || 30);
   const days = Math.min(Math.max(Number.isFinite(requested) ? requested : 30, 1), 120);
 
-  const [series, ledgerSize, csp, failures, wrongProduct, spendDays, scanDays, mode, serper, serpapi] = await Promise.all([
+  const [series, ledgerSize, csp, failures, wrongProduct, spendDays, scanDays, mode, serper, serpapi, scanCosts] = await Promise.all([
     readEvents(days),
     getLedgerSize().catch(() => 0),
     readCspViolations(days).catch(() => []),
@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
     currentSpendMode(),
     serperCreditsLeft(),
     serpApiSearchesLeft(),
+    readScanCosts(days),
   ]);
 
   return NextResponse.json(
@@ -70,6 +71,14 @@ export async function GET(req: NextRequest) {
         globalDailyFreeScanCap: GLOBAL_DAILY_CAP,
         days: spendDays.map((d, i) => ({ ...d, uncachedFreeScans: scanDays[i]?.uncachedFreeScans ?? 0 })),
       },
+      // What uncached visitor scans cost, per UTC day and over the window:
+      // scans that reached the engine, how many ended "Product not
+      // identified", the SerpApi Lens escalation (fired; then rescued a
+      // match or still nothing; or skipped at the reserve, for time, or for
+      // another reason), SerpApi searches spent, and Claude cost per scan,
+      // escalated against not. Evaluation scans and cache hits are not in
+      // it. Kept 400 days.
+      scanCosts,
       // What the search accounts have left (free lookups; numbers only).
       providers: { serperCreditsLeft: serper.known ? serper.left : null, serpApiSearchesLeft: serpapi.known ? serpapi.left : null },
       window: buildFunnel(series, "window"),

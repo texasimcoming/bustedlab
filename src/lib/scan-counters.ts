@@ -10,7 +10,8 @@ import {
   recordVerdict,
   setCachedScan,
 } from "@/lib/redis";
-import { recordEvents, type EventName } from "@/lib/analytics";
+import { recordEvents, recordScanCost, scanCostFacts, type EventName } from "@/lib/analytics";
+import type { ScanTrace } from "@/lib/scan-trace";
 
 /**
  * Everything a finished scan counts, run by the scan route in after(), once
@@ -23,7 +24,7 @@ import { recordEvents, type EventName } from "@/lib/analytics";
  * counts against the global daily cap on uncached free scans, because it
  * spent the same money, and nothing else: not the free allowance, not the
  * lifetime or hourly counter, not the verdict stats, not the result cache a
- * visitor could be served, not the funnel in /api/stats.
+ * visitor could be served, not the funnel or the scan costs in /api/stats.
  */
 export async function countCompletedScan(scan: {
   result: ScanResult;
@@ -34,8 +35,10 @@ export async function countCompletedScan(scan: {
   browserId: string | null;
   servedFromCache: boolean;
   cacheKey: string | null;
+  /** The engine's trace, when the scan ran the engine (not a cache hit). */
+  trace?: ScanTrace | null;
 }): Promise<void> {
-  const { result, evaluation, isPaid, email, ip, browserId, servedFromCache, cacheKey } = scan;
+  const { result, evaluation, isPaid, email, ip, browserId, servedFromCache, cacheKey, trace } = scan;
 
   if (evaluation) {
     if (!servedFromCache && !isPaid) await incrementGlobalScans().catch(() => {});
@@ -95,4 +98,8 @@ export async function countCompletedScan(scan: {
     events.push("result_unresolved");
   }
   await recordEvents(events);
+
+  // What an uncached scan cost, and how the Lens escalation went: from the
+  // engine's own trace, so the numbers are what happened. See recordScanCost.
+  if (trace && !servedFromCache) await recordScanCost(scanCostFacts(trace, result.mode === "UNRESOLVED"));
 }

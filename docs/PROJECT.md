@@ -18,7 +18,10 @@ Google Lens already identifies products for free. The differentiator is the verd
 - Anthropic is prepaid, so spend cannot exceed the loaded balance.
 - Price: $4.99 one-time via Lemon Squeezy, about $4.24 net.
 - Vercel Hobby is non-commercial by Vercel's terms. Upgrade to Pro after about 5 sales.
-- $1 of daily budget is about 30 scans (about $0.03 per cold scan).
+- Claude cost per scan, measured on the labelled set (runs 7 and 8): about $0.020 when Serper's Lens verifies the product, about $0.045 to $0.06 when the SerpApi escalation runs. Search adds about half a cent (Serper credits); SerpApi is free within its 250 a month.
+  - $1 of daily budget is about 50 plain scans, or 17 to 22 escalated ones.
+  - $5 of credit buys about 250 scans if none escalate, about 110 at $0.045 escalated, about 85 at $0.06; at the labelled set's mix (5 of 6 escalated, $0.041 on average) about 120.
+  - `/api/stats` (scanCosts) and the weekly brief report the real split each week.
 
 ## Decided by the owner
 

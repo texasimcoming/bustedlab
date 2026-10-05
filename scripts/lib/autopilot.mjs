@@ -191,6 +191,34 @@ export function briefNumbers(stats) {
     },
     providers: stats.providers || {},
     ledgerSize: stats.ledgerSize ?? 0,
+    engine: engineNumbers(stats.scanCosts?.window),
+  };
+}
+
+/**
+ * The week's uncached visitor scans as the engine's traces counted them
+ * (/api/stats scanCosts): "Product not identified", the SerpApi Lens
+ * escalation and how it ended, SerpApi searches, and Claude per scan,
+ * escalated against not, to a hundredth of a cent.
+ */
+function engineNumbers(w) {
+  const e = w?.escalation || {};
+  const scans = w?.scans ?? 0;
+  const fired = e.fired ?? 0;
+  const per = (side) => (side?.perScanUsd ?? null);
+  return {
+    scans,
+    notIdentified: w?.notIdentified ?? 0,
+    escalation: {
+      fired, rescued: e.rescued ?? 0, nothing: e.nothing ?? 0,
+      skippedReserve: e.skippedReserve ?? 0, skippedTime: e.skippedTime ?? 0, skippedOther: e.skippedOther ?? 0,
+      firedPerScan: scans > 0 ? Math.round((100 * fired) / scans) : null,
+    },
+    serpapiSearches: w?.serpapiSearches ?? 0,
+    claudePerScan: {
+      escalated: per(w?.claude?.escalated), escalatedScans: w?.claude?.escalated?.scans ?? 0,
+      plain: per(w?.claude?.plain), plainScans: w?.claude?.plain?.scans ?? 0,
+    },
   };
 }
 
@@ -223,6 +251,9 @@ export function leverageFixes(n) {
   }
   if (n.cost.daysAtCap > 0) {
     out.push({ reach: n.cost.daysAtCap * 10, text: `The free cap of ${n.cost.freeCap} ran out on ${n.cost.daysAtCap} day(s): visitors were turned away. Raise GLOBAL_DAILY_SCAN_CAP only when revenue covers it.` });
+  }
+  if (n.engine.escalation.skippedReserve > 0) {
+    out.push({ reach: n.engine.escalation.skippedReserve, text: `${n.engine.escalation.skippedReserve} scan(s) Serper could not verify skipped the SerpApi escalation because SerpApi was at its reserve: those scans ended without the better search.` });
   }
   if (typeof n.providers.serperCreditsLeft === "number" && n.providers.serperCreditsLeft < 500) {
     out.push({ reach: 50, text: `Serper has ${n.providers.serperCreditsLeft} credits left, about ${Math.floor(n.providers.serperCreditsLeft / 5)} scans: top up before it runs out.` });
@@ -294,6 +325,11 @@ export function briefMarkdown({ date, numbers: n, fixes, summary, base }) {
     `Model spend ${money(n.cost.modelUsd)} this week (busiest day ${money(n.cost.busiestDayUsd)}; daily budget ${n.cost.dailyBudgetUsd === null ? "n/a" : money(n.cost.dailyBudgetUsd)}, crossed on ${n.cost.daysOverBudget} day(s)).`,
     `Per completed scan ${n.cost.perCompletedScan === null ? "n/a" : `$${n.cost.perCompletedScan}`} (cache hits included); per uncached free scan ${n.cost.perUncachedFreeScan === null ? "n/a" : `$${n.cost.perUncachedFreeScan}`} (${n.cost.uncachedFreeScans} of them; free cap ${n.cost.freeCap ?? "n/a"} a day, reached on ${n.cost.daysAtCap} day(s)).`,
     `Search accounts: Serper ${n.providers.serperCreditsLeft ?? "unknown"} credits left, SerpApi ${n.providers.serpApiSearchesLeft ?? "unknown"} searches left.`,
+    "",
+    "## Engine: escalations and cost per scan", "",
+    `Uncached visitor scans that reached the engine: ${n.engine.scans}; ended "Product not identified": ${n.engine.notIdentified}.`,
+    `SerpApi escalation fired on ${n.engine.escalation.fired} (${n.engine.escalation.firedPerScan === null ? "n/a" : `${n.engine.escalation.firedPerScan}%`} of scans): rescued a match ${n.engine.escalation.rescued}, still nothing ${n.engine.escalation.nothing}. Skipped: at the SerpApi reserve ${n.engine.escalation.skippedReserve}, for time ${n.engine.escalation.skippedTime}, other ${n.engine.escalation.skippedOther}. SerpApi searches used: ${n.engine.serpapiSearches}.`,
+    `Claude per scan: escalated ${n.engine.claudePerScan.escalated === null ? "n/a" : `$${n.engine.claudePerScan.escalated}`} (${n.engine.claudePerScan.escalatedScans} scans), not escalated ${n.engine.claudePerScan.plain === null ? "n/a" : `$${n.engine.claudePerScan.plain}`} (${n.engine.claudePerScan.plainScans} scans).`,
     "",
   );
   return lines.join("\n");

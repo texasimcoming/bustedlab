@@ -23,7 +23,7 @@ import {
   newScanId,
 } from "@/lib/redis";
 import { after } from "next/server";
-import { recordScanFailure, type FailureReason } from "@/lib/analytics";
+import { recordScanCost, recordScanFailure, scanCostFacts, type FailureReason } from "@/lib/analytics";
 import { countCompletedScan } from "@/lib/scan-counters";
 import { withAffiliateLink } from "@/lib/affiliate";
 import { isEvaluationRequest, logEvaluationUse } from "@/lib/eval-log";
@@ -328,7 +328,10 @@ export async function POST(req: NextRequest) {
     // ── Resolve the input and its cache fingerprint ──
     let runScan: () => Promise<ScanResult>;
     let trace: ScanTrace | null = null;
-    const hooks = evaluation ? { onTrace: (t: ScanTrace) => { trace = t; } } : {};
+    // Every scan's trace is kept: an evaluation scan returns it, and a
+    // visitor's uncached scan is counted from it (what it cost, and the Lens
+    // escalation; see recordScanCost in analytics.ts).
+    const hooks = { onTrace: (t: ScanTrace) => { trace = t; } };
     let scannedIntent: string | undefined;
 
     if (contentType.includes("application/json")) {
@@ -400,6 +403,10 @@ export async function POST(req: NextRequest) {
             evaluation: { failure: result.failure, trace: summary },
           }, false);
         }
+        // What the failed scan still cost. Awaited like the failure count
+        // below it (one pipelined write; it never throws).
+        const failedTrace = trace as ScanTrace | null;
+        if (failedTrace) await recordScanCost(scanCostFacts(failedTrace, false));
         return incompleteScan(result.failure.reason, result.failure.layers, !browserId);
       }
     }
@@ -458,7 +465,7 @@ export async function POST(req: NextRequest) {
     // ── Counters. Deferred until after the response is sent: none of them
     //    affect what this person sees. See countCompletedScan. ──
     after(() => countCompletedScan({
-      result, evaluation, isPaid, email, ip, browserId, servedFromCache, cacheKey,
+      result, evaluation, isPaid, email, ip, browserId, servedFromCache, cacheKey, trace,
     }));
     const response = NextResponse.json({
       // The "Go to this price" link is the only thing an affiliate network

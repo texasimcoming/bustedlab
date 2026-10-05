@@ -100,6 +100,12 @@ const STATS = {
     { day: "2026-10-01", modelUsd: 0.11, uncachedFreeScans: 4 }, { day: "2026-10-02", modelUsd: 0, uncachedFreeScans: 0 },
   ] },
   providers: { serperCreditsLeft: 2362, serpApiSearchesLeft: 35 },
+  scanCosts: { days: [], window: {
+    day: "window", scans: 20, notIdentified: 7,
+    escalation: { fired: 12, rescued: 4, nothing: 8, skippedReserve: 3, skippedTime: 1, skippedOther: 0 },
+    serpapiSearches: 12,
+    claude: { escalated: { scans: 12, usd: 0.5448, perScanUsd: 0.0454 }, plain: { scans: 8, usd: 0.1568, perScanUsd: 0.0196 } },
+  } },
 };
 const numbers = briefNumbers(STATS);
 const fixes = leverageFixes(numbers);
@@ -122,6 +128,23 @@ const md = briefMarkdown({ date: "2026-10-05", numbers, fixes, summary: "", base
 check("the brief carries funnel ratios, outcomes, failures, wrong-product counts and cost against the caps",
   /\| scans started \| 30 \| 15% of landings \|/.test(md) && /lens: 3/.test(md) && /2 this week/.test(md) && /daily budget \$2\.00/.test(md) && /2362 credits left/.test(md), md.slice(0, 400));
 check("the brief uses no em dash", !md.includes("—"));
+check("the engine section carries escalations, their outcomes, SerpApi searches, not-identified and Claude per scan split",
+  numbers.engine.escalation.firedPerScan === 60 &&
+  /Uncached visitor scans that reached the engine: 20; ended "Product not identified": 7\./.test(md) &&
+  /escalation fired on 12 \(60% of scans\): rescued a match 4, still nothing 8\. Skipped: at the SerpApi reserve 3, for time 1, other 0\. SerpApi searches used: 12\./.test(md) &&
+  /Claude per scan: escalated \$0\.0454 \(12 scans\), not escalated \$0\.0196 \(8 scans\)\./.test(md), md.slice(-700));
+{
+  const empty = briefNumbers({ ...STATS, scanCosts: undefined });
+  const text = briefMarkdown({ date: "2026-10-05", numbers: empty, fixes: [], summary: "", base: "https://example.test" });
+  check("a week with no scan costs recorded reads as zeros and n/a, not an error",
+    empty.engine.scans === 0 && /escalated n\/a \(0 scans\)/.test(text), text.slice(-400));
+}
+{
+  // Alone, so nothing that touches more people outranks it.
+  const only = leverageFixes(briefNumbers({ scanCosts: STATS.scanCosts }));
+  check("escalations skipped at the SerpApi reserve are a fix candidate",
+    only.length === 1 && /3 scan\(s\) Serper could not verify skipped the SerpApi escalation/.test(only[0]), only.join(" | "));
+}
 
 section("THE ONE MODEL-WRITTEN PARAGRAPH");
 {

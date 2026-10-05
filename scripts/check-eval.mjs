@@ -19,6 +19,7 @@
  *
  *   node --experimental-strip-types --no-warnings scripts/check-eval.mjs
  */
+import { readFileSync } from "node:fs";
 import { importSrc, env, reset, call, redis, logs, check, section, finish } from "./lib/harness.mjs";
 
 const TOKEN = "eval-operator-token-0123456789";
@@ -116,6 +117,53 @@ section("WHAT A FINISHED SCAN COUNTS");
   reset();
   await countCompletedScan({ ...finished, evaluation: true, servedFromCache: true });
   check("and a cached evaluation scan counts nowhere at all", redis.keys().length === 0, redis.keys().join(", "));
+
+  // What the scan cost, from its trace: a visitor's uncached scan only.
+  const trace = {
+    steps: [{ step: "escalation", ran: true, confidence: "exact", fromEscalation: true }],
+    calls: [{ costUsd: 0.0123 }, { costUsd: 0.0331 }],
+    searches: [{ provider: "serper" }, { provider: "serpapi" }],
+  };
+  reset();
+  await countCompletedScan({ ...finished, evaluation: false, trace });
+  const cost = redis.peek(`stat:scancost:${day}`);
+  check("a visitor's uncached scan counts what it cost and how the escalation went",
+    cost?.get("scans") === "1" && cost?.get("esc_fired") === "1" && cost?.get("esc_rescued") === "1" && cost?.get("serpapi_searches") === "1" &&
+    cost?.get("scans_escalated") === "1" && cost?.get("micro_usd_escalated") === "45400" && !cost?.has("scans_plain"),
+    JSON.stringify([...(cost || new Map())]));
+  reset();
+  await countCompletedScan({ ...finished, evaluation: true, trace });
+  check("an evaluation scan's cost is not counted there", !redis.keys().some(k => k.startsWith("stat:scancost:")), redis.keys().join(", "));
+  reset();
+  await countCompletedScan({ ...finished, evaluation: false, servedFromCache: true, trace });
+  check("nor is a cache hit's, which ran no engine", !redis.keys().some(k => k.startsWith("stat:scancost:")), redis.keys().join(", "));
+}
+
+section("SCAN COSTS AND THE LENS ESCALATION, PER DAY");
+{
+  const a = await importSrc("lib/analytics.ts");
+  const t = (steps, calls = [], searches = []) => ({ steps, calls, searches });
+  const of = (steps) => a.scanCostFacts(t(steps), false).outcome;
+  check("an escalation that verified a match is a rescue", of([{ step: "escalation", ran: true, confidence: "likely" }]) === "rescued");
+  check("one that ran and verified nothing is still nothing", of([{ step: "escalation", ran: true, confidence: "unverified" }]) === "nothing");
+  check("a skip is counted by its reason: the reserve, time, or another",
+    of([{ step: "escalation", ran: false, skip: "reserve" }]) === "skipped_reserve" && of([{ step: "escalation", ran: false, skip: "time" }]) === "skipped_time" &&
+    of([{ step: "escalation", ran: false, skip: "degraded" }]) === "skipped_other");
+  check("a scan Serper verified had no escalation at all", of([{ step: "lens" }]) === "none");
+  reset();
+  await a.recordScanCost(a.scanCostFacts(t([], [{ costUsd: 0.0196 }], [{ provider: "serper" }]), true));
+  await a.recordScanCost(a.scanCostFacts(t([{ step: "escalation", ran: false, skip: "reserve" }], [{ costUsd: 0.02 }], []), false));
+  await a.recordScanCost(a.scanCostFacts(t([{ step: "escalation", ran: true, confidence: "unverified" }], [{ costUsd: 0.05 }], [{ provider: "serpapi" }]), true));
+  const read = await a.readScanCosts(7);
+  const w = read.window;
+  check("the day reads back: scans, not identified, outcomes, SerpApi searches, Claude per scan split",
+    read.days.length === 7 && w.scans === 3 && w.notIdentified === 2 && w.escalation.fired === 1 && w.escalation.nothing === 1 &&
+    w.escalation.skippedReserve === 1 && w.serpapiSearches === 1 &&
+    w.claude.escalated.scans === 1 && w.claude.escalated.perScanUsd === 0.05 && w.claude.plain.scans === 2 && w.claude.plain.perScanUsd === 0.0198,
+    JSON.stringify(w));
+  const route = readFileSync(new URL("../src/app/api/scan/route.ts", import.meta.url), "utf8");
+  check("the route keeps every scan's trace and hands it to the counters, and counts a failed scan's cost too",
+    /const hooks = \{ onTrace:/.test(route) && /countCompletedScan\(\{[\s\S]*?trace,[\s\S]*?\}\)/.test(route) && /await recordScanCost\(scanCostFacts\(failedTrace, false\)\)/.test(route));
 }
 
 section("A VERDICT REACHES THE LEDGER ONLY FROM A VISITOR");
