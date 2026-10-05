@@ -24,6 +24,8 @@
  * [case, intent] list. run.scanCapUsd is a hard cap on the scan step's own
  * spend, all-in (Claude as measured, Serper credits as reported, SerpApi
  * searches at the plan's price): a scan that could cross it is not started.
+ * Each scan is reserved at run.scanReserveUsd (10 cents when not set) or one
+ * and a half times the dearest scan so far, whichever is more.
  * run.requireDiagnosePass stops the scans when diagnose did not pass.
  * SerpApi is the engine's backup and the engine keeps it above its own
  * reserve (SEARCH PROVIDERS in src/lib/scan.ts).
@@ -411,9 +413,10 @@ async function scanStep() {
   let serpapiLeft = Number(account?.totalSearchesLeft);
   if (!Number.isFinite(serpapiLeft)) serpapiLeft = null;
   // The scan step's own hard cap, all-in. A scan is started only if even an
-  // expensive one (the dearest seen so far times 1.5, at least 10 cents)
-  // cannot cross it.
+  // expensive one (the dearest seen so far times 1.5, at least
+  // run.scanReserveUsd, 10 cents when not set) cannot cross it.
   const scanCap = Number(run.scanCapUsd) || Infinity;
+  const reserve = Number(run.scanReserveUsd) || 0.10;
   let scanSpent = 0;
   let dearest = 0;
   const allowanceBefore = await freeAllowanceLeft();
@@ -427,7 +430,7 @@ async function scanStep() {
     const photo = photos.get(c.id);
     if (!photo) { scans.push({ caseId: c.id, intent: "-", status: 0, classification: { label: "error", detail: "no photo" } }); continue; }
     for (const intent of caseIntents) {
-      const next = Math.max(0.10, dearest * 1.5);
+      const next = Math.max(reserve, dearest * 1.5);
       if (scanSpent + next > scanCap) { stopped = `the scan step's cap of $${scanCap.toFixed(2)} could be crossed by the next scan ($${scanSpent.toFixed(4)} spent)`; break; }
       if (!canSpend(next)) { stopped = "the spend cap for this run was reached"; break; }
       log(`scan ${c.id} ${intent}`);
