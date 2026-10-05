@@ -48,6 +48,9 @@ for (const [label, overrides] of [
     redis.peek("stat:scan_failed:total") === "1" && redis.peek("stat:scan_failed:reason:extraction:total") === "1");
   check("and not as a completed scan or an unresolved result",
     !redis.peek("stat:scan_completed:total") && !redis.peek("stat:result_unresolved:total"));
+  const cost = redis.peek(`stat:scancost:${new Date().toISOString().slice(0, 10)}`);
+  check("its cost is still counted (a scan that reached the engine), not as 'Product not identified'",
+    cost?.get("scans") === "1" && cost?.get("scans_plain") === "1" && !cost?.has("not_identified"), JSON.stringify([...(cost || new Map())]));
   const line = logs.errors.find(e => e.includes("layer=extraction"));
   check("said out loud: layer, provider, model and status in the log", !!line && /provider=anthropic/.test(line) && /model=claude-/.test(line) && /status=/.test(line), logs.errors.join(" | "));
   check("without the key", !logs.errors.some(e => e.includes("sk-ant-failure-check-key")));

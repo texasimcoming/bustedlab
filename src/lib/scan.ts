@@ -2429,17 +2429,19 @@ async function escalateLens(
   gate: GateOptions,
   budget: Budget
 ): Promise<{ pool: ShoppingMatch; verified: Verified; fromEscalation: boolean } | null> {
-  const skip = (reason: string): null => {
-    traceStep("escalation", { to: "serpapi", ran: false, reason });
+  // `skip` is what /api/stats counts the skip under (see scanCostFacts in
+  // analytics.ts); `reason` is for a person reading the trace.
+  const skip = (code: "no_key" | "degraded" | "time" | "reserve" | "upload", reason: string): null => {
+    traceStep("escalation", { to: "serpapi", ran: false, skip: code, reason });
     return null;
   };
-  if (!process.env.SERPAPI_KEY) return skip("no SerpApi key");
+  if (!process.env.SERPAPI_KEY) return skip("no_key", "no SerpApi key");
   // A degraded day has spent its model budget: no extra gate waves on it.
-  if (gate.mode === "degraded") return skip("degraded: the day's model budget is spent");
-  if (!budget.allows(ESCALATION_COST_MS)) return skip("time budget");
-  if (!(await serpApiAllowed(1))) return skip("SerpApi at its reserve, or its balance unknown");
+  if (gate.mode === "degraded") return skip("degraded", "degraded: the day's model budget is spent");
+  if (!budget.allows(ESCALATION_COST_MS)) return skip("time", "time budget");
+  if (!(await serpApiAllowed(1))) return skip("reserve", "SerpApi at its reserve, or its balance unknown");
   const url = await uploadForLensSearch(image.data, image.mimeType);
-  if (!url) return skip("the photo could not be uploaded for Lens");
+  if (!url) return skip("upload", "the photo could not be uploaded for Lens");
   let second: ShoppingMatch | null = null;
   try {
     second = await searchLensViaSerpApi(url, "advisory");

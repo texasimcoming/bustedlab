@@ -307,6 +307,130 @@ export async function readWrongProduct(days = 30): Promise<WrongProductBreakdown
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+// WHAT A SCAN COST, AND THE LENS ESCALATION, PER UTC DAY.
+//
+// One hash a day, written once per uncached visitor scan from its trace
+// (never for an evaluation scan or a cache hit): how many scans reached the
+// engine, how many ended "Product not identified", whether SerpApi's Lens was
+// asked after Serper's could not verify anything (see ESCALATION in
+// src/lib/scan.ts) and how that ended, how many SerpApi searches the scan
+// spent, and its Claude cost, split by escalated or not. Dollars are kept as
+// whole micro-dollars so every write is an integer increment.
+// ════════════════════════════════════════════════════════════════
+export type EscalationOutcome = "none" | "rescued" | "nothing" | "skipped_reserve" | "skipped_time" | "skipped_other";
+
+export interface ScanCostFacts {
+  escalated: boolean;
+  outcome: EscalationOutcome;
+  serpapiSearches: number;
+  claudeUsd: number;
+  notIdentified: boolean;
+}
+
+const scanCostKey = (day: string) => `stat:scancost:${day}`;
+
+/**
+ * What one scan's trace says. Structural types only, so this file still
+ * imports nothing from the engine. "rescued" means the escalation turned a
+ * scan with no match into an exact or likely one; a skip is the reason it did
+ * not run (SerpApi at its reserve or balance unknown, too little time left,
+ * or another: a degraded day, no key, the upload failing).
+ */
+export function scanCostFacts(
+  trace: { steps: { step: string; [field: string]: unknown }[]; calls: { costUsd?: number }[]; searches: { provider: string }[] },
+  notIdentified: boolean
+): ScanCostFacts {
+  const steps = trace.steps.filter(s => s.step === "escalation");
+  const ran = steps.find(s => s.ran === true);
+  const skipped = steps.find(s => s.ran === false);
+  const outcome: EscalationOutcome = ran
+    ? (ran.confidence === "exact" || ran.confidence === "likely" ? "rescued" : "nothing")
+    : skipped
+      ? (skipped.skip === "reserve" ? "skipped_reserve" : skipped.skip === "time" ? "skipped_time" : "skipped_other")
+      : "none";
+  return {
+    escalated: !!ran,
+    outcome,
+    serpapiSearches: trace.searches.filter(s => s.provider === "serpapi").length,
+    claudeUsd: trace.calls.reduce((sum, c) => sum + (Number(c.costUsd) || 0), 0),
+    notIdentified,
+  };
+}
+
+/** Counts one uncached visitor scan. Never throws. */
+export async function recordScanCost(facts: ScanCostFacts, date = new Date()): Promise<void> {
+  try {
+    const key = scanCostKey(dayKey(date));
+    const micro = Math.max(0, Math.round(facts.claudeUsd * 1_000_000));
+    const pipeline = getRedis().pipeline();
+    pipeline.hincrby(key, "scans", 1);
+    if (facts.notIdentified) pipeline.hincrby(key, "not_identified", 1);
+    if (facts.outcome !== "none") pipeline.hincrby(key, `esc_${facts.outcome}`, 1);
+    if (facts.escalated) pipeline.hincrby(key, "esc_fired", 1);
+    if (facts.serpapiSearches > 0) pipeline.hincrby(key, "serpapi_searches", facts.serpapiSearches);
+    pipeline.hincrby(key, facts.escalated ? "scans_escalated" : "scans_plain", 1);
+    if (micro > 0) pipeline.hincrby(key, facts.escalated ? "micro_usd_escalated" : "micro_usd_plain", micro);
+    pipeline.expire(key, DAY_TTL_SECONDS);
+    await pipeline.exec();
+  } catch {
+    /* a counter that fails is a number nobody sees */
+  }
+}
+
+export interface ScanCostDay {
+  day: string;
+  /** Uncached visitor scans that reached the engine. */
+  scans: number;
+  notIdentified: number;
+  escalation: { fired: number; rescued: number; nothing: number; skippedReserve: number; skippedTime: number; skippedOther: number };
+  serpapiSearches: number;
+  claude: {
+    escalated: { scans: number; usd: number; perScanUsd: number | null };
+    plain: { scans: number; usd: number; perScanUsd: number | null };
+  };
+}
+
+function scanCostDay(day: string, h: Record<string, unknown> | null): ScanCostDay {
+  const n = (field: string) => Number(h?.[field] ?? 0) || 0;
+  const usd = (field: string) => n(field) / 1_000_000;
+  const side = (scans: number, total: number) => ({
+    scans, usd: Math.round(total * 1_000_000) / 1_000_000,
+    perScanUsd: scans > 0 ? Math.round((total / scans) * 10_000) / 10_000 : null,
+  });
+  return {
+    day,
+    scans: n("scans"),
+    notIdentified: n("not_identified"),
+    escalation: {
+      fired: n("esc_fired"), rescued: n("esc_rescued"), nothing: n("esc_nothing"),
+      skippedReserve: n("esc_skipped_reserve"), skippedTime: n("esc_skipped_time"), skippedOther: n("esc_skipped_other"),
+    },
+    serpapiSearches: n("serpapi_searches"),
+    claude: {
+      escalated: side(n("scans_escalated"), usd("micro_usd_escalated")),
+      plain: side(n("scans_plain"), usd("micro_usd_plain")),
+    },
+  };
+}
+
+/** The last `days` UTC days, oldest first, and their total under day "window". */
+export async function readScanCosts(days = 30): Promise<{ days: ScanCostDay[]; window: ScanCostDay }> {
+  const window = lastNDays(days);
+  let hashes: (Record<string, unknown> | null)[] = window.map(() => null);
+  try {
+    const pipeline = getRedis().pipeline();
+    for (const d of window) pipeline.hgetall(scanCostKey(d));
+    hashes = (await pipeline.exec()) as (Record<string, unknown> | null)[];
+  } catch {
+    /* empty days */
+  }
+  const perDay = window.map((d, i) => scanCostDay(d, hashes[i]));
+  const sum: Record<string, number> = {};
+  for (const h of hashes) for (const [k, v] of Object.entries(h || {})) sum[k] = (sum[k] || 0) + (Number(v) || 0);
+  return { days: perDay, window: scanCostDay("window", sum) };
+}
+
 export interface EventSeries {
   event: EventName;
   total: number;
