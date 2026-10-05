@@ -824,7 +824,79 @@ async function purgeStep() {
   report.push(`Counters before and after: ${JSON.stringify(out.counters || {})}.\n`);
 }
 
-const STEPS = { preflight, diagnose, photos: photosStep, scan: scanStep, replay: replayStep, purge: purgeStep };
+// ── link scans ───────────────────────────────────────────────────────────
+// run.links = [{ id, url, intent, kind }]: each page scanned through the real
+// production link path as an evaluation scan, under run.linkCapUsd all-in
+// (the same rule as the scan step: a scan is started only if even an
+// expensive one cannot cross it). Beside each result, what the page itself
+// shows, read here on the runner (title, stated brand, price and currency
+// from its own structured data), so the match can be judged against it.
+async function pageFacts(url) {
+  try {
+    const res = await get(url, { accept: "text/html" });
+    const html = await res.text();
+    const meta = (key) => html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${key}["'][^>]*content=["']([^"']*)["']`, "i"))?.[1] || "";
+    let ld = {};
+    for (const block of html.match(/<script[^>]+application\/ld\+json[^>]*>[\s\S]*?<\/script>/gi) || []) {
+      try {
+        const parsed = JSON.parse(block.replace(/^<script[^>]*>|<\/script>$/gi, "").trim());
+        const nodes = Array.isArray(parsed) ? parsed : (parsed["@graph"] || [parsed]);
+        const product = nodes.find(n => n?.["@type"] === "Product" || (Array.isArray(n?.["@type"]) && n["@type"].includes("Product")));
+        if (product) { ld = product; break; }
+      } catch { /* not JSON */ }
+    }
+    const offer = Array.isArray(ld.offers) ? ld.offers[0] : ld.offers;
+    const brand = typeof ld.brand === "string" ? ld.brand : ld.brand?.name || meta("product:brand") || "";
+    return {
+      read: true, title: (ld.name || meta("og:title") || (html.match(/<title>([^<]*)<\/title>/i)?.[1] || "")).trim().slice(0, 160),
+      brand, price: offer?.price ?? meta("product:price:amount") ?? null, currency: offer?.priceCurrency || meta("product:price:currency") || "",
+    };
+  } catch (err) {
+    return { read: false, error: String(err?.message || err).slice(0, 160) };
+  }
+}
+
+async function linksStep() {
+  const links = Array.isArray(run.links) ? run.links : [];
+  const cap = Number(run.linkCapUsd) || 0.2;
+  let spent = 0, dearest = 0, stopped = "";
+  const out = [];
+  for (const link of links) {
+    const next = Math.max(0.08, dearest * 1.5);
+    if (spent + next > cap) { stopped = `the link cap of $${cap.toFixed(2)} could be crossed by the next scan ($${spent.toFixed(4)} spent)`; break; }
+    if (!canSpend(next)) { stopped = "the spend cap for this run was reached"; break; }
+    log(`link ${link.id}`);
+    const page = await pageFacts(link.url);
+    const res = await operator("/api/scan", {
+      method: "POST", body: JSON.stringify({ url: link.url, intent: link.intent || "verdict" }),
+      headers: { "content-type": "application/json", "x-bustedlab-eval": "1" },
+    }, 160_000);
+    const trace = res.json?.evaluation?.trace;
+    const cost = scanCost(trace);
+    spend.claudeUsd += cost.claude;
+    spend.serpapiSearches += cost.serpapi;
+    spend.serperCredits += cost.serperCredits;
+    spent += cost.usd;
+    dearest = Math.max(dearest, cost.usd);
+    const identified = (trace?.steps || []).filter(x => x.step === "settled").pop();
+    out.push({ ...link, page, status: res.status, ms: res.ms, json: res.json, text: res.text || undefined, matched: identified ? { title: identified.title, source: identified.source, confidence: identified.confidence } : null, costUsd: +cost.usd.toFixed(6), claudeUsd: cost.claude });
+    await sleep(3000);
+  }
+  results.links = out;
+  report.push("## Link scans\n");
+  if (stopped) report.push(`Stopped early: ${stopped}.\n`);
+  report.push(`Link scan spend, all-in: $${spent.toFixed(4)} of its $${cap.toFixed(2)} cap.\n`);
+  report.push("| link | kind | the page shows | mode | confidence | matched listing | source price | verdict | escalation | $ Claude | $ all-in | ms |", "|---|---|---|---|---|---|---|---|---|---|---|---|");
+  for (const l of out) {
+    const r = l.json || {};
+    const t = r.evaluation?.trace || {};
+    const shows = l.page.read ? `${escapeMd(l.page.title).slice(0, 60)} (brand ${escapeMd(l.page.brand || "none stated")}, ${l.page.price ?? "no price"} ${l.page.currency || ""})` : `could not read: ${escapeMd(l.page.error)}`;
+    report.push(`| ${l.id} | ${l.kind || ""} | ${shows} | ${r.mode || r.error || l.status} | ${r.matchConfidence || ""} | ${escapeMd(l.matched?.title || "").slice(0, 60)}${l.matched?.source ? ` @${escapeMd(l.matched.source)}` : ""} | ${r.sourceProduct?.price ? `$${r.sourceProduct.price}` : ""} | ${r.analysis?.verdict || ""} | ${escalationOf(t)} | ${(l.claudeUsd || 0).toFixed(4)} | ${l.costUsd.toFixed(4)} | ${l.ms ?? ""} |`);
+  }
+  report.push("");
+}
+
+const STEPS = { preflight, diagnose, photos: photosStep, scan: scanStep, links: linksStep, replay: replayStep, purge: purgeStep };
 
 // ── main ─────────────────────────────────────────────────────────────────
 if (!TOKEN) {

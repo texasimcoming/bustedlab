@@ -306,7 +306,7 @@ globalThis.fetch = async (input, init = {}) => {
     return new Response(Buffer.from(`IMG::${url}`), { status: 200, headers: { "content-type": "image/jpeg" } });
   }
   if (url.startsWith("https://shop.test/")) {
-    return new Response(PAGE_HTML, { status: 200, headers: { "content-type": "text/html" } });
+    return new Response(scenario.pageHtml || PAGE_HTML, { status: 200, headers: { "content-type": "text/html" } });
   }
   if (url.startsWith("https://serpapi.com/account.json")) return json({ total_searches_left: scenario.serpApiLeft ?? 200 });
   if (url.startsWith("https://serpapi.com/search.json")) {
@@ -415,6 +415,19 @@ section("URL SCAN");
   auditBodies("url scan", bodies);
   check("page text read on Sonnet 5.5", bodies.some(b => canonical(b.model) === SONNET && textOf(b).includes("Extract the product name and price")), models(bodies));
   check("the url scan identified the cap", result.matchConfidence === "exact", summary(result));
+}
+{
+  // The page's own product data names its brand, and the match guards
+  // compare listings with it as with a brand read off a photo: an Acme
+  // listing is not a Zeta cap, whatever the gate answers.
+  const branded = (brand) => PAGE_HTML.replace("</head>",
+    `<script type="application/ld+json">{"@type":"Product","name":"Trail Cap, Olive","brand":{"@type":"Brand","name":"${brand}"}}</script></head>`);
+  const same = await scan({ pageHtml: branded("Acme") }, () => engine.scanProductUrl("https://shop.test/acme-trail-cap", "us", "verdict"));
+  check("a link scan whose page states the brand the listings carry still identifies the cap", same.result.matchConfidence === "exact", summary(same.result));
+  const other = await scan({ pageHtml: branded("Zeta") }, () => engine.scanProductUrl("https://shop.test/zeta-trail-cap", "us", "verdict"));
+  check("a link scan whose page states another brand: the Acme listing is held by the brand veto, never a match", other.result.matchConfidence === "unverified", summary(other.result));
+  const generic = await scan({ pageHtml: branded("Generic") }, () => engine.scanProductUrl("https://shop.test/generic-trail-cap", "us", "verdict"));
+  check("a stated brand of 'Generic' is no brand: nothing to compare, the cap is identified", generic.result.matchConfidence === "exact", summary(generic.result));
 }
 
 // 5. Every reply opens with a thinking block, as the 5.5 models' do.
@@ -526,6 +539,13 @@ section("NOTHING FOUND IS NOT AN ERROR");
 }
 
 section("BUDGET MODE: SERPER FIRST, SERPAPI ONLY AS A BACKUP ABOVE ITS RESERVE");
+{
+  // SAME-MARKET VERDICTS: the cap's listings are in dollars.
+  const euro = { ...READ, currency: "EUR" };
+  const { result } = await scan({ extract: { [SONNET]: euro, [OPUS]: euro } });
+  check("a euro asking price against dollar listings: identified, the cheapest-link card, no verdict",
+    result.matchConfidence === "exact" && result.mode === "FINDER" && result.analysis.verdict === "UNVERIFIED", summary(result));
+}
 {
   const { result, serpApi } = await scan({});
   check("a clean scan identifies the cap through Serper's Lens", result.matchConfidence === "exact" && /lens_serper/.test(result.engineUsed), `${summary(result)} via ${result.engineUsed}`);

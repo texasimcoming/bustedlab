@@ -1,6 +1,6 @@
 # BustedLab: project memory
 
-As of 2 October 2026, updated 4 October 2026. These are the owner's facts and decisions. Do not add claims here that the owner has not made.
+As of 2 October 2026, updated 5 October 2026. These are the owner's facts and decisions. Do not add claims here that the owner has not made.
 
 ## What it is
 
@@ -43,6 +43,8 @@ Never change or remove these. If a change would touch one, flag it and ask.
 - Opus 5.5 for fallback and escalation.
 - No sampling parameters. Adaptive thinking is always on. Read replies by block type.
 - The rules live in `src/lib/model-rules.ts`.
+- Same-market verdicts: a scan gets a verdict (BUSTED / OVERPRICED / FAIR PRICE) only when the source listing's price is in the same currency as the asking price (the screenshot's, or the scanned page's). A euro screenshot against a rupiah store, or a dirham one against a US listing, gets the cheapest-link card with the regional-shipping note and no verdict; both prices are still converted for display. Why: regional prices, VAT and shipping make a cross-border gap unreliable to accuse a seller on. See SAME-MARKET VERDICTS in `src/lib/scan.ts`.
+- Link scans take the brand the page's own product data states (schema.org brand or product:brand, never "Generic" or "Unbranded"), and the match guards compare listings with it as with a brand read off a photo.
 - Search: Serper is primary, SerpApi is the backup.
 - Escalation policy: the cheapest provider first, the better one when the cheap one cannot verify. Serper's Lens answers first; when nothing it found survives the gate and the match guards, SerpApi's Lens is asked once, only while SerpApi is above its reserve with a known balance, never on a degraded day. See ESCALATION in `src/lib/scan.ts`.
 - Match guards (`src/lib/match-guards.ts`) hold every gate answer in code. "Exact" and "likely" are refused when:
