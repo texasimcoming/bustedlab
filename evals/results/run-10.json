@@ -1,0 +1,589 @@
+{
+  "run": 10,
+  "note": "One hardened price parser and the 50-times plausibility gap (PR #25, merge 8cda9f6; diagnose passed on it in the watchdog's deploy run): the Stanley euro screenshot once more. Run 9 read Stanley's European store's \"55,00\" as 5,500 euros. Every cap at $0.06 all-in, inside the prompt's $0.10 of Claude.",
+  "base": "https://www.bustedlab.com",
+  "startedAt": "2026-10-05T14:48:54.483Z",
+  "steps": {
+    "preflight": {
+      "status": 200,
+      "ms": 830,
+      "json": {
+        "ready": true,
+        "environment": "production",
+        "blockers": [],
+        "warnings": [
+          {
+            "check": "email",
+            "detail": "The Resend key is send-only, so the domain could not be checked. Confirm bustedlab.com shows as verified in Resend."
+          }
+        ],
+        "ok": [
+          "redis",
+          "checkout (lemonsqueezy, overlay)",
+          "base url",
+          "model key",
+          "search key",
+          "identity salt"
+        ],
+        "next": "GET /api/diagnose with the same token: real calls to every model and provider",
+        "limits": {
+          "dailyModelBudgetUsd": 2,
+          "paidScansPerAccountPerDay": 500,
+          "freeUncachedScansPerDay": 50
+        }
+      },
+      "text": ""
+    }
+  },
+  "photos": {
+    "stanley-quencher-eur": {
+      "source": {
+        "shopify": "https://eu.stanley1913.com/fr/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+        "currency": "EUR"
+      },
+      "page": "https://eu.stanley1913.com/fr/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+      "title": "Quencher® H2.0 FlowState™ Tumbler | 1.18L",
+      "license": "",
+      "author": "",
+      "description": "",
+      "askingPrice": {
+        "amount": 55,
+        "currency": "EUR"
+      },
+      "width": 1080,
+      "height": 2340,
+      "bytes": 98583,
+      "sha256": "dddeaf7ed99b290a"
+    }
+  },
+  "scans": [
+    {
+      "caseId": "stanley-quencher-eur",
+      "intent": "verdict",
+      "status": 200,
+      "ms": 16845,
+      "json": {
+        "found": false,
+        "mode": "UNRESOLVED",
+        "priceSource": "estimated",
+        "engineUsed": "none",
+        "matchConfidence": "unverified",
+        "category": "other",
+        "sourceProduct": {
+          "title": "Product not identified",
+          "price": 0,
+          "currency": "USD",
+          "imageUrl": "",
+          "productUrl": "",
+          "affiliateUrl": "",
+          "platform": "unknown"
+        },
+        "analysis": {
+          "retailEstimate": 0,
+          "retailSource": "estimated",
+          "markup": 0,
+          "verdict": "UNVERIFIED",
+          "savings": 0,
+          "savingsPercent": 0,
+          "confidence": "low"
+        },
+        "scanId": null,
+        "scanRef": "muvd8apue8dc3ccaf334a2de1119e0af",
+        "evaluation": {
+          "cached": false,
+          "ms": 16648,
+          "trace": {
+            "totalMs": 16569,
+            "claudeUsd": 0.026322,
+            "searchesByProvider": {
+              "serper": 3
+            },
+            "creditsByProvider": {
+              "serper": 7
+            },
+            "cache": {
+              "readTokens": 4434,
+              "writeTokens": 1478,
+              "uncachedInputTokens": 6815,
+              "callsReading": 3,
+              "calls": 4
+            },
+            "msByLayer": {
+              "model:extraction": 1980,
+              "model:gate": 8550,
+              "search:lens": 1393,
+              "search:shopping": 3518
+            },
+            "thinkingPerCall": 83,
+            "calls": [
+              {
+                "layer": "extraction",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 1980,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 960,
+                "outputTokens": 168,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 1478,
+                "costUsd": 0.007295,
+                "stopReason": "end_turn",
+                "thinkingApprox": 86
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 3465,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2040,
+                "outputTokens": 282,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.007195600000000001,
+                "stopReason": "end_turn",
+                "thinkingApprox": 102
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2711,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 2356,
+                "outputTokens": 252,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.007527600000000001,
+                "stopReason": "end_turn",
+                "thinkingApprox": 105
+              },
+              {
+                "layer": "gate",
+                "model": "claude-sonnet-5-5",
+                "effort": "low",
+                "ms": 2374,
+                "status": 200,
+                "kind": "ok",
+                "inputTokens": 1459,
+                "outputTokens": 109,
+                "cacheReadTokens": 1478,
+                "cacheWriteTokens": 0,
+                "costUsd": 0.0043036,
+                "stopReason": "end_turn",
+                "thinkingApprox": 38
+              }
+            ],
+            "searches": [
+              {
+                "layer": "lens",
+                "provider": "serper",
+                "engine": "lens",
+                "ms": 1393,
+                "status": 200,
+                "credits": 3
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 878,
+                "status": 200,
+                "credits": 2
+              },
+              {
+                "layer": "shopping",
+                "provider": "serper",
+                "engine": "shopping",
+                "ms": 2640,
+                "status": 200,
+                "credits": 2
+              }
+            ],
+            "failures": [],
+            "steps": [
+              {
+                "step": "extraction",
+                "at": 2167,
+                "brand": "Stanley",
+                "productName": "Quencher H2.0 FlowState Tumbler 1.18L",
+                "visiblePrice": 55,
+                "currency": "EUR",
+                "quantity": "1 unit",
+                "category": "home",
+                "storeName": "Stanley 1913",
+                "visibleUrl": "eu.stanley1913.com",
+                "imageQuality": "good"
+              },
+              {
+                "step": "serper_lens",
+                "at": 3642,
+                "list": "organic",
+                "rows": 11,
+                "usable": 11,
+                "priced": 0,
+                "fields": [
+                  "title",
+                  "source",
+                  "link",
+                  "imageUrl",
+                  "thumbnailUrl"
+                ],
+                "topLevel": [
+                  "searchParameters",
+                  "organic",
+                  "credits"
+                ]
+              },
+              {
+                "step": "lens",
+                "at": 3690,
+                "engine": "serper",
+                "candidates": 11,
+                "top": [
+                  {
+                    "rank": 0,
+                    "title": "New Arrivals: The Latest Stanley 1913 Cups | Stanley 1913 – Stanley 1913 UK",
+                    "source": "Stanley 1913",
+                    "price": 0,
+                    "link": "https://uk.stanley1913.com/collections/stanley-new-arrivals",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRHqqX0PH8fmmH8W-Mra61TP3T-3VVaQsNcJS3Pd6RnDcKpgTow"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Stanley releases new Quencher tumbler in pastel colors ahead of spring - syracuse.com",
+                    "source": "Syracuse.com",
+                    "price": 0,
+                    "link": "https://www.syracuse.com/shopping/2024/01/stanley-releases-new-quencher-tumbler-in-pastel-colors-ahead-of-spring.html",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSjdU2WzJdwwt6qNNUEg8CSnJw7-5qehb1hZ0lKTXDcso4_qPhj"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "New Stanley 40oz available in store!",
+                    "source": "Facebook",
+                    "price": 0,
+                    "link": "https://www.facebook.com/southparktt/posts/new-stanley-40oz-available-in-store/1311086384387399/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcR_P_eOBsByE-EIfSQeAEqtMYbcRVmB2p2Qiq-x7OsgF0XWer9G"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Stanley Laser Engrave Design 30oz Engraved Stanley Tumblers L4 Laser Engraving And Metal Art",
+                    "source": "lesaviateurs.fr",
+                    "price": 0,
+                    "link": "https://lesaviateurs.fr/product/category/27696612041240",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQzwiYkqhQ-mA67GuKAho0eQ888xhyLxLV6iApGxp5QgAbFyjBp"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "TEMPLE BAPTIST SCHOOL ASHEVILLE, NC - Accessories | Jostens",
+                    "source": "Jostens",
+                    "price": 0,
+                    "link": "https://www.jostens.com/apps/store/productBrowse/1052379/TEMPLE-BAPTIST-SCHOOL/Graduation/3524183770/CATALOG_REPOSITORY/ACCESSORIES/",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSbMYIp7sybbSUxc4AmFcCSWMWE9Fbv0GfPF8qTPu3ZR-n9J4av"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Stanley Cups - JD Sports Malaysia",
+                    "source": "JD Sports Malaysia",
+                    "price": 0,
+                    "link": "https://www.jdsports.my/collections/brand-stanley",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTU4dmIQyg1nvqhIufe3N_hNuHlY1dagmnGnB6H1VqLq5uaaio6"
+                  },
+                  {
+                    "rank": 6,
+                    "title": "Rob Upton Photography (photobyrob) - Profile | Pinterest",
+                    "source": "Pinterest",
+                    "price": 0,
+                    "link": "https://www.pinterest.com/photobyrob/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcTitdkc5xfd-IRBWe2ieNAgfBHEOrHZnG-iMKek5xbef-o7fnQQ"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Stanley 1.2l – Find the best price",
+                    "source": "PriceSpy UK",
+                    "price": 0,
+                    "link": "https://pricespy.co.uk/s/stanley-12l/",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRESP_nKw13uReaUxnENHnVGO7rP6tYPQ8SkgvofmMfx9EAKVdX"
+                  },
+                  {
+                    "rank": 8,
+                    "title": "Ena Feriz Avdovic | Kad Stanley nije baš „spill proof“ 😅 Ako i tebi voda curi iz Stanley čaše čim je malo nagneš — ove ",
+                    "source": "Instagram",
+                    "price": 0,
+                    "link": "https://www.instagram.com/reel/Db-hyJzsPIB/",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSCPOHFZmjsafQgyGtXmv0FymgVy2241M4jRv0ZmANiBSIxFkoK"
+                  },
+                  {
+                    "rank": 9,
+                    "title": "TikTok viral products🔥",
+                    "source": "Benable",
+                    "price": 0,
+                    "link": "https://benable.com/styledbyallegra/tiktok-viral-products",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQn9CQPQ1M5m4WECuZ4TnjG2X6ujBBxedep6C9VkU4LXFF8Pf1s"
+                  },
+                  {
+                    "rank": 10,
+                    "title": "Shop Tumbler 40 Ounce Cheap – Fast & Easy | Lazada Philippines",
+                    "source": "Lazada Philippines",
+                    "price": 0,
+                    "link": "https://www.lazada.com.ph/tag/tumbler-40-ounce/",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTylri-0Zv-u7rdSHBlE72a8piqqWfB9WFDpevNFniGUmqAeT-U"
+                  }
+                ]
+              },
+              {
+                "step": "reuse",
+                "at": 3706,
+                "hit": false
+              },
+              {
+                "step": "gate",
+                "at": 7233,
+                "purpose": "identify",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 6,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "New Arrivals: The Latest Stanley 1913 Cups | Stanley 1913 – Stanley 1913 UK",
+                    "source": "Stanley 1913",
+                    "price": 0,
+                    "link": "https://uk.stanley1913.com/collections/stanley-new-arrivals",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRHqqX0PH8fmmH8W-Mra61TP3T-3VVaQsNcJS3Pd6RnDcKpgTow",
+                    "match": "exact",
+                    "tie": "logo",
+                    "why": "Stanley Quencher H2.0 in rose quartz, same shape and logo; retail listing on Stanley site"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Stanley releases new Quencher tumbler in pastel colors ahead of spring - syracuse.com",
+                    "source": "Syracuse.com",
+                    "price": 0,
+                    "link": "https://www.syracuse.com/shopping/2024/01/stanley-releases-new-quencher-tumbler-in-pastel-colors-ahead-of-spring.html",
+                    "image": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSjdU2WzJdwwt6qNNUEg8CSnJw7-5qehb1hZ0lKTXDcso4_qPhj",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "news article, not a product listing"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Stanley Laser Engrave Design 30oz Engraved Stanley Tumblers L4 Laser Engraving And Metal Art",
+                    "source": "lesaviateurs.fr",
+                    "price": 0,
+                    "link": "https://lesaviateurs.fr/product/category/27696612041240",
+                    "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQzwiYkqhQ-mA67GuKAho0eQ888xhyLxLV6iApGxp5QgAbFyjBp",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "title is about laser engraving, not this product listing"
+                  },
+                  {
+                    "rank": 5,
+                    "title": "Stanley Cups - JD Sports Malaysia",
+                    "source": "JD Sports Malaysia",
+                    "price": 0,
+                    "link": "https://www.jdsports.my/collections/brand-stanley",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTU4dmIQyg1nvqhIufe3N_hNuHlY1dagmnGnB6H1VqLq5uaaio6",
+                    "match": "likely",
+                    "tie": "logo",
+                    "why": "Stanley Quencher in pale pink; retail listing, size not confirmed"
+                  },
+                  {
+                    "rank": 7,
+                    "title": "Stanley 1.2l – Find the best price",
+                    "source": "PriceSpy UK",
+                    "price": 0,
+                    "link": "https://pricespy.co.uk/s/stanley-12l/",
+                    "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRESP_nKw13uReaUxnENHnVGO7rP6tYPQ8SkgvofmMfx9EAKVdX",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "bundle with carry-all accessory, 1.2L title; different product set"
+                  },
+                  {
+                    "rank": 4,
+                    "title": "TEMPLE BAPTIST SCHOOL ASHEVILLE, NC - Accessories | Jostens",
+                    "source": "Jostens",
+                    "price": 0,
+                    "link": "https://www.jostens.com/apps/store/productBrowse/1052379/TEMPLE-BAPTIST-SCHOOL/Graduation/3524183770/CATALOG_REPOSITORY/ACCESSORIES/",
+                    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSbMYIp7sybbSUxc4AmFcCSWMWE9Fbv0GfPF8qTPu3ZR-n9J4av",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "school accessories page, not a standard retail listing for this item"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 7233,
+                "purpose": "identify",
+                "confidence": "exact",
+                "rank": 0,
+                "title": "New Arrivals: The Latest Stanley 1913 Cups | Stanley 1913 – Stanley 1913 UK",
+                "source": "Stanley 1913",
+                "price": 0,
+                "link": "https://uk.stanley1913.com/collections/stanley-new-arrivals",
+                "image": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRHqqX0PH8fmmH8W-Mra61TP3T-3VVaQsNcJS3Pd6RnDcKpgTow"
+              },
+              {
+                "step": "page_price",
+                "at": 7812,
+                "tried": [
+                  {
+                    "url": "https://uk.stanley1913.com/collections/stanley-new-arrivals",
+                    "found": false,
+                    "amount": null,
+                    "currency": null
+                  }
+                ]
+              },
+              {
+                "step": "gate",
+                "at": 11473,
+                "purpose": "pricing",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 4,
+                "candidates": [
+                  {
+                    "rank": 0,
+                    "title": "Stanley 1913 x Antonela Quencher ProTour Flip Straw Tumbler",
+                    "source": "Stanley 1913",
+                    "price": 55,
+                    "link": "https://www.google.com/search?ibp=oshop&q=New+Arrivals%3A+The+Latest+Stanley+1913+Cups&prds=localAnnotatedOfferId:1,catalogid:4074228274921313382,gpcid:5770548523040400032,pvo:2,pvt:hg&gl=us&udm=28&pv",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcT0vNWSsHUZYTebxSssWfr8MfGlp9fCz4uOv0wGalxgU9AByhcYKyx_gBVEAUbYILdR7d00isBTBad4yiZsXHrk22pi99ovfstuxwwMlssXAzRxh7lxREkp",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Stanley Quencher ProTour with flip straw, green with pink handle; IMAGE A is the H2.0 FlowState in pale pink with a straw lid"
+                  },
+                  {
+                    "rank": 1,
+                    "title": "Stanley 1913 x LoveShackFancy Holiday The Everyday Cocoa Set",
+                    "source": "Stanley 1913",
+                    "price": 125,
+                    "link": "https://www.google.com/search?ibp=oshop&q=New+Arrivals%3A+The+Latest+Stanley+1913+Cups&prds=localAnnotatedOfferId:1,catalogid:2447486213271122715,gpcid:2810029595756601725,pvo:2,pvt:hg&gl=us&udm=28&pv",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcRLhlMbZM2cohXmp_nyG58gLbl62_1irh-D3gnXPuA19ntLp--Zm0XW0nwzzPDhAA9vHHROeEGSJ6E1kZbK03WVFHoxw5C-bbIe3ZO-4Ah-FUXh2eZDHz7c",
+                    "match": "different",
+                    "tie": "none",
+                    "why": "Thermos bottle and mugs set, not a tumbler"
+                  },
+                  {
+                    "rank": 2,
+                    "title": "Stanley Everyday Suburban Mug",
+                    "source": "Stanley 1913",
+                    "price": 40,
+                    "link": "https://www.google.com/search?ibp=oshop&q=New+Arrivals%3A+The+Latest+Stanley+1913+Cups&prds=localAnnotatedOfferId:1,catalogid:4021290577071434279,gpcid:18364957235031405141,pvo:2,pvt:hg&gl=us&udm=28&p",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcTvsJY0IgBZExUj-yMuvA4BWWo45dqhcexltae410XrlKs2cuoTuDKPK2XYBF7-wqz1JLZDFdt4e1N7s7jyUsg85YLPDwUS73gtEGXAJY4Ym9PPiKTfV-Te7Q",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Stanley travel mug with a different lid and handle shape, in orange"
+                  },
+                  {
+                    "rank": 3,
+                    "title": "Stanley 1913 x Loveshackfancy Holiday The Quencher ProTour Set 4-pack",
+                    "source": "Stanley 1913",
+                    "price": 250,
+                    "link": "https://www.google.com/search?ibp=oshop&q=New+Arrivals%3A+The+Latest+Stanley+1913+Cups&prds=localAnnotatedOfferId:1,catalogid:17414014462791017740,gpcid:5819189703853937988,pvo:2,pvt:hg&gl=us&udm=28&p",
+                    "image": "https://encrypted-tbn2.gstatic.com/shopping?q=tbn:ANd9GcRSbcWYH2gimMnRdKK3Ya4gZzH31UmjBmwdagFmeTdSHCKP0LH_gP_sYcNcZmUng3lq8A3VjyQngxUEjvIp6xqS5SSUwADE-QgN71zSi8QlOQhsn-0P3t2PMA",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Quencher ProTour 4-pack in LoveShackFancy patterns; the pink one has a flip lid and a different design than IMAGE A"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 11473,
+                "purpose": "pricing",
+                "confidence": "unverified",
+                "rank": 0,
+                "title": "Stanley 1913 x Antonela Quencher ProTour Flip Straw Tumbler",
+                "source": "Stanley 1913",
+                "price": 55,
+                "link": "https://www.google.com/search?ibp=oshop&q=New+Arrivals%3A+The+Latest+Stanley+1913+Cups&prds=localAnnotatedOfferId:1,catalogid:4074228274921313382,gpcid:5770548523040400032,pvo:2,pvt:hg&gl=us&udm=28&pv",
+                "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcT0vNWSsHUZYTebxSssWfr8MfGlp9fCz4uOv0wGalxgU9AByhcYKyx_gBVEAUbYILdR7d00isBTBad4yiZsXHrk22pi99ovfstuxwwMlssXAzRxh7lxREkp"
+              },
+              {
+                "step": "pricing",
+                "at": 11473,
+                "adopted": false,
+                "confidence": null
+              },
+              {
+                "step": "alternatives",
+                "at": 14114,
+                "retailerQuery": "New Arrivals: The Latest Stanley 1913 Cups",
+                "unbranded": 1,
+                "retailer": 0,
+                "retailerSource": null,
+                "retailerSweep": false
+              },
+              {
+                "step": "gate",
+                "at": 16568,
+                "purpose": "rebrand+retailer",
+                "judge": "claude-sonnet-5-5",
+                "loaded": 1,
+                "candidates": [
+                  {
+                    "rank": 7,
+                    "title": "Stanley NEW ADVENTURE THE QUENCHER H2.0 FLOWSTATE TUMBLER 40 OZ ROSE QUARTZ GLOW - New Home | Color: Pink",
+                    "source": "Mercari",
+                    "price": 76,
+                    "link": "",
+                    "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSaKM039NUPFAwo8yqOSIwNd_yyiQlXu_yNdvmHvMqMi4pZJ-BNBNROYlSYQj9Who0VJXARvfM3pQVZIhBa17Sgkfi4biKCoRIHQo3dcYiLwqui5gzgruqP2A",
+                    "match": "similar",
+                    "tie": "none",
+                    "why": "Same Stanley Quencher style, but the candidate is a darker mauve-brown metallic with a cream handle. Image A is pale pink with a matching pink handle and a tona"
+                  }
+                ]
+              },
+              {
+                "step": "settled",
+                "at": 16568,
+                "purpose": "rebrand+retailer",
+                "confidence": "unverified",
+                "rank": 7,
+                "title": "Stanley NEW ADVENTURE THE QUENCHER H2.0 FLOWSTATE TUMBLER 40 OZ ROSE QUARTZ GLOW - New Home | Color: Pink",
+                "source": "Mercari",
+                "price": 76,
+                "link": "",
+                "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSaKM039NUPFAwo8yqOSIwNd_yyiQlXu_yNdvmHvMqMi4pZJ-BNBNROYlSYQj9Who0VJXARvfM3pQVZIhBa17Sgkfi4biKCoRIHQo3dcYiLwqui5gzgruqP2A"
+              },
+              {
+                "step": "identified",
+                "at": 16568,
+                "engineUsed": "lens_serper",
+                "confidence": "exact",
+                "title": "New Arrivals: The Latest Stanley 1913 Cups | Stanley 1913 – Stanley 1913 UK",
+                "priced": false
+              }
+            ]
+          }
+        }
+      },
+      "classification": {
+        "label": "miss",
+        "detail": "no match"
+      },
+      "costUsd": 0.033322
+    }
+  ],
+  "freeAllowance": {
+    "before": 2,
+    "after": 2
+  },
+  "serpapiLeftAfter": null,
+  "scanSpendUsd": 0.033322,
+  "finishedAt": "2026-10-05T14:49:17.173Z",
+  "spend": {
+    "claudeUsd": 0.026322,
+    "serpapiSearches": 0,
+    "serperCredits": 7,
+    "serpapiPerSearch": 0.01,
+    "searchUsd": 0.007,
+    "totalUsd": 0.033322000000000004,
+    "spentBeforeUsd": 7.051500000000001,
+    "capUsd": 25
+  }
+}

@@ -25,6 +25,11 @@
  *                    listing"): never exact or likely, whatever it answered.
  *                    The replay in run 6 caught it answering "exact" on a
  *                    health-site article while writing exactly that.
+ *   collection_page  the listing's link is a collection, category or brand
+ *                    page (".../collections/new-arrivals", ".../category/...")
+ *                    with no product in its path: a page of many products is
+ *                    not this one, however alike the photos. Run 10 caught the
+ *                    gate answering "exact" on Stanley's "New Arrivals" page.
  *   model_missing    a brand was read, the read names a model (OLED, Pro,
  *                    Max, a model code like RB2132) and the listing does not:
  *                    never exact or likely. A plain "Nintendo Switch" listing
@@ -43,7 +48,7 @@ export type GateMatch = "exact" | "likely" | "similar" | "different";
 export const TIE_KINDS = ["logo", "text", "part", "photo", "none"] as const;
 export type TieKind = (typeof TIE_KINDS)[number];
 
-export type GuardName = "brand_veto" | "no_brand_likely" | "model_missing" | "part_listing" | "no_tie" | "not_for_sale";
+export type GuardName = "brand_veto" | "no_brand_likely" | "model_missing" | "part_listing" | "no_tie" | "not_for_sale" | "collection_page";
 
 export interface GuardCandidate {
   title: string;
@@ -161,6 +166,21 @@ export function reasonSaysNotForSale(why: string | undefined): boolean {
   return NOT_FOR_SALE.test(String(why || ""));
 }
 
+// A page of many products, and the path segments that name one product in it
+// (Shopify's /collections/x/products/y is one product).
+const COLLECTION_PATH = /\/(collections|category|categories|brand|brands)\/|productbrowse/i;
+const PRODUCT_PATH = /\/(products?|p|dp|ip|itm|item|listing|pd)\//i;
+
+/** Whether a listing's link is a collection, category or brand page rather than one product's page. */
+export function isCollectionPage(link: string): boolean {
+  try {
+    const path = new URL(link).pathname;
+    return COLLECTION_PATH.test(path) && !PRODUCT_PATH.test(path);
+  } catch {
+    return false;
+  }
+}
+
 /** The tie as a known kind; anything missing or unrecognised is "none". */
 export function readTie(raw: unknown): TieKind {
   const text = String(raw ?? "").trim().toLowerCase();
@@ -179,6 +199,7 @@ export function guardMatch(
   const { match } = answer;
   if (match !== "exact" && match !== "likely") return { match, guard: null };
   if (reasonSaysNotForSale(answer.why)) return { match: "similar", guard: "not_for_sale" };
+  if (isCollectionPage(candidate.link || "")) return { match: "similar", guard: "collection_page" };
   if (read.brand !== undefined) {
     const brand = String(read.brand).trim();
     if (squash(brand) && !carriesBrand(brand, candidate)) return { match: "similar", guard: "brand_veto" };

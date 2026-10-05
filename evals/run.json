@@ -1,15 +1,10 @@
 {
-  "run": 9,
-  "note": "Same-market verdicts and link-scan brand guards (PR #23, merge 38f1677; diagnose passed on it in the watchdog's deploy run): the Stanley euro screenshot once more (it should now be the cheapest-link card, not a verdict), then three production link scans: a small direct-to-consumer brand's own page, an Amazon product page, a niche brand's page. Run cap $0.25 all-in, inside the prompt's $0.30 of Claude ($0.0463 spent before this run).",
-  "steps": ["preflight", "photos", "scan", "links"],
-  "maxUsd": 0.25,
-  "scanCapUsd": 0.10,
-  "linkCapUsd": 0.18,
+  "run": 10,
+  "note": "One hardened price parser and the 50-times plausibility gap (PR #25, merge 8cda9f6; diagnose passed on it in the watchdog's deploy run): the Stanley euro screenshot once more. Run 9 read Stanley's European store's \"55,00\" as 5,500 euros. Every cap at $0.06 all-in, inside the prompt's $0.10 of Claude.",
+  "steps": ["preflight", "photos", "scan"],
+  "maxUsd": 0.06,
+  "scanCapUsd": 0.06,
+  "scanReserveUsd": 0.06,
   "cases": ["stanley-quencher-eur"],
-  "plan": [["stanley-quencher-eur", "verdict"]],
-  "links": [
-    { "id": "flowlife-flowgun-air", "kind": "small direct-to-consumer brand", "url": "https://www.flowlife.com/en-GB/product/flowgun-air", "intent": "verdict" },
-    { "id": "amazon-airpods-pro-2", "kind": "Amazon product page", "url": "https://www.amazon.com/dp/B0D1XD1ZV3", "intent": "verdict" },
-    { "id": "fellow-stagg-ekg", "kind": "niche brand", "url": "https://fellowproducts.com/products/stagg-ekg-electric-pour-over-kettle", "intent": "verdict" }
-  ]
+  "plan": [["stanley-quencher-eur", "verdict"]]
 }
