@@ -1,12 +1,15 @@
 {
-  "run": 8,
-  "note": "The two live scans run 7's cap held back (Stanley euro screenshot, silicone brush), on the same build (5fa0d34), under a $0.16 all-in scan cap that keeps the job's Claude total under $0.60 ($0.4128 spent before this run).",
-  "steps": ["preflight", "photos", "scan"],
-  "maxUsd": 0.17,
-  "scanCapUsd": 0.16,
-  "cases": ["stanley-quencher-eur", "silicone-pastry-brush"],
-  "plan": [
-    ["stanley-quencher-eur", "verdict"],
-    ["silicone-pastry-brush", "finder"]
+  "run": 9,
+  "note": "Same-market verdicts and link-scan brand guards (PR #23, merge 38f1677; diagnose passed on it in the watchdog's deploy run): the Stanley euro screenshot once more (it should now be the cheapest-link card, not a verdict), then three production link scans: a small direct-to-consumer brand's own page, an Amazon product page, a niche brand's page. Run cap $0.25 all-in, inside the prompt's $0.30 of Claude ($0.0463 spent before this run).",
+  "steps": ["preflight", "photos", "scan", "links"],
+  "maxUsd": 0.25,
+  "scanCapUsd": 0.10,
+  "linkCapUsd": 0.18,
+  "cases": ["stanley-quencher-eur"],
+  "plan": [["stanley-quencher-eur", "verdict"]],
+  "links": [
+    { "id": "flowlife-flowgun-air", "kind": "small direct-to-consumer brand", "url": "https://www.flowlife.com/en-GB/product/flowgun-air", "intent": "verdict" },
+    { "id": "amazon-airpods-pro-2", "kind": "Amazon product page", "url": "https://www.amazon.com/dp/B0D1XD1ZV3", "intent": "verdict" },
+    { "id": "fellow-stagg-ekg", "kind": "niche brand", "url": "https://fellowproducts.com/products/stagg-ekg-electric-pour-over-kettle", "intent": "verdict" }
   ]
 }
