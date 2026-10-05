@@ -9,6 +9,7 @@ import { conversionNote, shareCaption } from "@/lib/verdict-copy";
 interface ScanResult {
   found: boolean;
   shippingNote?: string;
+  priceNote?: string;
   /** Present once the verdict has a permanent record in the ledger. */
   scanId?: string | null;
   /** What a "wrong product" report is filed against: the ledger id, or a reference for this answer. */
@@ -408,6 +409,11 @@ export default function ResultsPage({
                 {mode === "VERDICT" && an.retailOriginal && (
                   <p style={{ fontSize: "10px", color: "rgba(238,238,246,0.4)", textAlign: "center", marginBottom: "8px", lineHeight: "1.5" }}>
                     {conversionNote(an.retailOriginal)}
+                  </p>
+                )}
+                {result.priceNote && (
+                  <p style={{ fontSize: "10px", color: "rgba(238,238,246,0.4)", textAlign: "center", marginBottom: "8px", lineHeight: "1.5" }}>
+                    {result.priceNote}
                   </p>
                 )}
                 {result.shippingNote && (

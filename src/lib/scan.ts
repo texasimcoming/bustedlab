@@ -544,6 +544,8 @@ export interface ScanResult {
   // tomorrow." undefined when the requester is in the US (search already
   // matches their own market) or when there's no linked source to caveat.
   shippingNote?: string;
+  /** Why a scan that could have had a verdict has none: PLAUSIBLE GAP. */
+  priceNote?: string;
   sourceProduct: {
     title: string;
     price: number;
@@ -736,6 +738,24 @@ function statedCurrencyOf(c: ShoppingCandidate): string {
   return normalizeCurrency(c.statedCurrency || c.currency) || "USD";
 }
 
+/**
+ * A listing's price as a search provider gives it: the provider's own price
+ * text, read by parsePrice, checked against the number the provider
+ * extracted from that text. When both are there they must agree, or the
+ * format was ambiguous and neither is trusted; a number alone (no text with
+ * digits in it) is taken as given. 0 when there is no price.
+ */
+export function listedPrice(text: unknown, extracted: unknown, currencyHint?: unknown): { amount: number; currency: string } {
+  const read = parsePrice(text, currencyHint);
+  const theirs = typeof extracted === "number" && Number.isFinite(extracted) && extracted > 0 ? extracted : null;
+  const written = typeof text === "string" || typeof text === "number" ? /\d/.test(String(text)) : false;
+  let amount: number | null;
+  if (!written) amount = theirs;
+  else if (read.amount === null || theirs === null) amount = read.amount;
+  else amount = Math.abs(read.amount - theirs) <= Math.max(0.01, theirs * 0.01) ? read.amount : null;
+  return { amount: amount && amount > 0 ? amount : 0, currency: read.currency };
+}
+
 // ════════════════════════════════════════════════════════════════
 // SAME-MARKET VERDICTS.
 //
@@ -753,6 +773,25 @@ export function sameMarket(askingCurrency: string | null | undefined, sourceCurr
   const asking = normalizeCurrency(askingCurrency || "") || "";
   const source = normalizeCurrency(sourceCurrency || "") || "";
   return !!asking && asking === source;
+}
+
+// ════════════════════════════════════════════════════════════════
+// PLAUSIBLE GAP.
+//
+// A misread price is off by a factor, not by a few percent: "55,00" read as
+// 5,500 is 100 times too high, and a lost decimal point or the wrong
+// currency is 100 or 1,000 times off. A gap of more than 50 times between
+// the asking price and the source price, in either direction, is far more
+// likely a misread than a markup, so no verdict is made on it. The scan
+// returns the cheapest-link card with a short note instead.
+// ════════════════════════════════════════════════════════════════
+export const IMPLAUSIBLE_GAP = 50;
+export const IMPLAUSIBLE_GAP_NOTE = "These two prices are too far apart to compare, so there is no verdict. Check both listings.";
+
+/** Whether two prices in the same currency (USD here) are more than IMPLAUSIBLE_GAP times apart. */
+export function implausibleGap(askingUsd: number, sourceUsd: number): boolean {
+  if (!(askingUsd > 0) || !(sourceUsd > 0)) return false;
+  return Math.max(askingUsd / sourceUsd, sourceUsd / askingUsd) > IMPLAUSIBLE_GAP;
 }
 
 /** The regional-shipping note; always present when the source is from another market. */
@@ -924,9 +963,7 @@ async function readFromImage(
  * a string or a currency as a symbol, and both used to flow through as-is.
  */
 function cleanExtraction(read: VisionExtraction): VisionExtraction {
-  const price = typeof read.visiblePrice === "number" ? read.visiblePrice
-    : typeof read.visiblePrice === "string" ? parsePrice(read.visiblePrice).amount
-    : 0;
+  const price = parsePrice(read.visiblePrice, read.currency).amount ?? 0;
   return {
     ...read,
     productName: String(read.productName || ""),
@@ -1292,10 +1329,10 @@ async function searchLensViaSerpApi(imageUrl: string, severity: Severity = "iden
       seen.add(dedupeKey);
 
       const price = m.price as { extracted_value?: number; currency?: string; value?: string } | undefined;
-      const extracted = typeof price?.extracted_value === "number" ? price.extracted_value : 0;
+      const listed = listedPrice(price?.value, price?.extracted_value, price?.currency);
       candidates.push({
-        price: extracted > 0.5 ? extracted : 0,
-        currency: normalizeCurrency(price?.currency) || parsePrice(price?.value).currency || undefined,
+        price: listed.amount > 0.5 ? listed.amount : 0,
+        currency: normalizeCurrency(price?.currency) || listed.currency || undefined,
         title: String(m.title || ""),
         imageUrl,
         productUrl,
@@ -1376,9 +1413,7 @@ async function searchLensViaSerper(imageUrl: string): Promise<ShoppingMatch | nu
       const dedupeKey = productUrl || image;
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
-      const listed = typeof m.extractedPrice === "number"
-        ? { amount: m.extractedPrice as number, currency: parsePrice(m.price).currency }
-        : parsePrice(m.price);
+      const listed = listedPrice(m.price, m.extractedPrice);
       candidates.push({
         price: listed.amount > 0.5 ? listed.amount : 0,
         currency: listed.currency || undefined,
@@ -1475,14 +1510,17 @@ async function searchShoppingViaSerper(query: string, severity: Severity = "iden
     // cheapest CONFIRMED row is still what wins — chosen after
     // identification, in verifyCandidates, rather than before it.
     const priced = ((data.shopping || []) as Record<string, unknown>[])
-      .map((r) => ({
-        price: parsePrice(r.price).amount,
-        currency: parsePrice(r.price).currency || undefined,
-        title: String(r.title || ""),
-        imageUrl: String(r.imageUrl || r.thumbnailUrl || ""),
-        productUrl: String(r.link || ""),
-        source: String(r.source || ""),
-      }))
+      .map((r) => {
+        const listed = listedPrice(r.price, r.extractedPrice);
+        return {
+          price: listed.amount,
+          currency: listed.currency || undefined,
+          title: String(r.title || ""),
+          imageUrl: String(r.imageUrl || r.thumbnailUrl || ""),
+          productUrl: String(r.link || ""),
+          source: String(r.source || ""),
+        };
+      })
       .filter((r) => r.price > 0.5 && r.imageUrl);
     const results: ShoppingCandidate[] = priced.map((r, i) => ({ ...r, rank: i }));
 
@@ -1508,10 +1546,11 @@ async function searchShoppingViaSerpApi(query: string, severity: Severity = "ide
     // Relevance order preserved, price sort removed — same reasoning as
     // the Serper shopping path above.
     const results: ShoppingCandidate[] = ((data.shopping_results || []) as Record<string, unknown>[])
-      .filter((r) => typeof r.extracted_price === "number" && (r.extracted_price as number) > 0.5 && r.thumbnail)
-      .map((r, i) => ({
-        price: r.extracted_price as number,
-        currency: parsePrice(r.price).currency || undefined,
+      .map((r) => ({ row: r, listed: listedPrice(r.price, r.extracted_price) }))
+      .filter(({ row, listed }) => listed.amount > 0.5 && row.thumbnail)
+      .map(({ row: r, listed }, i) => ({
+        price: listed.amount,
+        currency: listed.currency || undefined,
         title: String(r.title || ""),
         imageUrl: String(r.thumbnail || ""),
         productUrl: String(r.product_link || r.link || ""),
@@ -1566,9 +1605,10 @@ const DIRECT_RETAILERS: RetailerProvider[] = [
     parse: (data) => {
       const results = (data.organic_results as Record<string, unknown>[]) || [];
       return results
-        .filter(r => typeof r.extracted_price === "number" && (r.extracted_price as number) > 0.5 && r.thumbnail)
-        .map(r => ({
-          price: r.extracted_price as number,
+        .map(r => ({ r, price: listedPrice(r.price, r.extracted_price).amount }))
+        .filter(({ r, price }) => price > 0.5 && r.thumbnail)
+        .map(({ r, price }) => ({
+          price,
           title: String(r.title || ""),
           imageUrl: String(r.thumbnail || ""),
           productUrl: String(r.link || r.link_clean || ""),
@@ -2831,15 +2871,15 @@ function extractCanonicalOfferPrice(offers: unknown): number | null {
     });
     const pool = candidates.length > 0 ? candidates : offers;
     const prices = pool
-      .map((o: Record<string, unknown>) => parseFloat(String(o?.price ?? "")))
-      .filter((p: number) => !isNaN(p) && p > 0);
+      .map((o: Record<string, unknown>) => parsePrice(o?.price, o?.priceCurrency).amount)
+      .filter((p): p is number => p !== null && p > 0);
     return prices.length > 0 ? Math.max(...prices) : null;
   }
 
   const single = offers as Record<string, unknown>;
   if (typeof single.price !== "undefined") {
-    const p = parseFloat(String(single.price));
-    return !isNaN(p) && p > 0 ? p : null;
+    const p = parsePrice(single.price, single.priceCurrency).amount;
+    return p !== null && p > 0 ? p : null;
   }
 
   return null;
@@ -2853,20 +2893,23 @@ function extractMicrodataPrice(html: string): { price: number | null; currency: 
     html.match(/itemprop=["']priceCurrency["'][^>]*content=["']([^"']+)["']/i) ||
     html.match(/content=["']([^"']+)["'][^>]*itemprop=["']priceCurrency["']/i);
 
-  const price = priceMatch ? parseFloat(priceMatch[1].replace(/[^0-9.]/g, "")) : null;
+  const currency = currencyMatch ? currencyMatch[1] : null;
+  const price = priceMatch ? parsePrice(priceMatch[1], currency).amount : null;
   return {
     price: price && price > 0 ? price : null,
-    currency: currencyMatch ? currencyMatch[1] : null,
+    currency,
   };
 }
 
 function extractMetaProduct(html: string): Partial<PageProductData> {
   const priceRaw = extractMetaContent(html, "product:price:amount") || extractMetaContent(html, "og:price:amount");
+  const currency = extractMetaContent(html, "product:price:currency") || extractMetaContent(html, "og:price:currency") || undefined;
+  const price = priceRaw ? parsePrice(priceRaw, currency).amount : null;
   return {
     title: extractMetaContent(html, "og:title") || undefined,
     brand: brandName(extractMetaContent(html, "product:brand") || extractMetaContent(html, "og:brand") || ""),
-    price: priceRaw ? parseFloat(priceRaw.replace(/[^0-9.]/g, "")) : null,
-    currency: extractMetaContent(html, "product:price:currency") || extractMetaContent(html, "og:price:currency") || undefined,
+    price: price && price > 0 ? price : null,
+    currency,
     imageUrl: extractMetaContent(html, "og:image") || undefined,
     description: extractMetaContent(html, "og:description") || extractMetaContent(html, "description") || undefined,
   };
@@ -2907,7 +2950,7 @@ ${text}`,
   }
   return {
     title: typeof parsed.title === "string" && parsed.title ? parsed.title : undefined,
-    price: typeof parsed.price === "number" ? parsed.price : null,
+    price: parsePrice(parsed.price, parsed.currency).amount || null,
     currency: normalizeCurrency(parsed.currency) || undefined,
   };
 }
@@ -3433,6 +3476,9 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   if (retailPriceWasObserved && hasSourcePrice) {
     traceStep("market", { asking: askingCurrency, source: shopping?.priceCurrency ?? null, same: !crossMarket });
   }
+  // PLAUSIBLE GAP: two real prices more than 50 times apart are not compared.
+  const gapImplausible = retailPriceWasObserved && hasSourcePrice && implausibleGap(retailPrice, wholesalePrice);
+  if (gapImplausible) traceStep("plausibility", { askingUsd: retailPrice, sourceUsd: wholesalePrice, limit: IMPLAUSIBLE_GAP });
   // "Where is it cheapest?" is an explicit request to skip the markup
   // framing entirely, even when a confirmed verdict would otherwise be
   // possible. It is a display choice the visitor made, not an accuracy
@@ -3440,7 +3486,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   // applying when something else already failed.
   const mode: ScanResult["mode"] =
     intent === "finder" ? (engineHadRealMatch ? "FINDER" : "UNRESOLVED")
-    : engineHadRealMatch && confidence !== "unverified" && pricingSupportsVerdict && retailPriceWasObserved && !crossMarket ? "VERDICT"
+    : engineHadRealMatch && confidence !== "unverified" && pricingSupportsVerdict && retailPriceWasObserved && !crossMarket && !gapImplausible ? "VERDICT"
     : engineHadRealMatch ? "FINDER"
     : "UNRESOLVED";
 
@@ -3464,6 +3510,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
     matchConfidence: confidence,
     category: vision.category || "other",
     shippingNote: regionalNote(resolvedUrl, requesterCountry, crossMarket),
+    ...(gapImplausible ? { priceNote: IMPLAUSIBLE_GAP_NOTE } : {}),
     sourceProduct: {
       title: cleanTitle(shopping?.title || discoveredPage?.title || vision.productName) || "Similar product found",
       price: parseFloat(wholesalePrice.toFixed(2)),
@@ -3669,6 +3716,9 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
     if (retailSource === "screenshot") {
       traceStep("market", { asking: pageData.currency || null, source: shopping.priceCurrency ?? null, same: !crossMarket });
     }
+    // PLAUSIBLE GAP, as in the image pipeline.
+    const gapImplausible = retailSource === "screenshot" && implausibleGap(retailPrice, wholesalePrice);
+    if (gapImplausible) traceStep("plausibility", { askingUsd: retailPrice, sourceUsd: wholesalePrice, limit: IMPLAUSIBLE_GAP });
     // Same three-part gate as the image pipeline: a confident verdict needs
     // a verified match, a real gap, AND a retail price actually read off
     // the seller's own page. A markup claim built on some other merchant's
@@ -3678,7 +3728,7 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
     // cheapest price" request always suppresses the verdict framing.
     const mode: ScanResult["mode"] =
       intent === "finder" ? "FINDER"
-      : confidence !== "unverified" && pricingSupportsVerdict && retailPriceWasObserved && !crossMarket ? "VERDICT" : "FINDER";
+      : confidence !== "unverified" && pricingSupportsVerdict && retailPriceWasObserved && !crossMarket && !gapImplausible ? "VERDICT" : "FINDER";
     const linkResolution = await resolveMerchantLink(shopping.productUrl, shopping.productId);
     const resolvedUrl = linkResolution.url;
     const linkIsDirect = linkResolution.isDirect;
@@ -3691,6 +3741,7 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
       matchConfidence: confidence,
       category: inferCategory(pageData.title, pageData.description, shopping.title),
       shippingNote: regionalNote(resolvedUrl, requesterCountry, crossMarket),
+      ...(gapImplausible ? { priceNote: IMPLAUSIBLE_GAP_NOTE } : {}),
       sourceProduct: {
         title: cleanTitle(pageData.title || shopping.title),
         price: parseFloat(wholesalePrice.toFixed(2)),
