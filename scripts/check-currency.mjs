@@ -7,7 +7,9 @@
  * listing printed as "$299 asking, 897% markup" when it is roughly the same
  * price. This runs the real engine on screenshots priced in USD, EUR, GBP
  * and MAD and asserts the comparison happens in one currency, with the
- * original shown, and that no verdict is printed when no rate is available.
+ * original shown, and that no verdict is printed when no rate is available,
+ * nor when the source listing is priced in another currency than the
+ * screenshot (SAME-MARKET VERDICTS in src/lib/scan.ts).
  *
  *   node --experimental-strip-types --no-warnings scripts/check-currency.mjs
  */
@@ -162,6 +164,29 @@ lensCurrency = "€";
   const expected = Math.round((30 / 0.9) * 100) / 100;
   check(`a Lens match listed at €30 is compared as $${expected}`, r.sourceProduct.price === expected, describe(r));
 }
+
+section("SAME-MARKET VERDICTS: A VERDICT ONLY WHEN BOTH PRICES ARE IN ONE CURRENCY");
+check("the rule itself: same currency or not, and an unknown source is not the same market",
+  engine.sameMarket("EUR", "eur") && !engine.sameMarket("EUR", "IDR") && !engine.sameMarket("MAD", "USD") && !engine.sameMarket("EUR", null) && !engine.sameMarket("", "USD"));
+for (const [label, shot, listing, verdict] of [
+  ["a euro screenshot against a listing priced in euros", { amount: 90, currency: "EUR" }, "€", true],
+  ["a euro screenshot against a listing priced in dollars", { amount: 90, currency: "EUR" }, "$", false],
+  ["a dirham screenshot against a US listing", { amount: 599, currency: "MAD" }, "$", false],
+  ["a dollar screenshot against a listing priced in euros", { amount: 120, currency: "USD" }, "€", false],
+]) {
+  screenshot = shot;
+  lensCurrency = listing;
+  const r = await run();
+  if (verdict) {
+    check(`${label}: a verdict`, r.mode === "VERDICT" && r.analysis.verdict !== "UNVERIFIED", describe(r));
+  } else {
+    check(`${label}: the cheapest-link card, no verdict, with the regional-shipping note`,
+      r.mode === "FINDER" && r.analysis.verdict === "UNVERIFIED" && r.found && /shipping/i.test(r.shippingNote || ""), `${describe(r)} note ${r.shippingNote}`);
+    check("  and both prices still converted for display", r.sourceProduct.currency === "USD" && r.analysis.retailEstimate > 0 && r.sourceProduct.price > 0, describe(r));
+  }
+}
+screenshot = { amount: 120, currency: "USD" };
+lensCurrency = "$";
 
 console.error = quiet;
 console.log(`\n${failures === 0 ? "All currency checks passed." : `${failures} currency check(s) failed.`}`);

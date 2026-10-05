@@ -476,7 +476,7 @@ async function pricesInUsd(candidates: ShoppingCandidate[]): Promise<ShoppingCan
   for (const c of candidates) {
     if (!c.currency || c.currency === "USD" || c.price <= 0) { out.push(c); continue; }
     const converted = await toUsd(c.price, c.currency);
-    out.push({ ...c, price: converted && converted.usd > 0.5 ? converted.usd : 0, currency: "USD" });
+    out.push({ ...c, price: converted && converted.usd > 0.5 ? converted.usd : 0, currency: "USD", statedCurrency: c.currency });
   }
   return out;
 }
@@ -642,6 +642,9 @@ interface ShoppingCandidate {
   // ISO currency of `price` as the listing stated it. Converted to USD by
   // pricesInUsd before anything compares it; absent means USD.
   currency?: string;
+  // The currency the listing stated before that conversion, kept so a
+  // verdict can tell which market the price is from (SAME-MARKET VERDICTS).
+  statedCurrency?: string;
   // Position in the ENGINE's own ordering, 0 being its best match. Google
   // Lens returns visual matches best-match-first, and that ordering is the
   // identification signal — it is the part of the response that says "this
@@ -661,6 +664,13 @@ interface IdentityHints {
 interface ShoppingMatch {
   title: string;
   lowestPrice: number;
+  /**
+   * The currency `lowestPrice` was stated in by its own listing (before
+   * conversion to USD), or null when it is not known (an identification
+   * reused from the cache before this was recorded). See SAME-MARKET
+   * VERDICTS.
+   */
+  priceCurrency?: string | null;
   highestPrice: number;
   imageUrl: string;
   productUrl: string;
@@ -690,6 +700,8 @@ interface GateCandidate {
 
 interface PageProductData {
   title: string;
+  /** The brand the page's own product data states (schema.org brand, product:brand), when it states one. */
+  brand?: string;
   price: number | null;
   currency: string;
   imageUrl: string;
@@ -718,6 +730,35 @@ function sanitizeCountry(country?: string): string {
 const KNOWN_CROSS_BORDER_PLATFORMS = [
   "aliexpress.com", "temu.com", "dhgate.com", "wish.com", "banggood.com", "1688.com",
 ];
+
+/** The currency a candidate's own listing stated its price in; absent means USD. */
+function statedCurrencyOf(c: ShoppingCandidate): string {
+  return normalizeCurrency(c.statedCurrency || c.currency) || "USD";
+}
+
+// ════════════════════════════════════════════════════════════════
+// SAME-MARKET VERDICTS.
+//
+// A verdict (BUSTED / OVERPRICED / FAIR PRICE) compares the asking price
+// with the source price, and it is only made when both are in the same
+// currency. A euro screenshot against a store pricing in Indonesian rupiah,
+// or a dirham one against a US listing, crosses regional pricing, VAT and
+// import duty, and shipping, none of which the engine sees, so the gap is
+// not a markup anyone can be accused of. Such a scan returns the
+// cheapest-link card instead, with the regional-shipping note, and keeps
+// both prices converted for display. An unknown source currency is not the
+// same market either.
+// ════════════════════════════════════════════════════════════════
+export function sameMarket(askingCurrency: string | null | undefined, sourceCurrency: string | null | undefined): boolean {
+  const asking = normalizeCurrency(askingCurrency || "") || "";
+  const source = normalizeCurrency(sourceCurrency || "") || "";
+  return !!asking && asking === source;
+}
+
+/** The regional-shipping note; always present when the source is from another market. */
+function regionalNote(sourceUrl: string, country: string, crossMarket: boolean): string | undefined {
+  return buildShippingNote(sourceUrl, country) ?? (crossMarket ? "Check shipping availability to your region before ordering" : undefined);
+}
 
 export function buildShippingNote(sourceUrl: string, country: string): string | undefined {
   if (country === "us" || !sourceUrl) return undefined;
@@ -1688,6 +1729,7 @@ function buildShoppingMatch(candidates: ShoppingCandidate[]): ShoppingMatch | nu
   return {
     title: lead.title,
     lowestPrice: lead.price,
+    priceCurrency: statedCurrencyOf(lead),
     highestPrice: priced.length > 0 ? Math.max(...priced.map(c => c.price)) : 0,
     imageUrl: lead.imageUrl,
     productUrl: lead.productUrl,
@@ -1729,6 +1771,7 @@ function applyVerifiedCandidate(
     source: verified.best.source,
     productId: verified.best.productId,
     lowestPrice: verified.best.price,
+    priceCurrency: statedCurrencyOf(verified.best),
     highestPrice: Math.max(match.highestPrice, verified.best.price),
   };
 }
@@ -2667,6 +2710,7 @@ async function reuseIdentification(
   return {
     title: hit.entry.title,
     lowestPrice: hit.entry.price,
+    priceCurrency: hit.entry.priceCurrency ?? null,
     highestPrice: Math.max(hit.entry.highestPrice, hit.entry.price),
     imageUrl: hit.entry.imageUrl,
     productUrl: hit.entry.productUrl,
@@ -2731,6 +2775,17 @@ function extractMetaContent(html: string, key: string): string | null {
   return null;
 }
 
+// What a page's product data says as its brand when it has none to state.
+const NO_BRAND = /^(generic|unbranded|no ?brand|non ?branded|n\/?a|none|unknown|oem|other|various|-+)$/i;
+
+/** A schema.org brand ("Acme", { name: "Acme" }, or a list of them) as one real brand name, or undefined. */
+function brandName(raw: unknown): string | undefined {
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  const name = typeof first === "string" ? first : typeof (first as { name?: unknown })?.name === "string" ? (first as { name: string }).name : "";
+  const clean = name.replace(/\s+/g, " ").trim().slice(0, 60);
+  return clean && !NO_BRAND.test(clean) ? clean : undefined;
+}
+
 function extractJsonLdProduct(html: string): Partial<PageProductData> {
   const blocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) || [];
   for (const block of blocks) {
@@ -2751,6 +2806,7 @@ function extractJsonLdProduct(html: string): Partial<PageProductData> {
 
         return {
           title: typeof node.name === "string" ? node.name : undefined,
+          brand: brandName(node.brand),
           price: price,
           currency: typeof offersForCurrency?.priceCurrency === "string" ? offersForCurrency.priceCurrency : undefined,
           imageUrl: typeof imageUrl === "string" ? imageUrl : undefined,
@@ -2808,6 +2864,7 @@ function extractMetaProduct(html: string): Partial<PageProductData> {
   const priceRaw = extractMetaContent(html, "product:price:amount") || extractMetaContent(html, "og:price:amount");
   return {
     title: extractMetaContent(html, "og:title") || undefined,
+    brand: brandName(extractMetaContent(html, "product:brand") || extractMetaContent(html, "og:brand") || ""),
     price: priceRaw ? parseFloat(priceRaw.replace(/[^0-9.]/g, "")) : null,
     currency: extractMetaContent(html, "product:price:currency") || extractMetaContent(html, "og:price:currency") || undefined,
     imageUrl: extractMetaContent(html, "og:image") || undefined,
@@ -2892,6 +2949,7 @@ async function extractPageProductData(html: string, priceSeverity: Severity = "i
   const meta = extractMetaProduct(html);
 
   let title = jsonLd.title || meta.title || "";
+  const brand = jsonLd.brand || meta.brand;
   let price = jsonLd.price ?? microdata.price ?? meta.price ?? null;
   let currency = normalizeCurrency(jsonLd.currency || microdata.currency || meta.currency) || "USD";
   const imageUrl = jsonLd.imageUrl || meta.imageUrl || "";
@@ -2907,7 +2965,7 @@ async function extractPageProductData(html: string, priceSeverity: Severity = "i
   const rawText = stripHtmlForText(html, 9000);
   const searchQuery = await buildEnrichedSearchQuery(title, description, rawText);
 
-  return { title, price, currency, imageUrl, description, searchQuery: searchQuery || title };
+  return { title, ...(brand ? { brand } : {}), price, currency, imageUrl, description, searchQuery: searchQuery || title };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -3167,7 +3225,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
       shopping = {
         ...current,
         title: listing.title, imageUrl: listing.imageUrl, productUrl: listing.productUrl, source: listing.source, productId: listing.productId,
-        lowestPrice: own.usd, highestPrice: Math.max(current.highestPrice, own.usd),
+        lowestPrice: own.usd, highestPrice: Math.max(current.highestPrice, own.usd), priceCurrency: own.currency,
       };
       engineUsed = `${engineUsed}+priced_page`;
     }
@@ -3293,6 +3351,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
     await storeIdentity(fingerprint, {
       title: shopping.title,
       price: shopping.lowestPrice,
+      priceCurrency: shopping.priceCurrency ?? undefined,
       highestPrice: shopping.highestPrice,
       imageUrl: shopping.imageUrl,
       productUrl: shopping.productUrl,
@@ -3365,6 +3424,15 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   // can never be the basis of a markup accusation against a named seller.
   const pricingSupportsVerdict = hasSourcePrice && wholesalePrice > 0 && wholesalePrice < retailPrice;
   const retailPriceWasObserved = retailSource === "screenshot";
+  // SAME-MARKET VERDICTS: the asking price's currency against the currency
+  // the source listing stated its own price in.
+  const askingCurrency = !retailPriceWasObserved ? null
+    : vision.visiblePrice && vision.visiblePrice > 0 ? (normalizeCurrency(vision.currency) || "USD")
+    : (normalizeCurrency(discoveredPage?.currency || "") || "USD");
+  const crossMarket = retailPriceWasObserved && hasSourcePrice && !sameMarket(askingCurrency, shopping?.priceCurrency);
+  if (retailPriceWasObserved && hasSourcePrice) {
+    traceStep("market", { asking: askingCurrency, source: shopping?.priceCurrency ?? null, same: !crossMarket });
+  }
   // "Where is it cheapest?" is an explicit request to skip the markup
   // framing entirely, even when a confirmed verdict would otherwise be
   // possible. It is a display choice the visitor made, not an accuracy
@@ -3372,7 +3440,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
   // applying when something else already failed.
   const mode: ScanResult["mode"] =
     intent === "finder" ? (engineHadRealMatch ? "FINDER" : "UNRESOLVED")
-    : engineHadRealMatch && confidence !== "unverified" && pricingSupportsVerdict && retailPriceWasObserved ? "VERDICT"
+    : engineHadRealMatch && confidence !== "unverified" && pricingSupportsVerdict && retailPriceWasObserved && !crossMarket ? "VERDICT"
     : engineHadRealMatch ? "FINDER"
     : "UNRESOLVED";
 
@@ -3395,7 +3463,7 @@ async function scanImage(imageBase64: string, mimeType: string, country?: string
     engineUsed,
     matchConfidence: confidence,
     category: vision.category || "other",
-    shippingNote: buildShippingNote(resolvedUrl, requesterCountry),
+    shippingNote: regionalNote(resolvedUrl, requesterCountry, crossMarket),
     sourceProduct: {
       title: cleanTitle(shopping?.title || discoveredPage?.title || vision.productName) || "Similar product found",
       price: parseFloat(wholesalePrice.toFixed(2)),
@@ -3468,10 +3536,11 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
     // path compares against: capped for the models, original for Lens.
     const pageReference = pageImage ? await capForModel(pageImage) : null;
     // There is no vision pass on this path, so the page's own title is the
-    // only identity hint available for ordering candidates. Same rule as
-    // the image path: it affects the order candidates are checked in,
-    // never whether they are checked.
-    const hints: IdentityHints = { productName: pageData.title };
+    // identity hint for ordering candidates, and the brand its own product
+    // data states (when it states one) is what the match guards compare
+    // listings with, as a brand read off a photo is. With no stated brand,
+    // the brand rules have nothing to compare and do not apply.
+    const hints: IdentityHints = { productName: pageData.title, ...(pageData.brand ? { brand: pageData.brand } : {}) };
     const gate: GateOptions = { hints, budget, mode: spendMode };
 
     // ── Step 2: search, Lens-first if we have a real photo ──
@@ -3595,6 +3664,11 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
 
     const { markup, savings, savingsPercent, verdict } = calculateVerdict(retailPrice, wholesalePrice);
     const pricingSupportsVerdict = wholesalePrice < retailPrice;
+    // SAME-MARKET VERDICTS: the page's own currency against the source's.
+    const crossMarket = retailSource === "screenshot" && !sameMarket(pageData.currency, shopping.priceCurrency);
+    if (retailSource === "screenshot") {
+      traceStep("market", { asking: pageData.currency || null, source: shopping.priceCurrency ?? null, same: !crossMarket });
+    }
     // Same three-part gate as the image pipeline: a confident verdict needs
     // a verified match, a real gap, AND a retail price actually read off
     // the seller's own page. A markup claim built on some other merchant's
@@ -3604,7 +3678,7 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
     // cheapest price" request always suppresses the verdict framing.
     const mode: ScanResult["mode"] =
       intent === "finder" ? "FINDER"
-      : confidence !== "unverified" && pricingSupportsVerdict && retailPriceWasObserved ? "VERDICT" : "FINDER";
+      : confidence !== "unverified" && pricingSupportsVerdict && retailPriceWasObserved && !crossMarket ? "VERDICT" : "FINDER";
     const linkResolution = await resolveMerchantLink(shopping.productUrl, shopping.productId);
     const resolvedUrl = linkResolution.url;
     const linkIsDirect = linkResolution.isDirect;
@@ -3616,7 +3690,7 @@ async function scanUrl(url: string, country?: string, intent?: "verdict" | "find
       engineUsed,
       matchConfidence: confidence,
       category: inferCategory(pageData.title, pageData.description, shopping.title),
-      shippingNote: buildShippingNote(resolvedUrl, requesterCountry),
+      shippingNote: regionalNote(resolvedUrl, requesterCountry, crossMarket),
       sourceProduct: {
         title: cleanTitle(pageData.title || shopping.title),
         price: parseFloat(wholesalePrice.toFixed(2)),

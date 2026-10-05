@@ -56,6 +56,8 @@ import crypto from "crypto";
 export interface CachedIdentity {
   title: string;
   price: number;
+  /** The currency the source listing stated `price` in, before conversion to USD (SAME-MARKET VERDICTS in scan.ts). */
+  priceCurrency?: string;
   highestPrice: number;
   imageUrl: string;
   productUrl: string;
