@@ -55,7 +55,8 @@ Never change or remove these. If a change would touch one, flag it and ask.
   - the listing sells a part or one piece of the product;
   - the read names a model the listing lacks;
   - the gate names no tie (logo, printed text, distinctive part, or the identical photo);
-  - the gate's own reason says the page sells nothing.
+  - the gate's own reason says the page sells nothing;
+  - the listing's link is a collection, category or brand page, not one product's page (run 10: "exact" on Stanley's "New Arrivals" page).
 
 ## Research, October 2026
 

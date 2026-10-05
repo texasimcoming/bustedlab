@@ -23,7 +23,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { carriesBrand, isPartListing, readTie, guardMatch, missingModelWords, reasonSaysNotForSale } from "../src/lib/match-guards.ts";
+import { carriesBrand, isPartListing, readTie, guardMatch, missingModelWords, reasonSaysNotForSale, isCollectionPage } from "../src/lib/match-guards.ts";
 import { isRightProduct, isListing, NON_LISTING_HOSTS, storedAnswers } from "./lib/labels.mjs";
 
 const REPO = resolve(dirname(new URL(import.meta.url).pathname), "..");
@@ -107,6 +107,13 @@ check("a tie is read as one of its kinds, anything else as none",
     guardMatch({ match: "exact", tie: "photo", why: "Identical photo, but it's a health-site article, not a product listing" }, listing, noBrand).guard === "not_for_sale");
   check("a listing without the model the photo names: held as model_missing",
     guardMatch({ match: "likely", tie: "part" }, { title: "Nintendo Switch With Docking Station" }, { brand: "Nintendo", productName: "Nintendo Switch OLED Model" }).guard === "model_missing");
+  check("an exact on a collection page is held as collection_page (run 10: Stanley's \"New Arrivals\")",
+    guardMatch({ match: "exact", tie: "logo" }, { title: "New Arrivals: The Latest Stanley 1913 Cups", link: "https://uk.stanley1913.com/collections/stanley-new-arrivals" }, { brand: "Stanley", productName: "Quencher H2.0 FlowState Tumbler" }).guard === "collection_page");
+  check("collection, category and brand pages are pages of many products",
+    ["https://www.jdsports.my/collections/brand-stanley", "https://www.vseinstrumenti.ru/category/derzhateli-dlya-telefona/", "https://shop.test/brands/stanley/"].every(isCollectionPage));
+  check("one product's page is not, even inside a collection, nor a Google Shopping offer",
+    !["https://www.stanley1913.com/collections/quencher/products/quencher-h2-0", "https://eu.stanley1913.com/products/quencher-h2-0-flowstate-tumbler-1-18-l",
+      "https://www.amazon.com/dp/B0D1XD1ZV3", "https://www.google.com/search?ibp=oshop&q=quencher", "not a url"].some(isCollectionPage));
   check("no first read at all (a link scan): the brand rules do not apply", guardMatch({ match: "likely", tie: "part" }, listing, { productName: "mini massage gun" }).match === "likely");
   check("an answer recorded before ties existed is not held for lacking one", guardMatch({ match: "exact" }, listing, noBrand).match === "exact");
   check("similar and different are never changed",
@@ -149,7 +156,7 @@ const replays = rows.filter(r => r.source === "replay");
 const replayed = new Map(answered
   .filter(r => r.source === "replay" && ["exact", "likely", "similar", "different"].includes(r.gate))
   .map(r => [keyOf(r), r]));
-const LATER = { not_for_sale: "not-for-sale", model_missing: "model", no_tie: "tie" };
+const LATER = { not_for_sale: "not-for-sale", model_missing: "model", no_tie: "tie", collection_page: "collection" };
 const caughtBy = (r) => [r.host && "host", r.a && "brand", r.b && "no-brand", r.d && "part", LATER[r.after.guard]].filter(Boolean).join("+") || "none";
 const fmt = (r) => `${era(r).padEnd(4)} r${r.run} ${`${r.caseId}/${r.intent || "-"}`.padEnd(32)} ${r.purpose.padEnd(16)} ${r.gate.toUpperCase().padEnd(6)} ` +
   `"${r.listing.title.slice(0, 64)}" | brand read "${r.read.brand}" | held by: ${caughtBy(r)}`;
@@ -159,7 +166,9 @@ const wrong = rows.filter(r => !r.right && r.source === "scan");
 // Live scans made by the guarded engine record the gate's own answer and
 // the guarded one: none may show a wrong product.
 const liveGuarded = rows.filter(r => r.source === "scan" && r.tie != null);
-const pending = { old: [], four: [] };
+// A wrong answer the guarded engine let through live ("tie" era) is not
+// pending anything: it fails "no wrong answer survives on a live scan" below.
+const pending = { old: [], four: [], tie: [] };
 for (const r of wrong) {
   let status = r.held ? "held" : "PENDING";
   if (!r.held) {
