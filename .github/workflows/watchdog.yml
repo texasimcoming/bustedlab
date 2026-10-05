@@ -1,6 +1,9 @@
 # Production watchdog. Read-only against production: /api/preflight and
 # /api/stats every hour (free), plus /api/diagnose (about 3 cents of Claude
-# and 5 Serper credits) every Monday and after every production deploy.
+# and 5 Serper credits) every Monday and after every production deploy that
+# changed runtime code. A deploy that changed only docs, the evaluation
+# reports and data (evals/) or the workflows gets the free checks instead
+# (scripts/deploy-scope.mjs).
 #
 # Any not-ready state, failed layer, credit-exhausted error or spike in
 # scans that could not be completed fails the run, so GitHub emails the
@@ -39,9 +42,18 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The deployed commit and its parent, to see what the deploy changed.
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: What the deploy changed
+        id: scope
+        if: github.event_name == 'deployment_status'
+        run: |
+          git diff --name-only HEAD^1 HEAD > changed-files.txt || : > changed-files.txt
+          node --experimental-strip-types --no-warnings scripts/deploy-scope.mjs changed-files.txt >> "$GITHUB_OUTPUT"
       - name: Let the production alias switch to the new deploy
         if: github.event_name == 'deployment_status'
         run: sleep 45
@@ -50,7 +62,7 @@ jobs:
         env:
           ANALYTICS_TOKEN: ${{ secrets.ANALYTICS_TOKEN }}
           BASE_URL: https://www.bustedlab.com
-          MODE: ${{ (github.event_name == 'deployment_status' || github.event.schedule == '41 6 * * 1' || inputs.diagnose) && 'diagnose' || 'hourly' }}
+          MODE: ${{ ((github.event_name == 'deployment_status' && steps.scope.outputs.diagnose != 'false') || github.event.schedule == '41 6 * * 1' || inputs.diagnose) && 'diagnose' || 'hourly' }}
           EXPECT_COMMIT: ${{ github.event.deployment.sha }}
         run: node --experimental-strip-types --no-warnings scripts/watchdog.mjs
       - name: Raise the alarm
