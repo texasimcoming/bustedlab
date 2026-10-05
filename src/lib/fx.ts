@@ -197,35 +197,92 @@ export function normalizeCurrency(raw: unknown): string {
   return "";
 }
 
+// What may group thousands in a written price besides "." and ",": a normal
+// space, a no-break space, a narrow no-break space, a thin space, and the
+// Swiss apostrophe ("1'299.00").
+const GAP = "[ \\u00A0\\u202F\\u2009'\\u2019]";
+const GAPS = new RegExp(GAP, "g");
+// One written number: digit runs joined by "." or ",", or by a gap that is
+// followed by exactly three digits (a gap before anything else ends the
+// number, so "10 20" is not 1020).
+const NUMBER = new RegExp(`\\d+(?:(?:[.,]|${GAP}(?=\\d{3}(?!\\d)))\\d+)*`);
+// Currencies with three decimals, where "12.500" is twelve and a half.
+const THREE_DECIMALS = new Set(["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"]);
+
 /**
- * A price string as a listing shows it: "$1,299.00", "€25,99", "1.299,00 €",
- * "MAD 299", "299 DH". The decimal separator is the last of "," or "." when
- * both appear, and a lone comma followed by exactly two digits; anything else
- * is a thousands separator. The old parser stripped every non-digit except
- * ".", which read "€25,99" as 2,599.
+ * A price as a listing, a page or a model wrote it: "$1,299.00", "€55,00",
+ * "1.299,00 €", "1 299,00 €", "CHF 1'299.00", "MAD 299", or a number. The
+ * amount is null when it cannot be read, and that includes every format
+ * that could honestly mean two things: a missing price only costs a
+ * verdict, a wrong one accuses a seller. The old readers stripped every
+ * character but digits and ".", so a European "55,00" became 5,500.
+ *
+ * The rules, in order:
+ *   - a gap (space or apostrophe) only ever groups thousands;
+ *   - with both "." and ",", the last one is the decimal point and the other
+ *     groups thousands;
+ *   - a lone "." or "," before exactly three digits groups thousands
+ *     ("1.299", "1,299"), except after a leading 0 ("0,299") or after a gap,
+ *     and in a three-decimal currency, where it is unreadable; before any
+ *     other number of digits it is the decimal point ("55,5", "55.0000");
+ *   - several of the same separator must group thousands properly
+ *     ("12.345.678"; "1,29,999" in Indian grouping), or nothing is read.
+ *
+ * `currencyHint` is the currency a page states in its own fields, used only
+ * to tell a three-decimal currency apart; the currency returned is the one
+ * written in `raw` itself, or "" when none is.
  */
-export function parsePrice(raw: unknown): { amount: number; currency: string } {
+export function parsePrice(raw: unknown, currencyHint?: unknown): { amount: number | null; currency: string } {
+  if (typeof raw === "number") return { amount: Number.isFinite(raw) && raw >= 0 ? raw : null, currency: "" };
   const text = String(raw ?? "").trim();
-  const currency = normalizeCurrency(text.replace(/[\d.,\s]+/g, " ").trim()) || "";
-  const digits = (text.match(/[\d.,]+/) || [""])[0];
-  if (!digits) return { amount: 0, currency };
-  const lastComma = digits.lastIndexOf(",");
-  const lastDot = digits.lastIndexOf(".");
-  let normalized: string;
+  const currency = normalizeCurrency(text.replace(/[\d.,\s'\u2019]+/g, " ").trim()) || "";
+  const found = NUMBER.exec(text);
+  if (!found) return { amount: null, currency };
+  // "$.99" or ",50": a number that starts with its separator starts at 0, so
+  // it is 0.99, never 99. "Rs.1,299" is a currency's abbreviation, not that.
+  const lead = /(?:^|[^\p{L}\d])([.,])$/u.exec(text.slice(0, found.index))?.[1] ?? "";
+  const threeDecimals = THREE_DECIMALS.has(normalizeCurrency(currencyHint) || currency);
+  return { amount: readAmount(lead ? `0${lead}${found[0]}` : found[0], threeDecimals), currency };
+}
+
+function readAmount(token: string, threeDecimals: boolean): number | null {
+  const t = token.replace(GAPS, "_");
+  const gapped = t.includes("_");
+  const lastComma = t.lastIndexOf(",");
+  const lastDot = t.lastIndexOf(".");
+  let point = "";
   if (lastComma >= 0 && lastDot >= 0) {
-    normalized = lastComma > lastDot
-      ? digits.replace(/\./g, "").replace(",", ".")
-      : digits.replace(/,/g, "");
-  } else if (lastComma >= 0) {
-    normalized = /,\d{2}$/.test(digits) && (digits.match(/,/g) || []).length === 1
-      ? digits.replace(",", ".")
-      : digits.replace(/,/g, "");
-  } else {
-    // Several dots: grouping, as in 1.299.000.
-    normalized = (digits.match(/\./g) || []).length > 1 ? digits.replace(/\./g, "") : digits;
+    point = lastComma > lastDot ? "," : ".";
+  } else if (lastComma >= 0 || lastDot >= 0) {
+    const sep = lastComma >= 0 ? "," : ".";
+    const parts = t.split(sep);
+    if (parts.length === 2) {
+      const [head, tail] = parts;
+      const grouping = !gapped && tail.length === 3 && head.length <= 3 && !/^0+$/.test(head);
+      if (!grouping) point = sep;
+      else if (threeDecimals) return null;
+    }
   }
-  const amount = parseFloat(normalized);
-  return { amount: Number.isFinite(amount) ? amount : 0, currency };
+  const at = point ? t.lastIndexOf(point) : -1;
+  const whole = at >= 0 ? t.slice(0, at) : t;
+  const fraction = at >= 0 ? t.slice(at + 1) : "";
+  if (at >= 0 && !/^\d+$/.test(fraction)) return null;
+  const groups = whole.split(/[.,_]/);
+  if (groups.length > 1) {
+    const seps = new Set(whole.match(/[.,_]/g));
+    if (seps.size > 1 || !groupsThousands(groups, [...seps][0])) return null;
+  }
+  const value = Number(`${groups.join("")}${fraction ? `.${fraction}` : ""}`);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** Whether digit groups split by one separator group thousands: 1,299,000, or Indian 1,29,999. */
+function groupsThousands(groups: string[], sep: string): boolean {
+  const [first, ...rest] = groups;
+  if (/^[1-9]\d{0,2}$/.test(first) && rest.every(g => g.length === 3)) return true;
+  if (sep !== ",") return false;
+  const last = rest[rest.length - 1];
+  return /^[1-9]\d?$/.test(first) && last.length === 3 && rest.slice(0, -1).every(g => g.length === 2);
 }
 
 /**

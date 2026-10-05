@@ -29,9 +29,10 @@
     "check:autopilot": "node --experimental-strip-types --no-warnings scripts/check-autopilot.mjs",
     "check:affiliate": "node --experimental-strip-types --no-warnings scripts/check-affiliate.mjs",
     "check:match-guards": "node --experimental-strip-types --no-warnings scripts/check-match-guards.mjs",
+    "check:prices": "node --experimental-strip-types --no-warnings scripts/check-prices.mjs",
     "cost-model": "node --experimental-strip-types --no-warnings scripts/cost-model.mjs",
     "eval:gate": "node --experimental-strip-types --no-warnings scripts/eval-gate.mjs",
-    "check": "tsc --noEmit && eslint . && npm run check:verdicts && npm run check:identification && npm run check:net-guard && npm run check:fair-use && npm run check:webhook && npm run check:access && npm run check:notify && npm run check:csp && npm run check:preflight && npm run check:free-tier && npm run check:catches && npm run check:funnel && npm run check:content && npm run check:model-contract && npm run check:scan-failure && npm run check:currency && npm run check:diagnose && npm run check:eval && npm run check:wrong-product && npm run check:autopilot && npm run check:affiliate && npm run check:match-guards"
+    "check": "tsc --noEmit && eslint . && npm run check:verdicts && npm run check:identification && npm run check:net-guard && npm run check:fair-use && npm run check:webhook && npm run check:access && npm run check:notify && npm run check:csp && npm run check:preflight && npm run check:free-tier && npm run check:catches && npm run check:funnel && npm run check:content && npm run check:model-contract && npm run check:scan-failure && npm run check:currency && npm run check:prices && npm run check:diagnose && npm run check:eval && npm run check:wrong-product && npm run check:autopilot && npm run check:affiliate && npm run check:match-guards"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",

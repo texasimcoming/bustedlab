@@ -41,6 +41,11 @@ import { resolve, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { identityMatches, isListing } from "./lib/labels.mjs";
+import { localModule } from "./lib/engine.mjs";
+
+// Prices read off pages here go through the engine's own parser, so a
+// report never shows a price the engine would read differently.
+const { parsePrice } = await import(localModule("fx"));
 
 const REPO = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const BASE = (process.env.BASE_URL || "https://www.bustedlab.com").replace(/\/$/, "");
@@ -225,8 +230,8 @@ async function resolveSource(src) {
     const html = await (await get(src.page, { accept: "text/html" })).text();
     const meta = (name) => html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${name}["'][^>]+content=["']([^"']+)["']`, "i"))?.[1]
       || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${name}["']`, "i"))?.[1];
-    let price = Number(meta("product:price:amount") || meta("og:price:amount")) || null;
     let currency = meta("product:price:currency") || meta("og:price:currency") || "";
+    let price = parsePrice(meta("product:price:amount") || meta("og:price:amount"), currency).amount || null;
     let image = meta("og:image") || meta("twitter:image") || "";
     let title = meta("og:title") || "";
     for (const block of html.match(/<script[^>]+application\/ld\+json[^>]*>[\s\S]*?<\/script>/gi) || []) {
@@ -236,7 +241,7 @@ async function resolveSource(src) {
         const product = nodes.find(n => n && /Product/i.test(String(n["@type"])));
         if (!product) continue;
         const offer = Array.isArray(product.offers) ? product.offers[0] : product.offers;
-        price = price || Number(offer?.price || offer?.lowPrice) || null;
+        price = price || parsePrice(offer?.price || offer?.lowPrice, offer?.priceCurrency).amount || null;
         currency = currency || offer?.priceCurrency || "";
         image = image || (Array.isArray(product.image) ? product.image[0] : product.image?.url || product.image) || "";
         title = title || product.name || "";
@@ -847,9 +852,10 @@ async function pageFacts(url) {
     }
     const offer = Array.isArray(ld.offers) ? ld.offers[0] : ld.offers;
     const brand = typeof ld.brand === "string" ? ld.brand : ld.brand?.name || meta("product:brand") || "";
+    const currency = offer?.priceCurrency || meta("product:price:currency") || "";
     return {
       read: true, title: (ld.name || meta("og:title") || (html.match(/<title>([^<]*)<\/title>/i)?.[1] || "")).trim().slice(0, 160),
-      brand, price: offer?.price ?? meta("product:price:amount") ?? null, currency: offer?.priceCurrency || meta("product:price:currency") || "",
+      brand, price: parsePrice(offer?.price ?? meta("product:price:amount"), currency).amount, currency,
     };
   } catch (err) {
     return { read: false, error: String(err?.message || err).slice(0, 160) };
