@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import Link from "next/link";
+import BrandHomeLink from "@/components/BrandHomeLink";
 
 export const metadata: Metadata = {
   title: "DMCA Policy - BustedLab",
@@ -9,9 +9,7 @@ export const metadata: Metadata = {
 export default function DmcaPage() {
   return (
     <main style={{ maxWidth: "720px", margin: "0 auto", padding: "48px 24px 80px", color: "var(--text)", fontFamily: "var(--font-sans), sans-serif" }}>
-      <Link href="/" style={{ color: "var(--accent-bright)", textDecoration: "none", fontSize: "14px", display: "inline-flex", alignItems: "center", gap: "6px", marginBottom: "32px" }}>
-        ← Back to BustedLab
-      </Link>
+      <BrandHomeLink />
 
       <h1 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "32px", fontWeight: "700", letterSpacing: "-0.8px", marginBottom: "8px" }}>DMCA Policy</h1>
       <p style={{ color: "var(--text-3)", fontSize: "13px", marginBottom: "40px" }}>DMCA policy version 3.0 · BustedLab LLC, Wyoming, USA</p>

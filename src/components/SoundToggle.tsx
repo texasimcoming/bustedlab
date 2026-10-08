@@ -36,7 +36,9 @@ export default function SoundToggle() {
     <button
       onClick={() => setSoundEnabled(!isSoundEnabled())}
       title={enabled ? "Verdict tone on" : "Verdict tone muted"}
-      aria-label={enabled ? "Mute verdict tone" : "Unmute verdict tone"}
+      // The accessible name starts with the words on screen, so a voice
+      // control user who says "Sound on" reaches it (WCAG 2.5.3).
+      aria-label={enabled ? "Sound on: mute the verdict tone" : "Sound off: turn the verdict tone on"}
       aria-pressed={enabled}
       style={{
         background: "transparent",

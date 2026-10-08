@@ -278,8 +278,8 @@ function NotifyCapture() {
   return (
     <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
       <p style={{
-        fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9.5px",
-        letterSpacing: "1.3px", color: "rgba(238,238,246,0.5)", textTransform: "uppercase",
+        fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10.5px",
+        letterSpacing: "1.3px", color: "rgba(238,238,246,0.66)", textTransform: "uppercase",
         marginBottom: "8px", textAlign: "center",
       }}>
         Not ready? Get notified as the index grows

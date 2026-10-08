@@ -162,12 +162,12 @@ export default async function ScanPage({ params }: Props) {
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "18px 24px", position: "relative", zIndex: 2, borderBottom: "1px solid var(--border)",
       }}>
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: "9px", textDecoration: "none" }}>
+        <Link href="/" aria-label="BustedLab home" style={{ display: "flex", alignItems: "center", gap: "9px", textDecoration: "none" }}>
           {/* Fixed 32px mark; next/image would add an optimizer round trip for
               an asset never rendered at another size. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-120.webp" alt="" width={40} height={40} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
-          <span style={{
+          <span className="nav-wordmark" style={{
             fontFamily: "var(--font-display), sans-serif", fontWeight: "800",
             fontSize: "20px", letterSpacing: "-0.5px", color: "var(--text)",
           }}>BustedLab</span>

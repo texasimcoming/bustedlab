@@ -1,17 +1,22 @@
 "use client";
 
 export default function StickyBar({
-  remaining, isPaid, onScan, hasFile, onUpgrade
+  remaining, isPaid, onScan, hasFile, onUpgrade, hidden = false,
 }: {
   remaining: number;
   isPaid: boolean;
   onScan: () => void;
   hasFile: boolean;
   onUpgrade: () => void;
+  /** True while the hero's own scan action is on screen: the bar only stands in for it. */
+  hidden?: boolean;
 }) {
+  // Out of the way and out of the tab order while hidden, so a keyboard or
+  // screen reader never lands on a button nobody can see.
+  const shell = { className: hidden ? "sticky-bar sticky-bar-hidden" : "sticky-bar", "aria-hidden": hidden || undefined, inert: hidden || undefined };
   if (isPaid) {
     return (
-      <div className="sticky-bar">
+      <div {...shell}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--green)" }} />
           <span style={{ fontSize: "13px", color: "var(--text-2)" }}>Unlimited access active</span>
@@ -25,7 +30,7 @@ export default function StickyBar({
   }
 
   return (
-    <div className="sticky-bar">
+    <div {...shell}>
       <div>
         <div style={{ display: "flex", gap: "6px", marginBottom: "3px" }}>
           {[0, 1].map(i => (

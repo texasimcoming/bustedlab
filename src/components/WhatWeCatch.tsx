@@ -53,7 +53,7 @@ export default function WhatWeCatch() {
                     {r.title}
                   </div>
                   <div style={{ fontSize: "11px", color: "var(--text-3)", lineHeight: "1.3" }}>
-                    <span style={{ textDecoration: "line-through", color: "var(--red)", opacity: 0.7 }}>{money(r.retailPrice)}</span> → <span style={{ color: "var(--green)" }}>{money(r.wholesalePrice)} real</span>
+                    <span style={{ textDecoration: "line-through", color: "#f87171" }}>{money(r.retailPrice)}</span> → <span style={{ color: "var(--green)" }}>{money(r.wholesalePrice)} real</span>
                   </div>
                 </div>
               </Link>
@@ -64,14 +64,14 @@ export default function WhatWeCatch() {
                 <div>
                   <div style={{ fontWeight: "600", fontSize: "12px", color: "var(--text)", marginBottom: "2px" }}>{c.c}</div>
                   <div style={{ fontSize: "11px", color: "var(--text-3)", lineHeight: "1.3" }}>
-                    <span style={{ textDecoration: "line-through", color: "var(--red)", opacity: 0.7 }}>{c.x}</span> → <span style={{ color: "var(--green)" }}>{c.r}</span>
+                    <span style={{ textDecoration: "line-through", color: "#f87171" }}>{c.x}</span> → <span style={{ color: "var(--green)" }}>{c.r}</span>
                   </div>
                 </div>
               </div>
             ))}
       </div>
       {!real && (
-        <p style={{ fontSize: "10px", color: "var(--text-3)", marginTop: "10px", textAlign: "center" }}>
+        <p style={{ fontSize: "11.5px", color: "var(--text-2)", marginTop: "10px", textAlign: "center" }}>
           Illustrative examples.
         </p>
       )}

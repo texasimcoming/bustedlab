@@ -50,24 +50,18 @@ function LoginInner() {
 
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: "32px" }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "9px", marginBottom: "8px" }}>
-            <svg width="32" height="32" viewBox="0 0 28 28" fill="none">
-              <rect width="28" height="28" rx="8" fill="url(#lgl)"/>
-              <defs>
-                <linearGradient id="lgl" x1="0" y1="0" x2="28" y2="28">
-                  <stop stopColor="#9d7fd4"/>
-                  <stop offset="1" stopColor="#7b5ea7"/>
-                </linearGradient>
-              </defs>
-              <circle cx="14" cy="13" r="5" stroke="white" strokeWidth="2"/>
-              <path d="M17.5 16.5L21 20" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
+          {/* The same mark as every other page. This one used to draw its
+              own magnifier glyph, so the one page that asks for an email
+              address was the one page wearing a different logo. */}
+          <Link href="/" aria-label="BustedLab home" style={{ display: "inline-flex", alignItems: "center", gap: "10px", marginBottom: "8px", textDecoration: "none" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-120.webp" alt="" width={36} height={36} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
             <span style={{
               fontFamily: "var(--font-display), sans-serif",
               fontWeight: "700", fontSize: "20px", letterSpacing: "-0.5px",
               color: "var(--text)",
             }}>BustedLab</span>
-          </div>
+          </Link>
           <p style={{ fontSize: "14px", color: "var(--text-2)", lineHeight: "1.5" }}>
             Sign in to access your unlimited scans
           </p>
@@ -153,18 +147,18 @@ function LoginInner() {
           color: "var(--text-3)", marginTop: "20px", lineHeight: "1.6",
         }}>
           Only paid users can sign in.{" "}
-          <Link href="/" style={{ color: "var(--accent-bright)", textDecoration: "none" }}>
+          <Link href="/" style={{ color: "var(--accent-bright)", textDecoration: "none", display: "inline-block", padding: "10px 2px", margin: "-10px 0" }}>
             Get access for $4.99
           </Link>
         </p>
 
         <p style={{
-          textAlign: "center", fontSize: "11px",
-          color: "var(--text-3)", marginTop: "12px",
+          textAlign: "center", fontSize: "12px",
+          color: "var(--text-3)", marginTop: "4px",
         }}>
-          <Link href="/terms" style={{ color: "var(--text-3)", textDecoration: "none" }}>Terms</Link>
-          {" "}&middot;{" "}
-          <Link href="/privacy" style={{ color: "var(--text-3)", textDecoration: "none" }}>Privacy</Link>
+          <Link href="/terms" style={{ color: "var(--text-2)", textDecoration: "none", display: "inline-block", padding: "12px 10px" }}>Terms</Link>
+          &middot;
+          <Link href="/privacy" style={{ color: "var(--text-2)", textDecoration: "none", display: "inline-block", padding: "12px 10px" }}>Privacy</Link>
         </p>
       </div>
     </main>

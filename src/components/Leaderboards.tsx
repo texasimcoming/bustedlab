@@ -171,8 +171,8 @@ export default function Leaderboards() {
       </div>
 
       <p style={{
-        fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9.5px",
-        color: "var(--text-3)", marginTop: "10px", letterSpacing: "0.4px", lineHeight: "1.6",
+        fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10.5px",
+        color: "var(--text-2)", marginTop: "10px", letterSpacing: "0.4px", lineHeight: "1.6",
       }}>
         {active === "trending"
           ? "MOST CHECKED THIS WEEK. RESETS MONDAY."

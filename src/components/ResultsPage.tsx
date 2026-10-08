@@ -45,7 +45,11 @@ export default function ResultsPage({
   onUpgradeIntent?: () => void;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
-  const [isMobile, setIsMobile] = useState(true); // default true, corrected on mount
+  // Read before the first paint: this page only ever renders in the browser
+  // (page.tsx loads it with ssr: false), so there is no server render to
+  // agree with, and starting from a guess drew the phone card on a desktop
+  // for one frame before swapping it.
+  const [isMobile, setIsMobile] = useState(() => typeof window === "undefined" || window.innerWidth < 600);
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 600);
     // The previous version registered the listener but never ran the check,
@@ -304,14 +308,17 @@ export default function ResultsPage({
               eslint-disable-next-line @next/next/no-img-element */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-120.webp" alt="" width={32} height={32} style={{ borderRadius: "8px", display: "block", objectFit: "cover" }} />
-          <span style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "800", fontSize: "18px", letterSpacing: "-0.5px", color: "#eeeef6" }}>BustedLab</span>
+          <span className="nav-wordmark" style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "800", fontSize: "18px", letterSpacing: "-0.5px", color: "#eeeef6" }}>BustedLab</span>
         </div>
         {/* Sized so the labelled sound toggle and this button fit beside the
             wordmark on a 390px phone without wrapping. */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <SoundToggle />
           <button onClick={onReset} style={{ background: "transparent", color: "rgba(238,238,246,0.7)", border: "1px solid rgba(255,255,255,0.12)", cursor: "pointer", transition: "color 0.18s ease, border-color 0.18s ease", fontFamily: "var(--font-sans), sans-serif", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", whiteSpace: "nowrap" }}>
-            {isUnresolved ? "Try another scan" : "Scan another"}
+            {/* One label for every result: a no-match ends in its own full
+                "Try another scan" button, and the longer label pushed the
+                nav past the edge of a 390px phone. */}
+            Scan another
           </button>
         </div>
       </nav>
@@ -321,23 +328,35 @@ export default function ResultsPage({
           <VerdictCard data={verdictData} animate={true} compact={isMobile} cardRef={cardRef} sound />
         </div>
 
+        {/* No product was shown on a no-match card, so there is nothing to
+            call the wrong product. */}
+        {!isUnresolved && (
         <p style={{ textAlign: "center", margin: "-4px 0 12px", fontSize: "12px", lineHeight: "1.5", position: "relative", zIndex: 1 }}>
           {reported ? (
-            <span style={{ color: "rgba(238,238,246,0.45)" }} role="status">Thanks, noted.</span>
+            <span style={{ color: "var(--text-2)" }} role="status">Thanks, noted.</span>
           ) : (
             <button
               type="button"
               onClick={reportWrongProduct}
-              style={{ background: "none", border: "none", padding: "4px 2px", cursor: "pointer", fontSize: "12px", color: "rgba(238,238,246,0.45)", textDecoration: "underline", fontFamily: "var(--font-sans), sans-serif" }}
+              style={{ background: "none", border: "none", padding: "10px 6px", margin: "-6px 0", cursor: "pointer", fontSize: "12px", color: "var(--text-2)", textDecoration: "underline", fontFamily: "var(--font-sans), sans-serif" }}
             >
               Wrong product? Tell us
             </button>
           )}
         </p>
+        )}
 
         {isUnresolved ? (
-          <div style={{ textAlign: "center", padding: "8px 4px 20px", fontSize: "13px", color: "rgba(238,238,246,0.45)", lineHeight: "1.6" }}>
-            Try a screenshot with the product more centered and in focus, or paste a direct product link instead.
+          // A no-match is the one result with nothing to do on it, so it
+          // ends in the next step rather than in a dead end: the retry used
+          // to live only in the nav corner.
+          <div style={{ textAlign: "center", padding: "8px 0 20px" }}>
+            <p style={{ fontSize: "13px", color: "var(--text-2)", lineHeight: "1.6", margin: "0 4px 16px" }}>
+              Try a screenshot with the product more centered and in focus, or paste a direct product link instead.
+            </p>
+            <button onClick={onReset} className="btn-primary" style={{ width: "100%", padding: "15px", borderRadius: "12px", fontSize: "15px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif" }}>
+              Try another scan
+            </button>
           </div>
         ) : (
           <>
@@ -407,17 +426,17 @@ export default function ResultsPage({
                   )}
                 </a>
                 {mode === "VERDICT" && an.retailOriginal && (
-                  <p style={{ fontSize: "10px", color: "rgba(238,238,246,0.4)", textAlign: "center", marginBottom: "8px", lineHeight: "1.5" }}>
+                  <p style={{ fontSize: "11px", color: "var(--text-2)", textAlign: "center", marginBottom: "8px", lineHeight: "1.5" }}>
                     {conversionNote(an.retailOriginal)}
                   </p>
                 )}
                 {result.priceNote && (
-                  <p style={{ fontSize: "10px", color: "rgba(238,238,246,0.4)", textAlign: "center", marginBottom: "8px", lineHeight: "1.5" }}>
+                  <p style={{ fontSize: "11px", color: "var(--text-2)", textAlign: "center", marginBottom: "8px", lineHeight: "1.5" }}>
                     {result.priceNote}
                   </p>
                 )}
                 {result.shippingNote && (
-                  <p style={{ fontSize: "10px", color: "rgba(238,238,246,0.25)", textAlign: "center", marginBottom: "16px", lineHeight: "1.5" }}>
+                  <p style={{ fontSize: "11px", color: "var(--text-2)", textAlign: "center", marginBottom: "16px", lineHeight: "1.5" }}>
                     {result.shippingNote}
                   </p>
                 )}
