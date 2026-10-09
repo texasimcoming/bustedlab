@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { SOURCES, isTrafficSource, type TrafficSource } from "@/lib/source";
 
 /**
  * FIRST-PARTY ANALYTICS.
@@ -43,6 +44,14 @@ import { Redis } from "@upstash/redis";
  *                       likely the way a card actually gets posted
  *   story_saved         the 9:16 Stories export
  *   share_tapped, paywall_shown, email_captured, checkout_clicked
+ *   shared_viewed       a shared verdict page (/scan/[id]) rendered in a
+ *                       browser: the top of the share loop's funnel
+ *
+ * WHERE VISITS CAME FROM. The browser's counts can carry one channel label
+ * from a fixed list (src/lib/source.ts: tiktok, instagram, shared, direct...).
+ * It is counted beside the plain count, never instead of it, and an unknown
+ * label is dropped while the event still counts. It is a word, not an
+ * address: no referrer, link or user agent is sent or stored.
  */
 
 export const EVENTS = [
@@ -64,6 +73,7 @@ export const EVENTS = [
   "paywall_shown",
   "email_captured",
   "checkout_clicked",
+  "shared_viewed",
 ] as const;
 
 export type EventName = (typeof EVENTS)[number];
@@ -81,6 +91,7 @@ export const CLIENT_EVENTS: readonly EventName[] = [
   "share_tapped",
   "paywall_shown",
   "checkout_clicked",
+  "shared_viewed",
 ];
 
 const EVENT_SET = new Set<string>(EVENTS);
@@ -116,6 +127,7 @@ export function dayKey(date = new Date()): string {
 const keys = {
   day: (event: EventName, day: string) => `stat:${event}:${day}`,
   total: (event: EventName) => `stat:${event}:total`,
+  sourceDay: (event: EventName, source: TrafficSource, day: string) => `stat:${event}:src:${source}:${day}`,
 };
 
 /**
@@ -127,17 +139,22 @@ const keys = {
  * groups (a finished scan is a scan_completed plus a verdict counter) and two
  * sequential round trips to count two integers is two too many.
  */
-export async function recordEvents(events: EventName[], date = new Date()): Promise<void> {
+export async function recordEvents(events: EventName[], date = new Date(), source?: unknown): Promise<void> {
   const valid = events.filter(isEventName);
   if (valid.length === 0) return;
 
   const day = dayKey(date);
+  const channel = isTrafficSource(source) ? source : null;
   try {
     const pipeline = getRedis().pipeline();
     for (const event of valid) {
       pipeline.incr(keys.day(event, day));
       pipeline.expire(keys.day(event, day), DAY_TTL_SECONDS);
       pipeline.incr(keys.total(event));
+      if (channel) {
+        pipeline.incr(keys.sourceDay(event, channel, day));
+        pipeline.expire(keys.sourceDay(event, channel, day), DAY_TTL_SECONDS);
+      }
     }
     await pipeline.exec();
   } catch {
@@ -145,8 +162,46 @@ export async function recordEvents(events: EventName[], date = new Date()): Prom
   }
 }
 
-export async function recordEvent(event: EventName, date = new Date()): Promise<void> {
-  return recordEvents([event], date);
+export async function recordEvent(event: EventName, date = new Date(), source?: unknown): Promise<void> {
+  return recordEvents([event], date, source);
+}
+
+/** The funnel steps worth splitting by channel. */
+export const SOURCE_FUNNEL: readonly EventName[] = [
+  "landing_viewed", "shared_viewed", "scan_started", "result_shown", "share_tapped", "paywall_shown", "checkout_clicked",
+];
+
+export interface SourceRow {
+  source: TrafficSource;
+  /** Window totals per funnel step. */
+  counts: Record<string, number>;
+}
+
+/**
+ * The funnel split by channel over the window, in one MGET. Counts without a
+ * label (older browsers, before this existed) are in the plain totals only,
+ * so a channel's rows can add up to less than the total.
+ */
+export async function readEventsBySource(days = 30): Promise<SourceRow[]> {
+  const window = lastNDays(days);
+  const fields: string[] = [];
+  for (const source of SOURCES) for (const event of SOURCE_FUNNEL) for (const day of window) fields.push(keys.sourceDay(event, source, day));
+  let values: (number | null)[] = [];
+  try {
+    values = await getRedis().mget<(number | null)[]>(...fields);
+  } catch {
+    values = [];
+  }
+  let i = 0;
+  return SOURCES.map(source => {
+    const counts: Record<string, number> = {};
+    for (const event of SOURCE_FUNNEL) {
+      let sum = 0;
+      for (let d = 0; d < window.length; d++) sum += Number(values[i++] ?? 0) || 0;
+      counts[event] = sum;
+    }
+    return { source, counts };
+  });
 }
 
 /**

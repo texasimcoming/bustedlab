@@ -54,6 +54,9 @@ const DOCUMENTED = {
   "claude-sonnet-5-5": { sampling: "rejected",         thinking: ["adaptive", "between_tools"], effort: true, thinksByDefault: true, betweenToolsMaxEffort: "high" },
   "claude-fable-5":    { sampling: "rejected",         thinking: ["adaptive"],                 effort: true, thinksByDefault: true },
   "claude-fable-5-1":  { sampling: "rejected",         thinking: ["adaptive"],                 effort: true, thinksByDefault: true },
+  // Haiku 5.5 migration guide, checked 2026-10-09: non-default sampling,
+  // budget_tokens and prefill are a 400; disabled thinking only at high or below.
+  "claude-haiku-5-5":  { sampling: "rejected",         thinking: ["adaptive", "disabled"],     effort: true, thinksByDefault: true, disabledMaxEffort: "high" },
 };
 const canonical = (model) => String(model || "").replace(/-\d{8}$/, "");
 

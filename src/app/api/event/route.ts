@@ -10,7 +10,8 @@ import { countInWindow } from "@/lib/redis";
  * being followed: see CLIENT_EVENTS in src/lib/analytics.ts) arrive here.
  *
  * The endpoint is public by necessity, so it is built to be boring to abuse:
- * only the listed event names are accepted, nothing else in the body is read,
+ * only the listed event names are accepted, nothing else in the body is read
+ * except one channel label from a fixed list (src/lib/source.ts),
  * and anything that is not on the list is dropped rather than becoming a new
  * Redis key. That last part matters more than it looks. An endpoint that
  * increments whatever string it is handed lets anyone write unbounded keys
@@ -71,7 +72,9 @@ export async function POST(req: NextRequest) {
       /* counters unreachable: count the event rather than lose it */
     }
 
-    await recordEvent(body.event);
+    // The visit's channel label (src/lib/source.ts), if it is one of the
+    // listed words; anything else is ignored and the event still counts.
+    await recordEvent(body.event, new Date(), body.source);
   } catch {
     /* malformed body, no counter, no error */
   }

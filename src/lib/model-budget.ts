@@ -54,16 +54,20 @@ import { Redis } from "@upstash/redis";
 
 export type SpendMode = "full" | "degraded";
 
-// USD per million tokens, from the published price list as of 2026-10-01,
-// for the two models the product uses. Cache writes (5-minute TTL) cost
-// 1.25x input on both; cache reads cost 0.05x input on Opus 5.5 and 0.1x on
-// Sonnet 5.5 ($0.20 per million on both). Thinking tokens are billed as
-// output and arrive inside usage.output_tokens, so they are priced here
-// without any special case.
+// USD per million tokens, from the published price list, checked 2026-10-09.
+// Cache writes (5-minute TTL) cost 1.25x input on every model here; cache
+// reads cost 0.05x input on Opus 5.5 and Sonnet 5.5 ($0.20 and $0.10 per
+// million) and 0.1x on Haiku 5.5. Sonnet 5.5's reads were priced at 0.1x
+// until this check, which overstated a scan's cost by a little. Thinking
+// tokens are billed as output and arrive inside usage.output_tokens, so they
+// are priced here without any special case.
 // https://platform.claude.com/docs/en/about-claude/pricing
 const PRICING: Record<string, { input: number; output: number; cacheRead: number }> = {
   "claude-opus-5-5": { input: 4.0, output: 20.0, cacheRead: 0.05 },
-  "claude-sonnet-5-5": { input: 2.0, output: 10.0, cacheRead: 0.1 },
+  "claude-sonnet-5-5": { input: 2.0, output: 10.0, cacheRead: 0.05 },
+  // Measured by the evaluation route. Prompts over 100,000 tokens cost five
+  // times more on Haiku 5.5; no call here comes near that.
+  "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheRead: 0.1 },
   // Measured by the evaluation route; cache reads are 0.025x on Fable 5.1.
   "claude-fable-5-1": { input: 10.0, output: 50.0, cacheRead: 0.025 },
 };

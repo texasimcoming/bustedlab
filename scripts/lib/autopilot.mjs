@@ -191,6 +191,19 @@ export function briefNumbers(stats) {
     },
     providers: stats.providers || {},
     ledgerSize: stats.ledgerSize ?? 0,
+    // The browser-side funnel by the channel that brought the visit
+    // (src/lib/source.ts), busiest first; channels with nothing are left out.
+    channels: (stats.bySource || [])
+      .map(r => ({
+        source: r.source,
+        landings: r.counts?.landing_viewed ?? 0,
+        sharedViews: r.counts?.shared_viewed ?? 0,
+        scanStarts: r.counts?.scan_started ?? 0,
+        shares: r.counts?.share_tapped ?? 0,
+        checkoutClicks: r.counts?.checkout_clicked ?? 0,
+      }))
+      .filter(c => c.landings + c.sharedViews + c.scanStarts + c.shares + c.checkoutClicks > 0)
+      .sort((a, b) => (b.landings + b.sharedViews) - (a.landings + a.sharedViews)),
     engine: engineNumbers(stats.scanCosts?.window),
   };
 }
@@ -309,6 +322,12 @@ export function briefMarkdown({ date, numbers: n, fixes, summary, base }) {
     `| paywall shown | ${n.funnel.paywalls} | ${r(n.ratios.paywallPerScan)} of scans |`,
     `| checkout clicked | ${n.funnel.checkoutClicks} | ${r(n.ratios.checkoutPerPaywall)} of paywalls |`,
     `| emails captured | ${n.funnel.emails} | |`,
+    "",
+    "## Where visits came from", "",
+    ...((n.channels || []).length
+      ? ["| channel | landings | shared verdicts opened | scans started | shares | checkout clicks |", "|---|---|---|---|---|---|",
+         ...n.channels.map(c => `| ${c.source} | ${c.landings} | ${c.sharedViews} | ${c.scanStarts} | ${c.shares} | ${c.checkoutClicks} |`)]
+      : ["No labelled visits this week. Tag bio and Story links with ?utm_source=tiktok (or instagram, x) so they are told apart."]),
     "",
     "## Scan outcomes", "",
     `Verdicts ${n.outcomes.verdicts} (busted ${n.outcomes.busted}, overpriced ${n.outcomes.overpriced}, fair ${n.outcomes.fair}); closest match ${n.outcomes.finder}; no match ${n.outcomes.unresolved}; could not be completed ${n.outcomes.failed}. Ledger: ${n.ledgerSize} records.`,

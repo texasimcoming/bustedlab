@@ -12,11 +12,11 @@ import { importSrc, env, reset, call, redis, check, section, finish } from "./li
 const beacon = await importSrc("app/api/event/route.ts");
 const analytics = await importSrc("lib/analytics.ts");
 
-const send = (event, { ip = "203.0.113.5", browser } = {}) =>
+const send = (event, { ip = "203.0.113.5", browser, source } = {}) =>
   call(beacon.POST, "/api/event", {
     method: "POST",
     headers: { "content-type": "application/json", "x-forwarded-for": ip },
-    body: JSON.stringify({ event }),
+    body: JSON.stringify(source === undefined ? { event } : { event, source }),
     cookies: browser ? { bl_bid: browser } : {},
   });
 const total = (event) => Number(redis.peek(`stat:${event}:total`) ?? 0);
@@ -27,7 +27,7 @@ section("EVERY STEP A VISITOR TAKES IS COUNTED");
 
 env(); reset();
 const STEPS = ["landing_viewed", "photo_selected", "url_entered", "scan_started", "result_shown",
-  "scan_failed", "card_saved", "story_saved", "share_tapped", "paywall_shown", "checkout_clicked"];
+  "scan_failed", "card_saved", "story_saved", "share_tapped", "paywall_shown", "checkout_clicked", "shared_viewed"];
 for (const step of STEPS) await send(step, { browser: browser(1) });
 const missing = STEPS.filter(step => total(step) !== 1);
 check("each browser-side step is accepted and counted once", missing.length === 0, missing.join(", "));
@@ -99,5 +99,47 @@ check("shares and saves per scan, and checkout rate, computed",
 const empty = analytics.buildFunnel(series({}));
 check("an empty day reads as no data, not as 0% or a division error",
       empty.scanStartRate === null && empty.unresolvedRate === null && empty.scanFailureRate === null);
+
+// ════════════════════════════════════════════════════════════════
+section("WHICH CHANNEL BROUGHT THEM");
+
+const { detectSource } = await importSrc("lib/source.ts");
+const visit = (over) => detectSource({ search: "", path: "/", referrer: "", userAgent: "Mozilla/5.0 (iPhone) Safari", host: "www.bustedlab.com", ...over });
+const SOURCE_CASES = [
+  [{ search: "?utm_source=tiktok&utm_medium=bio" }, "tiktok", "a bio link tagged utm_source=tiktok"],
+  [{ search: "?utm_source=IG" }, "instagram", "an Instagram Story sticker tagged IG"],
+  [{ search: "?ref=share" }, "shared", "a shared verdict link (the share button tags it)"],
+  [{ search: "?utm_source=newsletter" }, "other", "a tag that names no listed channel"],
+  [{ userAgent: "Mozilla/5.0 (iPhone) AppleWebKit Mobile/15E148 musical_ly_35.1 BytedanceWebview" }, "tiktok", "TikTok's in-app browser"],
+  [{ userAgent: "Mozilla/5.0 (iPhone) Mobile/15E148 Instagram 350.0.0" }, "instagram", "Instagram's in-app browser"],
+  [{ userAgent: "Mozilla/5.0 (iPhone) Mobile/15E148 [FBAN/FBIOS;FBAV/480.0]" }, "facebook", "Facebook's in-app browser"],
+  [{ referrer: "https://t.co/abc123" }, "x", "a link opened from X"],
+  [{ referrer: "https://www.google.com/" }, "search", "a search engine"],
+  [{ referrer: "https://some-blog.example/post" }, "other", "another site"],
+  [{ referrer: "https://www.bustedlab.com/the-index" }, "direct", "moving between this site's own pages is not a referral"],
+  [{ path: "/scan/abc123xyz" }, "shared", "arriving straight on a shared verdict page"],
+  [{ referrer: "https://www.bustedlab.com/scan/abc123xyz" }, "shared", "from a shared verdict to the scanner"],
+  [{ referrer: "https://bustedlab.com/scan/abc123xyz" }, "shared", "the same, from the bare domain"],
+  [{}, "direct", "no tag, no app, no referrer"],
+  [{ search: "?utm_source=tiktok", userAgent: "Instagram 350.0" }, "tiktok", "the link's own tag wins over the app it opened in"],
+];
+const wrongSources = SOURCE_CASES.filter(([input, expected]) => visit(input) !== expected);
+check("each arrival is put in the right channel", wrongSources.length === 0,
+      wrongSources.map(([i, e, why]) => `${why}: got ${visit(i)}, expected ${e}`).join("; "));
+
+env(); reset();
+await send("landing_viewed", { browser: browser(21), source: "tiktok" });
+await send("landing_viewed", { browser: browser(22), source: "tiktok" });
+await send("scan_started", { browser: browser(22), source: "tiktok" });
+await send("landing_viewed", { browser: browser(23), source: "instagram" });
+await send("landing_viewed", { browser: browser(24), source: "https://evil.example/" });
+await send("landing_viewed", { browser: browser(25) });
+check("every landing is counted in the total, labelled or not", total("landing_viewed") === 5, String(total("landing_viewed")));
+const bySource = await analytics.readEventsBySource(7);
+const row = (s) => bySource.find(r => r.source === s)?.counts || {};
+check("and split by channel", row("tiktok").landing_viewed === 2 && row("tiktok").scan_started === 1 && row("instagram").landing_viewed === 1,
+      JSON.stringify({ tiktok: row("tiktok"), instagram: row("instagram") }));
+check("a label that is not on the list writes no key of its own",
+      !redis.keys().some(k => k.includes("evil") || k.includes("http")));
 
 finish("funnel");
