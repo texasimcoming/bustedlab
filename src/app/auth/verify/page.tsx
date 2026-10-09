@@ -29,18 +29,18 @@ export default async function VerifyPage({
   return (
     <main style={{
       minHeight: "100vh", display: "flex", alignItems: "center",
-      justifyContent: "center", background: "#08080f", padding: "24px",
+      justifyContent: "center", background: "#07060d", padding: "24px",
     }}>
       <form id="sign-in" method="post" action="/api/auth/verify" style={{ textAlign: "center", maxWidth: "360px" }}>
         <input type="hidden" name="token" value={token} />
         <h1 style={{
           fontFamily: "var(--font-display), sans-serif",
           fontSize: "24px", fontWeight: "700",
-          color: "#eeeef8", letterSpacing: "-0.6px", marginBottom: "10px",
+          color: "#f5f3ff", letterSpacing: "-0.6px", marginBottom: "10px",
         }}>
           Signing you in
         </h1>
-        <p style={{ color: "rgba(238,238,248,0.55)", fontSize: "15px", lineHeight: "1.6", marginBottom: "24px" }}>
+        <p style={{ color: "rgba(245,243,255,0.55)", fontSize: "15px", lineHeight: "1.6", marginBottom: "24px" }}>
           One moment. If nothing happens, tap the button.
         </p>
         <button type="submit" className="btn-primary" style={{

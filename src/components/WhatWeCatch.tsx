@@ -33,11 +33,11 @@ export default function WhatWeCatch() {
     return () => { live = false; };
   }, []);
 
-  const card = { borderRadius: "9px", padding: "12px 14px", display: "flex", alignItems: "center", gap: "10px" } as const;
+  const card = { borderRadius: "14px", padding: "14px", display: "flex", alignItems: "center", gap: "11px" } as const;
 
   return (
-    <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
-      <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "14px", textTransform: "uppercase" }}>
+    <section className="section reveal">
+      <div className="label">
         WHAT WE CATCH
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
@@ -49,11 +49,11 @@ export default function WhatWeCatch() {
                   <CategoryGlyph type={r.category} />
                 </span>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: "600", fontSize: "12px", color: "var(--text)", marginBottom: "2px", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                  <div style={{ fontWeight: "600", fontSize: "13px", color: "var(--text)", marginBottom: "3px", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
                     {r.title}
                   </div>
-                  <div style={{ fontSize: "11px", color: "var(--text-3)", lineHeight: "1.3" }}>
-                    <span style={{ textDecoration: "line-through", color: "#f87171" }}>{money(r.retailPrice)}</span> → <span style={{ color: "var(--green)" }}>{money(r.wholesalePrice)} real</span>
+                  <div style={{ fontSize: "12px", color: "var(--text-3)", lineHeight: "1.3", fontVariantNumeric: "tabular-nums" }}>
+                    <span style={{ textDecoration: "line-through", color: "#ff6b79" }}>{money(r.retailPrice)}</span> → <span style={{ color: "var(--green)" }}>{money(r.wholesalePrice)} real</span>
                   </div>
                 </div>
               </Link>
@@ -62,16 +62,16 @@ export default function WhatWeCatch() {
               <div key={c.c} className="card" style={card}>
                 <CategoryGlyph type={c.icon} />
                 <div>
-                  <div style={{ fontWeight: "600", fontSize: "12px", color: "var(--text)", marginBottom: "2px" }}>{c.c}</div>
-                  <div style={{ fontSize: "11px", color: "var(--text-3)", lineHeight: "1.3" }}>
-                    <span style={{ textDecoration: "line-through", color: "#f87171" }}>{c.x}</span> → <span style={{ color: "var(--green)" }}>{c.r}</span>
+                  <div style={{ fontWeight: "600", fontSize: "13px", color: "var(--text)", marginBottom: "3px" }}>{c.c}</div>
+                  <div style={{ fontSize: "12px", color: "var(--text-3)", lineHeight: "1.3", fontVariantNumeric: "tabular-nums" }}>
+                    <span style={{ textDecoration: "line-through", color: "#ff6b79" }}>{c.x}</span> → <span style={{ color: "var(--green)" }}>{c.r}</span>
                   </div>
                 </div>
               </div>
             ))}
       </div>
       {!real && (
-        <p style={{ fontSize: "11.5px", color: "var(--text-2)", marginTop: "10px", textAlign: "center" }}>
+        <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "10px", textAlign: "center" }}>
           Illustrative examples.
         </p>
       )}

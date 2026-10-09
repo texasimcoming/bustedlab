@@ -42,7 +42,7 @@ const TABS: { key: BoardKey; label: string }[] = [
 function Rank({ n }: { n: number }) {
   return (
     <span style={{
-      fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10.5px",
+      fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
       color: n <= 3 ? "var(--accent-bright)" : "var(--text-3)",
       width: "18px", flexShrink: 0, textAlign: "right",
     }}>{n}</span>
@@ -52,8 +52,8 @@ function Rank({ n }: { n: number }) {
 function RowShell({ children, href }: { children: React.ReactNode; href?: string }) {
   const style: React.CSSProperties = {
     display: "flex", alignItems: "center", gap: "10px",
-    padding: "10px 12px", borderRadius: "9px", textDecoration: "none",
-    background: "rgba(255,255,255,0.018)", border: "1px solid var(--border)",
+    padding: "12px 14px", borderRadius: "12px", textDecoration: "none",
+    background: "rgba(255,255,255,0.022)", border: "1px solid var(--border)",
   };
   return href
     ? <Link href={href} className="panel" style={style}>{children}</Link>
@@ -63,7 +63,7 @@ function RowShell({ children, href }: { children: React.ReactNode; href?: string
 function Title({ children }: { children: React.ReactNode }) {
   return (
     <span style={{
-      flex: 1, minWidth: 0, fontSize: "12.5px", color: "var(--text-2)", lineHeight: "1.4",
+      flex: 1, minWidth: 0, fontSize: "13px", color: "var(--text)", lineHeight: "1.4",
       overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
     }}>{children}</span>
   );
@@ -72,8 +72,8 @@ function Title({ children }: { children: React.ReactNode }) {
 function Value({ children, color }: { children: React.ReactNode; color?: string }) {
   return (
     <span style={{
-      fontFamily: "var(--font-display), sans-serif", fontSize: "13px", fontWeight: "700",
-      color: color || "var(--text)", flexShrink: 0, letterSpacing: "-0.3px",
+      fontFamily: "var(--font-display), sans-serif", fontSize: "14px", fontWeight: "700",
+      color: color || "var(--text)", flexShrink: 0, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums",
     }}>{children}</span>
   );
 }
@@ -103,16 +103,13 @@ export default function Leaderboards() {
   const active = has[tab] ? tab : usable[0].key;
 
   return (
-    <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
-        <div style={{
-          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
-          letterSpacing: "2px", color: "rgba(184,160,232,0.7)", textTransform: "uppercase",
-        }}>
+    <section className="section reveal">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "14px" }}>
+        <div className="label" style={{ marginBottom: 0, flex: 1 }}>
           THE BOARDS
         </div>
         <Link href="/the-index" style={{
-          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
+          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
           letterSpacing: "1px", color: "var(--accent-bright)", textDecoration: "none", textTransform: "uppercase",
           // A 15px-tall link was the smallest target on the page; the padding
           // makes it tappable without moving the label.
@@ -128,12 +125,14 @@ export default function Leaderboards() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className="panel"
+            aria-pressed={active === t.key}
             style={{
-              borderRadius: "20px", padding: "10px 16px", cursor: "pointer",
-              fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10.5px",
+              borderRadius: "999px", padding: "10px 16px", cursor: "pointer",
+              fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
               letterSpacing: "0.6px", textTransform: "uppercase",
-              color: active === t.key ? "var(--accent-bright)" : "var(--text-3)",
-              borderColor: active === t.key ? "var(--accent-2)" : "var(--border-mid)",
+              color: active === t.key ? "#ece5ff" : "var(--text-3)",
+              borderColor: active === t.key ? "rgba(169,147,255,0.6)" : "var(--border-mid)",
+              background: active === t.key ? "rgba(138,111,240,0.16)" : undefined,
             }}
           >
             {t.label}
@@ -146,7 +145,7 @@ export default function Leaderboards() {
           <RowShell key={r.id} href={`/scan/${r.id}`}>
             <Rank n={i + 1} />
             <Title>{r.title}</Title>
-            <Value color="#ef4444">{r.markup.toLocaleString("en-US")}%</Value>
+            <Value color="#ff6b79">{r.markup.toLocaleString("en-US")}%</Value>
           </RowShell>
         ))}
 
@@ -171,7 +170,7 @@ export default function Leaderboards() {
       </div>
 
       <p style={{
-        fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10.5px",
+        fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
         color: "var(--text-2)", marginTop: "10px", letterSpacing: "0.4px", lineHeight: "1.6",
       }}>
         {active === "trending"

@@ -17,14 +17,14 @@ export default function NotFound() {
     }}>
       <div style={{ textAlign: "center", maxWidth: "380px" }}>
         <div style={{
-          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
+          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
           letterSpacing: "2.5px", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "14px",
         }}>
           404 &middot; NOTHING AT THIS ADDRESS
         </div>
         <h1 style={{
-          fontFamily: "var(--font-display), sans-serif", fontSize: "26px", fontWeight: "800",
-          letterSpacing: "-0.8px", color: "var(--text)", marginBottom: "10px",
+          fontFamily: "var(--font-display), sans-serif", fontSize: "30px", fontWeight: "760",
+          letterSpacing: "-0.035em", color: "var(--text)", marginBottom: "10px",
         }}>
           This page does not exist
         </h1>
@@ -32,7 +32,7 @@ export default function NotFound() {
           The link may be mistyped or cut short. The scanner is one tap away.
         </p>
         <Link href="/" className="btn-primary" style={{
-          display: "inline-block", padding: "12px 30px", borderRadius: "10px", fontSize: "14px",
+          display: "inline-block", padding: "14px 32px", borderRadius: "14px", fontSize: "14px",
           fontWeight: "700", fontFamily: "var(--font-display), sans-serif", textDecoration: "none",
         }}>
           Run a scan

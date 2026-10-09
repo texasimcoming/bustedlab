@@ -1,16 +1,12 @@
 "use client";
 
 import VerdictCard, { VerdictData } from "@/components/VerdictCard";
+import { EXAMPLE_SCANS } from "@/content/examples";
 
-// Real numbers, independently verified against live listings:
-// - Wholesale $4.30: actual AliExpress "Hello Smile Store" listing, 7-pair
-//   (14 strip / 7 session) purple teeth whitening strips, live price at
-//   time of writing.
-// - Retail $22.99: actual TikTok Shop list price for the identical 14-strip
-//   / 7-session configuration of the current top-selling purple whitening
-//   strips product in this category (992K+ sold). Same product shape,
-//   independently verified, not the same listing.
-// - Markup/savings computed with the exact formula scan.ts uses, not hand-picked.
+// The first example scan, drawn as the card a scan produces. Its numbers come
+// from src/content/examples.ts, where their sources are recorded, so this card
+// and the hero instrument above it can never disagree.
+//
 // Product name is generic ("Purple Teeth Whitening Strips") rather than a
 // brand name, matching how the real engine identifies products and for the
 // same reason: this card is not naming a specific real business.
@@ -20,48 +16,32 @@ import VerdictCard, { VerdictData } from "@/components/VerdictCard";
 // carry a hardcoded date, which was three problems at once: it was a claim
 // the numbers were captured at that instant, it aged visibly, and it told any
 // visitor roughly when this site went up.
+const example = EXAMPLE_SCANS[0];
 const DEMO_DATA: VerdictData = {
   verdict: "HIGH_MARKUP",
   mode: "VERDICT",
   matchConfidence: "exact",
-  retailPrice: 22.99,
-  wholesalePrice: 4.30,
-  markup: 435,
-  savings: 18.69,
-  productTitle: "Purple Teeth Whitening Strips (14ct / 7 sessions)",
-  // A local asset in public/demo, deliberately not a hotlinked third-party
-  // product photo: a permanent marketing asset on your own site should be an
-  // image you hold the rights to, not something scraped from a retailer
-  // listing and served from your domain.
-  productImageUrl: "/demo/purple-whitening-strips-150.webp",
+  retailPrice: example.asking,
+  wholesalePrice: example.source,
+  markup: example.markup,
+  savings: example.savings,
+  productTitle: example.title,
+  // A local asset, deliberately not a hotlinked third-party product photo: a
+  // permanent marketing asset on your own site should be an image you hold
+  // the rights to, not something scraped from a retailer listing.
+  productImageUrl: example.thumb,
   isDemo: true,
 };
 
 // Both sizes are rendered and CSS shows the one that fits (globals.css,
 // .demo-compact / .demo-full). Choosing in JavaScript after mount drew the
-// compact card first and swapped it for the full one a moment later, which on
-// a wide screen, where this card sits beside the hero, was a visible jump.
+// compact card first and swapped it for the full one a moment later, which
+// was a visible jump.
 export default function StaticVerdictDemo() {
   return (
-    <div style={{ marginBottom: "28px" }}>
-      <div style={{
-        fontFamily: "var(--font-mono), ui-monospace, monospace",
-        fontSize: "10px",
-        color: "rgba(184,160,232,0.7)",
-        letterSpacing: "2px",
-        textTransform: "uppercase",
-        marginBottom: "16px",
-        textAlign: "center",
-      }}>
-        EXAMPLE SCAN
-      </div>
-      <div style={{
-        borderRadius: "20px",
-        animation: "alienGlow 6s ease-in-out infinite",
-      }}>
-        <div className="demo-compact"><VerdictCard data={DEMO_DATA} animate={true} compact /></div>
-        <div className="demo-full"><VerdictCard data={DEMO_DATA} animate={true} /></div>
-      </div>
+    <div>
+      <div className="demo-compact"><VerdictCard data={DEMO_DATA} animate={true} compact /></div>
+      <div className="demo-full"><VerdictCard data={DEMO_DATA} animate={true} /></div>
     </div>
   );
 }

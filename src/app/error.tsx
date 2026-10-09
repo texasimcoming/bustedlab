@@ -20,14 +20,14 @@ export default function PageError({ error, reset }: { error: Error & { digest?: 
     }}>
       <div style={{ textAlign: "center", maxWidth: "380px" }}>
         <div style={{
-          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
+          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
           letterSpacing: "2.5px", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "14px",
         }}>
           SIGNAL LOST
         </div>
         <h1 style={{
-          fontFamily: "var(--font-display), sans-serif", fontSize: "26px", fontWeight: "800",
-          letterSpacing: "-0.8px", color: "var(--text)", marginBottom: "10px",
+          fontFamily: "var(--font-display), sans-serif", fontSize: "30px", fontWeight: "760",
+          letterSpacing: "-0.035em", color: "var(--text)", marginBottom: "10px",
         }}>
           Something broke on our side
         </h1>
@@ -36,7 +36,7 @@ export default function PageError({ error, reset }: { error: Error & { digest?: 
         </p>
         <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
           <button onClick={reset} className="btn-primary" style={{
-            padding: "12px 26px", borderRadius: "10px", fontSize: "14px",
+            padding: "14px 32px", borderRadius: "14px", fontSize: "14px",
             fontWeight: "700", fontFamily: "var(--font-display), sans-serif",
           }}>
             Try again
