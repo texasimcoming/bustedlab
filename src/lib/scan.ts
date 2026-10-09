@@ -196,6 +196,7 @@ import {
 } from "@/lib/scan-trace";
 import { normalizeCurrency, parsePrice, toUsd } from "@/lib/fx";
 import { capForModel, scaleImage, CANDIDATE_IMAGE_LONG_EDGE } from "@/lib/image-cap";
+import { fetchPublic } from "@/lib/net-guard";
 
 // ════════════════════════════════════════════════════════════════
 // MODELS. Chosen per role from the production evaluation (evals/results,
@@ -2782,18 +2783,20 @@ function shouldReplace(
 // ════════════════════════════════════════════════════════════════
 // URL PAGE FETCHING + STRUCTURED EXTRACTION
 // ════════════════════════════════════════════════════════════════
+// Every page this fetches was chosen by someone else (a pasted link, a store
+// address read off a screenshot, a search result), so it goes through
+// fetchPublic: no private or internal address, at any redirect hop.
 async function fetchProductPageHtml(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url, {
+    const res = await fetchPublic(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
       },
-      redirect: "follow",
       signal: AbortSignal.timeout(9000),
     });
-    if (!res.ok) return null;
+    if (!res || !res.ok) return null;
     const contentType = res.headers.get("content-type") || "";
     if (!contentType.includes("text/html") && !contentType.includes("xml")) return null;
     return await res.text();
