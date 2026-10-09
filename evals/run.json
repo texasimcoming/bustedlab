@@ -1,10 +1,346 @@
 {
-  "run": 10,
-  "note": "One hardened price parser and the 50-times plausibility gap (PR #25, merge 8cda9f6; diagnose passed on it in the watchdog's deploy run): the Stanley euro screenshot once more. Run 9 read Stanley's European store's \"55,00\" as 5,500 euros. Every cap at $0.06 all-in, inside the prompt's $0.10 of Claude.",
-  "steps": ["preflight", "photos", "scan"],
-  "maxUsd": 0.06,
-  "scanCapUsd": 0.06,
-  "scanReserveUsd": 0.06,
-  "cases": ["stanley-quencher-eur"],
-  "plan": [["stanley-quencher-eur", "verdict"]]
+  "run": 11,
+  "note": "Is Claude Haiku 5.5 a safe gate? Every stored candidate (373, from runs 2 to 10) through the shipped gate prompt and match guards on Haiku 5.5 at low effort, with each case its stored first read; run 6 sets first, so its 89 hard candidates get the same reads Sonnet 5.5 had there. The replay repeats no search and runs no scan, and nothing in this run writes public data. Haiku 5.5 is $0.10 / $0.50 per million tokens against Sonnet 5.5 at $2 / $10. Cap $0.15 of Claude. Plus one real link scan through the evaluation path, an http link that redirects to https, to prove the new page-fetch address check (fetchPublic, PR #30) on the live runtime; link cap $0.10. Run total cap $0.27.",
+  "steps": [
+    "preflight",
+    "photos",
+    "replay",
+    "links"
+  ],
+  "cases": [
+    "flowlife-flowgun-air",
+    "knitted-hat",
+    "car-phone-holder",
+    "silicone-pastry-brush",
+    "raku-pitcher",
+    "kitchen-spatula",
+    "airpods-pro-2",
+    "switch-oled",
+    "yellowstone-cowboy-hat",
+    "stanley-quencher-eur",
+    "flowgun-go-eur",
+    "kitchenaid-mixer",
+    "crocs-clog",
+    "owala-freesip",
+    "rayban-wayfarer",
+    "led-fidget-spinner",
+    "jade-roller-gua-sha",
+    "carved-spoon",
+    "bukidnon-wooden-spoons",
+    "mary-rose-spoon"
+  ],
+  "maxUsd": 0.27,
+  "replay": {
+    "model": "claude-haiku-5-5@low",
+    "capUsd": 0.15,
+    "sets": [
+      {
+        "run": 5,
+        "caseId": "flowlife-flowgun-air",
+        "intent": "finder"
+      },
+      {
+        "run": 3,
+        "caseId": "flowlife-flowgun-air",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "knitted-hat",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "knitted-hat",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "car-phone-holder",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "car-phone-holder",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "silicone-pastry-brush",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "silicone-pastry-brush",
+        "intent": "finder"
+      },
+      {
+        "run": 3,
+        "caseId": "silicone-pastry-brush",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "raku-pitcher",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "kitchen-spatula",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "airpods-pro-2",
+        "intent": "verdict"
+      },
+      {
+        "run": 5,
+        "caseId": "airpods-pro-2",
+        "intent": "verdict",
+        "purposes": [
+          "rebrand+retailer"
+        ]
+      },
+      {
+        "run": 2,
+        "caseId": "switch-oled",
+        "intent": "verdict"
+      },
+      {
+        "run": 3,
+        "caseId": "switch-oled",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "yellowstone-cowboy-hat",
+        "intent": "verdict"
+      },
+      {
+        "run": 5,
+        "caseId": "stanley-quencher-eur",
+        "intent": "verdict"
+      },
+      {
+        "run": 3,
+        "caseId": "flowgun-go-eur",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "yellowstone-cowboy-hat",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "flowlife-flowgun-air",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "flowlife-flowgun-air",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "switch-oled",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "kitchenaid-mixer",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "crocs-clog",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "crocs-clog",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "owala-freesip",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "rayban-wayfarer",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "led-fidget-spinner",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "led-fidget-spinner",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "jade-roller-gua-sha",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "jade-roller-gua-sha",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "kitchen-spatula",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "raku-pitcher",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "carved-spoon",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "carved-spoon",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "bukidnon-wooden-spoons",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "bukidnon-wooden-spoons",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "stanley-quencher-eur",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "stanley-quencher-eur",
+        "intent": "finder"
+      },
+      {
+        "run": 2,
+        "caseId": "flowgun-go-eur",
+        "intent": "verdict"
+      },
+      {
+        "run": 2,
+        "caseId": "flowgun-go-eur",
+        "intent": "finder"
+      },
+      {
+        "run": 3,
+        "caseId": "crocs-clog",
+        "intent": "verdict"
+      },
+      {
+        "run": 3,
+        "caseId": "raku-pitcher",
+        "intent": "finder"
+      },
+      {
+        "run": 3,
+        "caseId": "kitchen-spatula",
+        "intent": "verdict"
+      },
+      {
+        "run": 3,
+        "caseId": "mary-rose-spoon",
+        "intent": "verdict"
+      },
+      {
+        "run": 3,
+        "caseId": "car-phone-holder",
+        "intent": "finder"
+      },
+      {
+        "run": 3,
+        "caseId": "led-fidget-spinner",
+        "intent": "verdict"
+      },
+      {
+        "run": 3,
+        "caseId": "jade-roller-gua-sha",
+        "intent": "verdict"
+      },
+      {
+        "run": 5,
+        "caseId": "yellowstone-cowboy-hat",
+        "intent": "verdict"
+      },
+      {
+        "run": 5,
+        "caseId": "silicone-pastry-brush",
+        "intent": "finder"
+      },
+      {
+        "run": 5,
+        "caseId": "car-phone-holder",
+        "intent": "finder"
+      },
+      {
+        "run": 7,
+        "caseId": "yellowstone-cowboy-hat",
+        "intent": "verdict"
+      },
+      {
+        "run": 7,
+        "caseId": "flowlife-flowgun-air",
+        "intent": "finder"
+      },
+      {
+        "run": 7,
+        "caseId": "car-phone-holder",
+        "intent": "finder"
+      },
+      {
+        "run": 7,
+        "caseId": "airpods-pro-2",
+        "intent": "verdict"
+      },
+      {
+        "run": 8,
+        "caseId": "stanley-quencher-eur",
+        "intent": "verdict"
+      },
+      {
+        "run": 8,
+        "caseId": "silicone-pastry-brush",
+        "intent": "finder"
+      },
+      {
+        "run": 9,
+        "caseId": "stanley-quencher-eur",
+        "intent": "verdict"
+      },
+      {
+        "run": 10,
+        "caseId": "stanley-quencher-eur",
+        "intent": "verdict"
+      }
+    ]
+  },
+  "links": [
+    {
+      "id": "flowlife-flowgun-air-http",
+      "url": "http://www.flowlife.com/en-GB/product/flowgun-air",
+      "intent": "verdict",
+      "kind": "small-brand electronics; plain http, so the page fetch follows a redirect through the new address check"
+    }
+  ],
+  "linkCapUsd": 0.1
 }
