@@ -47,7 +47,7 @@ Never change or remove these. If a change would touch one, flag it and ask.
 - Prices are read by one parser (`parsePrice` in `src/lib/fx.ts`) wherever they come from: page meta tags, microdata and JSON-LD, Serper and SerpApi price strings, and the model's reads. A format that could mean two things is unreadable, never guessed: a missing price only costs a verdict, a wrong one makes a false accusation. Provider prices count only when the provider's text and its own extracted number agree.
 - Plausible gap: no verdict when the asking price and the source price are more than 50 times apart, in either direction. The scan returns the cheapest-link card with a short note. A misread price is off by 100 or 1,000 times, not by a few percent. See PLAUSIBLE GAP in `src/lib/scan.ts`.
 - Pages fetched on someone else's say-so (a pasted link, a store address read off a screenshot, a search result) go through `fetchPublic` in `src/lib/net-guard.ts`: http or https on the default port, no credentials, a public hostname whose every address is public, and redirects followed by hand, at most four, each hop checked. `npm run check:net-guard` proves it offline; run 11 proved it live (an http link redirected to https and the page was read).
-- The global daily cap on free scans fails closed: if Redis cannot be read, a free scan gets the "high demand" answer instead of running uncapped. Every other limit fails open. Paid scans are unaffected.
+- The global daily cap on free scans fails closed: if Redis cannot be read, a free scan gets the "high demand" answer instead of running uncapped. Every other limit fails open. Paid scans sit outside the cap, but sessions and paid status live in Redis too, so while Redis is down a paid account cannot be confirmed and its scans stop as well.
 - Link scans take the brand the page's own product data states (schema.org brand or product:brand, never "Generic" or "Unbranded"), and the match guards compare listings with it as with a brand read off a photo.
 - Search: Serper is primary, SerpApi is the backup.
 - Escalation policy: the cheapest provider first, the better one when the cheap one cannot verify. Serper's Lens answers first; when nothing it found survives the gate and the match guards, SerpApi's Lens is asked once, only while SerpApi is above its reserve with a known balance, never on a degraded day. See ESCALATION in `src/lib/scan.ts`.
@@ -121,7 +121,7 @@ The landing page's hero and example card read `src/content/examples.ts`. It work
 - **A bad deploy:** in Vercel, Deployments, open the last good production deployment and choose "Promote to Production" (instant, no rebuild). Then revert the merge on GitHub (`git revert -m 1 <merge sha>`) through a PR so main matches what is live.
 - **How you know:** the watchdog runs after every production deploy (diagnose when runtime code changed) and every hour, and opens a "watchdog" issue that mentions the owner when anything fails.
 - **Spend running away:** set `DAILY_MODEL_BUDGET_USD` lower, or `GLOBAL_DAILY_SCAN_CAP` to 0 to pause free scans, in Vercel's environment variables, then redeploy. The Anthropic balance is prepaid, so it is the final ceiling.
-- **Redis down:** free scans pause by themselves (the cap fails closed); landing pages keep working.
+- **Redis down:** every scan pauses (the free cap fails closed, and a paid account cannot be confirmed); landing pages keep working. Running out of Upstash's free 500,000 commands a month has the same effect, so a pay-as-you-go plan with a budget cap is the guard.
 
 ## Lessons
 
