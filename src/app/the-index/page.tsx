@@ -3,7 +3,6 @@ import Link from "next/link";
 import { unstable_cache } from "next/cache";
 import { getIndexEntries, getRecordsSince, countByCategory, CATEGORIES, type IndexEntry } from "@/lib/redis";
 import { VERDICT_COLOR, VERDICT_LABEL } from "@/lib/scan-record-view";
-import SoundToggle from "@/components/SoundToggle";
 
 /**
  * THE PUBLIC INDEX, served at /the-index.
@@ -146,10 +145,10 @@ export default async function IndexPage({ searchParams }: Props) {
             fontSize: "18px", letterSpacing: "-0.5px", color: "var(--text)",
           }}>BustedLab</span>
         </Link>
-        {/* Sized so the labelled sound toggle and the button fit beside the
-            wordmark on a 390px phone without wrapping. */}
+        {/* No sound toggle here: the verdict tone only ever plays on a scan
+            result, so the control did nothing on this page and crowded the
+            one action it has. Same nav as a shared verdict page. */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <SoundToggle />
           <Link href="/" className="btn-primary" style={{
             borderRadius: "8px", padding: "10px 12px", fontSize: "13px", fontWeight: "600",
             fontFamily: "var(--font-display), sans-serif", textDecoration: "none", whiteSpace: "nowrap",

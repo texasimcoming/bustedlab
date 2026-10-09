@@ -50,7 +50,7 @@ function SuccessInner() {
           Unlimited scans are unlocking on this device. Your access link is in your inbox too, for any other device.
         </p>
         <p style={{
-          color: "rgba(238,238,248,0.3)", fontSize: "13px", marginTop: "24px"
+          color: "var(--text-2)", fontSize: "13px", marginTop: "24px"
         }}>
           Redirecting you back...
         </p>

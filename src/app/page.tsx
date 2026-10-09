@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect, useSyncExternalStore } from "react";
+import { useState, useRef, useCallback, useEffect, useLayoutEffect, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 
 // The scanning screen and the results page are only ever shown after someone
@@ -70,19 +70,6 @@ function useScrollReveal() {
 
     return () => obs.disconnect();
   }, []);
-}
-
-function useScrollDepthTrigger(threshold: number, onTrigger: () => void) {
-  useEffect(() => {
-    let fired = false;
-    const handler = () => {
-      if (fired) return;
-      const scrolled = window.scrollY / (document.body.scrollHeight - window.innerHeight);
-      if (scrolled >= threshold) { fired = true; onTrigger(); }
-    };
-    window.addEventListener("scroll", handler, { passive: true });
-    return () => window.removeEventListener("scroll", handler);
-  }, [threshold, onTrigger]);
 }
 
 // The testimonial block that used to live here was invented: three quotes,
@@ -185,7 +172,6 @@ export default function Home() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [urlInput, setUrlInput] = useState("");
   const [userStatus, setUserStatus] = useState<UserStatus>({ isPaid: false, remaining: FREE_SCAN_ALLOWANCE, authenticated: false });
-  const [statusLoaded, setStatusLoaded] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   // The day's free capacity ran out for everyone (503 from /api/scan). The
   // paywall says so rather than claiming this visitor's own scans are spent.
@@ -196,7 +182,14 @@ export default function Home() {
     setFreeTierPaused(reason === "capacity");
     setShowPaywall(true);
   };
-  const [showScrollNudge, setShowScrollNudge] = useState(false);
+  // Whether the scan action in the hero is on screen. The sticky bar repeats
+  // that action, so it only appears once the hero's own button has scrolled
+  // away: two identical buttons on one screen made the visitor choose
+  // between them, and the bar sat on top of the allowance line under the
+  // hero button. Starts true, so the server render and a visitor with
+  // scripts off never see the bar on top of the hero.
+  const [heroActionInView, setHeroActionInView] = useState(true);
+  const heroActionRef = useRef<HTMLDivElement>(null);
   // The message for the link the visitor arrived on (?auth=..., ?payment=...)
   // until anything on the page sets its own. Read through
   // useSyncExternalStore so the server render and the hydrating render agree
@@ -237,6 +230,19 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const urlFieldRef = useRef<HTMLInputElement>(null);
   const scanItRef = useRef<HTMLButtonElement>(null);
+
+  // Every screen change starts at the top. Picking a photo scrolls the page
+  // down to the scan button, and the scanning screen and the result used to
+  // open at that same scroll position: on a phone the result opened halfway
+  // down the card, with the verdict and the markup above the fold line, so
+  // the one moment the product exists for was the part nobody saw. Before
+  // paint, so the old position never flashes.
+  const shownState = useRef(state);
+  useLayoutEffect(() => {
+    if (shownState.current === state) return; // first render: leave the browser's own scroll restore alone
+    shownState.current = state;
+    window.scrollTo(0, 0);
+  }, [state]);
 
   // A picked photo pushes the question and the scan button below the fold on
   // a phone. Bring them up, so the next tap is on screen. scroll-padding on
@@ -333,13 +339,18 @@ export default function Home() {
   }, []);
 
   useScrollReveal();
-  useScrollDepthTrigger(0.7, useCallback(() => {
-    // Gated on the real fetch resolving. Before that, userStatus.remaining
-    // holds the default full allowance, so scrolling fast enough to fire
-    // this before the fetch lands could show "scans remaining" to someone
-    // who has actually used them all.
-    if (statusLoaded && !userStatus.isPaid && userStatus.remaining > 0) setShowScrollNudge(true);
-  }, [statusLoaded, userStatus.isPaid, userStatus.remaining]));
+
+  // The hero's scan action, watched so the sticky bar can stand in for it
+  // only while it is off screen. The scroll-depth popup that used to offer
+  // "Run a scan" at 70% of the page is gone: it was a third copy of the same
+  // button, and once shown it stayed, covering the hero's own button.
+  useEffect(() => {
+    const el = heroActionRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(([entry]) => setHeroActionInView(entry.isIntersecting), { threshold: 0 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [state]);
 
   useEffect(() => {
     fetch("/api/scan").then(r => r.json()).then((data: Telemetry & { isPaid?: boolean; remaining?: number }) => {
@@ -352,7 +363,6 @@ export default function Home() {
         isPaid: prev.isPaid || !!data.isPaid,
         remaining: typeof data.remaining === "number" ? data.remaining : prev.remaining,
       }));
-      setStatusLoaded(true);
       setTelemetry(data);
       // The larger of the real count and the floor, never their sum. Once
       // real scans exceed SCAN_BASELINE the baseline stops contributing
@@ -726,24 +736,8 @@ export default function Home() {
         />
       )}
 
-      {/* Scroll nudge */}
-      {showScrollNudge && !preview && !urlInput.trim() && (
-        // Just above the sticky bar. On phones the toast now comes in under
-        // the nav (globals.css), so the two no longer share the bottom lane.
-        <div style={{ position: "fixed", bottom: "calc(var(--bar-space) + 10px)", right: "16px", zIndex: 150, maxWidth: "260px" }}>
-          <div className="card" style={{ borderRadius: "14px", padding: "16px", border: "1px solid rgba(123,94,167,0.2)", animation: "slideIn 0.3s ease" }}>
-            <p style={{ fontSize: "13px", color: "var(--text)", fontWeight: "600", marginBottom: "4px" }}>Allowance unspent</p>
-            <p style={{ fontSize: "12px", color: "var(--text-3)", marginBottom: "12px" }}>{userStatus.remaining} free scan{userStatus.remaining !== 1 ? "s" : ""} remaining today.</p>
-            <button onClick={() => { setShowScrollNudge(false); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="btn-primary" style={{ width: "100%", padding: "9px", borderRadius: "8px", fontSize: "13px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif" }}>
-              Run a scan
-            </button>
-            <button onClick={() => setShowScrollNudge(false)} style={{ width: "100%", background: "none", border: "none", color: "var(--text-3)", fontSize: "12px", cursor: "pointer", padding: "6px", marginTop: "4px" }}>Dismiss</button>
-          </div>
-        </div>
-      )}
-
       <LiveToast telemetry={telemetry} />
-      <StickyBar remaining={userStatus.remaining} isPaid={userStatus.isPaid} onScan={() => {
+      <StickyBar hidden={heroActionInView} remaining={userStatus.remaining} isPaid={userStatus.isPaid} onScan={() => {
         if (preview) runScan("image");
         else if (urlInput.trim()) runScan("url");
         else fileInputRef.current?.click();
@@ -764,7 +758,7 @@ export default function Home() {
             className="brand-mark"
             style={{ borderRadius: "9px", display: "block", objectFit: "cover" }}
           />
-          <span className="brand-wordmark" style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "800", fontSize: "20px", letterSpacing: "-0.5px" }}>BustedLab</span>
+          <span className="brand-wordmark nav-wordmark" style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "800", fontSize: "20px", letterSpacing: "-0.5px" }}>BustedLab</span>
         </div>
         <div className="nav-right-group" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           {/* Desktop only - the same live count moves to the hero anchor
@@ -812,7 +806,12 @@ export default function Home() {
         </div>
       )}
 
-      {/* ═══ HERO ═══ */}
+      {/* ═══ HERO ═══
+          On a phone: the action, then the example card under it. On a wide
+          screen the example card sits beside the action (globals.css,
+          .hero-grid), so the proof is above the fold instead of 900px below
+          it with empty space either side. */}
+      <div className="hero-grid">
       <section className="hero-section" style={{ maxWidth: "640px", margin: "0 auto", padding: "48px 24px 36px", textAlign: "center", position: "relative", zIndex: 2 }}>
         {/* Mobile-only live anchor: sits above the indexed-records line so
             the top of the page breathes before the headline. Hidden on
@@ -849,6 +848,7 @@ export default function Home() {
             picker offers both. The link field sits under it as the secondary
             path. What the visitor wants to know is asked right above it, with
             the verdict already chosen. */}
+        <div ref={heroActionRef}>
         {preview ? (
           <>
             <div style={{ borderRadius: "14px", overflow: "hidden", marginBottom: "4px", position: "relative" }}>
@@ -944,20 +944,22 @@ export default function Home() {
             {userStatus.remaining} free scan{userStatus.remaining !== 1 ? "s" : ""} left today. <button onClick={() => openPaywall("choice")} style={{ background: "none", border: "none", color: "var(--accent-bright)", cursor: "pointer", fontSize: "12px", textDecoration: "underline", padding: "12px 4px", margin: "-12px 0" }}>Unlimited for $4.99</button>
           </p>
         )}
+        </div>
       </section>
 
       {/* Bridge line - sits between the action buttons above and the demo
           below, giving the demo context before it renders. */}
-      <div style={{ maxWidth: "640px", margin: "0 auto", padding: "0 24px 28px", textAlign: "center", position: "relative", zIndex: 2 }}>
+      <div className="hero-bridge" style={{ maxWidth: "640px", margin: "0 auto", padding: "0 24px 28px", textAlign: "center", position: "relative", zIndex: 2 }}>
         <p style={{ fontSize: "13px", color: "var(--text-3)", lineHeight: "1.6", maxWidth: "420px", margin: "0 auto" }}>
           Any product. Any store. The source price, the asking price, and the exact distance between them.
         </p>
       </div>
 
       {/* ═══ STATIC VERDICT DEMO ═══ */}
-      <section style={{ maxWidth: "640px", margin: "0 auto", padding: "0 24px", position: "relative", zIndex: 2 }}>
+      <section className="hero-demo" style={{ maxWidth: "640px", margin: "0 auto", padding: "0 24px", position: "relative", zIndex: 2 }}>
         <StaticVerdictDemo />
       </section>
+      </div>
 
       {/* ═══ STATS ═══ */}
       <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
@@ -1010,7 +1012,7 @@ export default function Home() {
           ))}
         </div>
         {REACTIONS.illustrative && (
-          <p style={{ fontSize: "10px", color: "var(--text-3)", marginTop: "10px", textAlign: "center" }}>
+          <p style={{ fontSize: "11.5px", color: "var(--text-2)", marginTop: "10px", textAlign: "center" }}>
             Illustrative reactions.
           </p>
         )}
@@ -1082,7 +1084,7 @@ export default function Home() {
               tracked-out centered label. */}
           <p style={{
             fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
-            letterSpacing: "2px", color: "rgba(184,160,232,0.5)", textTransform: "uppercase",
+            letterSpacing: "2px", color: "rgba(184,160,232,0.85)", textTransform: "uppercase",
             margin: "0 0 28px", paddingLeft: "2px",
           }}>
             UNLIMITED ACCESS

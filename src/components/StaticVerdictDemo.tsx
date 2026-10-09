@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import VerdictCard, { VerdictData } from "@/components/VerdictCard";
 
 // Real numbers, independently verified against live listings:
@@ -38,15 +37,11 @@ const DEMO_DATA: VerdictData = {
   isDemo: true,
 };
 
+// Both sizes are rendered and CSS shows the one that fits (globals.css,
+// .demo-compact / .demo-full). Choosing in JavaScript after mount drew the
+// compact card first and swapped it for the full one a moment later, which on
+// a wide screen, where this card sits beside the hero, was a visible jump.
 export default function StaticVerdictDemo() {
-  const [isMobile, setIsMobile] = useState(true);
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 600);
-    check(); // run immediately on mount
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-
   return (
     <div style={{ marginBottom: "28px" }}>
       <div style={{
@@ -64,7 +59,8 @@ export default function StaticVerdictDemo() {
         borderRadius: "20px",
         animation: "alienGlow 6s ease-in-out infinite",
       }}>
-        <VerdictCard data={DEMO_DATA} animate={true} compact={isMobile} />
+        <div className="demo-compact"><VerdictCard data={DEMO_DATA} animate={true} compact /></div>
+        <div className="demo-full"><VerdictCard data={DEMO_DATA} animate={true} /></div>
       </div>
     </div>
   );

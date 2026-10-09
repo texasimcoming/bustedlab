@@ -72,8 +72,10 @@ body::before{content:'';position:fixed;top:50%;left:50%;transform:translate(-50%
 .panel{background:var(--bg-card);border:1px solid var(--border-mid);transition:border-color 0.18s ease,box-shadow 0.18s ease,background 0.18s ease}
 .panel:hover{border-color:var(--accent-2);background:var(--accent-dim);box-shadow:0 0 22px var(--accent-glow)}
 
-/* Sticky bottom bar */
-.sticky-bar{position:fixed;bottom:0;left:0;right:0;z-index:100;background:rgba(7,7,14,0.92);border-top:1px solid var(--border-mid);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);padding:12px 20px calc(12px + env(safe-area-inset-bottom, 0px));display:flex;align-items:center;justify-content:space-between;gap:12px}
+/* Sticky bottom bar. It stands in for the hero's scan action, so it is only
+   shown once that action has scrolled off screen (page.tsx). */
+.sticky-bar-hidden{transform:translateY(110%);opacity:0;pointer-events:none}
+.sticky-bar{transition:transform 0.24s ease,opacity 0.24s ease;position:fixed;bottom:0;left:0;right:0;z-index:100;background:rgba(7,7,14,0.92);border-top:1px solid var(--border-mid);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);padding:12px 20px calc(12px + env(safe-area-inset-bottom, 0px));display:flex;align-items:center;justify-content:space-between;gap:12px}
 
 /* Signal strip */
 .toast{position:fixed;bottom:calc(var(--bar-space) + 10px);left:16px;z-index:200;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-width:290px;animation:signalIn 0.12s linear}
@@ -121,6 +123,13 @@ body::before{content:'';position:fixed;top:50%;left:50%;transform:translate(-50%
   100%{opacity:0}
 }
 
+/* The scanning screen's beam: sweeps its box top to bottom and back on the
+   compositor. Under reduced motion it is not drawn at all (below). */
+@keyframes scanBeam{from{transform:translateY(0)}to{transform:translateY(100%)}}
+.scan-beam{position:absolute;left:0;right:0;top:0;height:calc(100% - 2px);pointer-events:none;animation:scanBeam 1.4s ease-in-out infinite alternate;will-change:transform}
+.scan-beam::before{content:'';position:absolute;left:0;right:0;top:-12px;height:12px;background:linear-gradient(to bottom,transparent,rgba(239,68,68,0.08))}
+.scan-beam::after{content:'';position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,#ef4444 30%,#ef4444 70%,transparent);box-shadow:0 0 8px #ef4444,0 0 16px rgba(239,68,68,0.4)}
+
 .animate-fade-up{animation:fadeUp 0.45s ease forwards}
 .animate-fade{animation:fadeIn 0.35s ease forwards}
 .animate-spin{animation:spin 0.85s linear infinite}
@@ -148,6 +157,7 @@ body::before{content:'';position:fixed;top:50%;left:50%;transform:translate(-50%
   *,*::before,*::after{animation-duration:0.001ms !important;animation-iteration-count:1 !important;transition-duration:0.001ms !important}
   .reveal,.reveal-armed{opacity:1;filter:none}
   .verdict-flash{display:none}
+  .scan-beam{display:none}
 }
 
 ::-webkit-scrollbar{width:4px}
@@ -230,6 +240,34 @@ img[src^="data:image/gif"][width="1"][height="1"] { display: inline; }
 }
 
 
+/* The landing page's example card: the compact one on phones, the full one
+   from 600px. Chosen here rather than in JavaScript, so it never swaps. */
+.demo-full { display: none; }
+@media (min-width: 600px) {
+  .demo-compact { display: none; }
+  .demo-full { display: block; }
+}
+
+/* Wide screens: the example card beside the scan action rather than below
+   it. The hero keeps its own centred column; the card takes the right. */
+@media (min-width: 1100px) {
+  .hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 560px) minmax(0, 500px);
+    justify-content: center;
+    align-items: center;
+    column-gap: 72px;
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 0 32px 24px;
+  }
+  .hero-grid > .hero-section { grid-column: 1; grid-row: 1; max-width: none !important; margin: 0 !important; padding: 48px 0 20px !important; }
+  .hero-grid > .hero-bridge { grid-column: 1; grid-row: 2; max-width: none !important; margin: 0 !important; padding: 0 0 8px !important; }
+  .hero-grid > .hero-demo { grid-column: 2; grid-row: 1 / span 2; max-width: none !important; margin: 0 !important; padding: 0 !important; }
+  /* The bar's two ends sit over the content column, not at the screen's edges. */
+  .sticky-bar { padding-left: max(20px, calc((100vw - 1176px) / 2)); padding-right: max(20px, calc((100vw - 1176px) / 2)); }
+}
+
 /* Nav right group: on desktop, where the scan count, sound toggle, and
    sign-in button all sit inline, the default 10px gap reads as cramped.
    More room only above the tablet breakpoint - on mobile, where the scan
@@ -256,6 +294,13 @@ img[src^="data:image/gif"][width="1"][height="1"] { display: inline; }
 /* scroll-padding-bottom (on html, above) keeps anything scrolled into view
    or focused by keyboard clear of the fixed sticky bar at the bottom of the
    screen, instead of landing underneath it. */
+
+/* The narrowest phones (320 to 379px, which includes the common 360px
+   Android width): the logo mark stands alone in the top bar, so the bar's
+   controls never run into the wordmark. */
+@media (max-width: 379px) {
+  .nav-wordmark { display: none; }
+}
 
 /* Inputs at 16px on phones: iOS Safari zooms the page into any focused
    field smaller than that. This replaces maximumScale=1 in the viewport,
