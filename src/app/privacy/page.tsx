@@ -12,8 +12,10 @@ export default function PrivacyPage() {
   // a well-formed key): see src/lib/affiliate.ts.
   const affiliate = activeAffiliateNetwork();
   return (
-    <main style={{ maxWidth: "720px", margin: "0 auto", padding: "48px 24px 80px", color: "var(--text)", fontFamily: "var(--font-sans), sans-serif" }}>
+    <main className="legal-page">
+      <div className="page-light" aria-hidden="true" />
       <BrandHomeLink />
+      <div className="label">LEGAL · PRIVACY</div>
 
       <h1 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "38px", fontWeight: "760", letterSpacing: "-0.04em", lineHeight: "1.08", marginBottom: "8px" }}>Privacy Policy</h1>
       <p style={{ color: "var(--text-3)", fontSize: "13px", marginBottom: "40px" }}>Policy version 3.3 · BustedLab LLC, Wyoming, USA</p>

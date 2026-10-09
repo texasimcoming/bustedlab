@@ -14,14 +14,17 @@
  *   7-session configuration of the top-selling purple whitening strips in the
  *   category (992K+ sold). Same product shape, independently verified, not
  *   the same listing.
- *   Markup computed with the formula scan.ts uses: (22.99 - 4.30) / 4.30.
+ *   Markup, gap and verdict computed by calculateVerdict (src/lib/verdict.ts).
  *
  * Adding an example: drop the photo set into public/examples/ (see the shot
- * list in the design pull request) and add an entry with the two prices you
- * verified for it. The hero cycles through every entry; with one entry it
+ * list in docs/PROJECT.md) and add an entry with the two prices you verified
+ * for it; the markup and the verdict are worked out from them. The hero cycles through every entry; with one entry it
  * plays once and holds.
  */
-export interface ExampleScan {
+import { calculateVerdict, type Verdict } from "@/lib/verdict";
+
+/** What an example is entered as: the two prices you verified, and its photo. */
+interface ExampleInput {
   id: string;
   /** Generic product name, never a brand: the card does not name a business. */
   title: string;
@@ -29,9 +32,6 @@ export interface ExampleScan {
   label: string;
   asking: number;
   source: number;
-  /** Percent, as calculateVerdict rounds it. */
-  markup: number;
-  savings: number;
   photo: {
     /** Square photo; sizes are its pixel widths. */
     base: string;
@@ -44,15 +44,13 @@ export interface ExampleScan {
   thumb: string;
 }
 
-export const EXAMPLE_SCANS: ExampleScan[] = [
+const INPUTS: ExampleInput[] = [
   {
     id: "purple-strips",
     title: "Purple Teeth Whitening Strips (14ct / 7 sessions)",
     label: "Purple whitening strips",
     asking: 22.99,
     source: 4.3,
-    markup: 435,
-    savings: 18.69,
     photo: {
       base: "/demo/purple-whitening-strips",
       sizes: [480, 720, 960],
@@ -62,3 +60,19 @@ export const EXAMPLE_SCANS: ExampleScan[] = [
     thumb: "/demo/purple-whitening-strips-150.webp",
   },
 ];
+
+/**
+ * An example as the page shows it. The markup, the gap and the verdict are
+ * computed by calculateVerdict, the function every real scan uses, so an
+ * example can never show a number or a label the engine would not.
+ */
+export interface ExampleScan extends ExampleInput {
+  markup: number;
+  savings: number;
+  verdict: Verdict;
+}
+
+export const EXAMPLE_SCANS: ExampleScan[] = INPUTS.map(input => {
+  const { markup, savings, verdict } = calculateVerdict(input.asking, input.source);
+  return { ...input, markup, savings, verdict };
+});

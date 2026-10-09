@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import SubmitOnLoad from "./SubmitOnLoad";
+import StatusPage from "@/components/StatusPage";
 
 /**
  * Where every sign-in link opens.
@@ -27,30 +28,14 @@ export default async function VerifyPage({
   if (!token) redirect("/?auth=failed");
 
   return (
-    <main style={{
-      minHeight: "100vh", display: "flex", alignItems: "center",
-      justifyContent: "center", background: "#07060d", padding: "24px",
-    }}>
-      <form id="sign-in" method="post" action="/api/auth/verify" style={{ textAlign: "center", maxWidth: "360px" }}>
+    <StatusPage label="SIGNING IN">
+      <form id="sign-in" method="post" action="/api/auth/verify">
         <input type="hidden" name="token" value={token} />
-        <h1 style={{
-          fontFamily: "var(--font-display), sans-serif",
-          fontSize: "24px", fontWeight: "700",
-          color: "#f5f3ff", letterSpacing: "-0.6px", marginBottom: "10px",
-        }}>
-          Signing you in
-        </h1>
-        <p style={{ color: "rgba(245,243,255,0.55)", fontSize: "15px", lineHeight: "1.6", marginBottom: "24px" }}>
-          One moment. If nothing happens, tap the button.
-        </p>
-        <button type="submit" className="btn-primary" style={{
-          padding: "14px 36px", borderRadius: "10px", fontSize: "15px", fontWeight: "700",
-          fontFamily: "var(--font-display), sans-serif",
-        }}>
-          Sign in
-        </button>
+        <h1 className="status-title">Signing you in</h1>
+        <p className="status-text">One moment. If nothing happens, tap the button.</p>
+        <button type="submit" className="btn-primary status-cta">Sign in</button>
       </form>
       <SubmitOnLoad formId="sign-in" />
-    </main>
+    </StatusPage>
   );
 }

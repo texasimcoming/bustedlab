@@ -18,7 +18,7 @@ import { EXAMPLE_SCANS } from "@/content/examples";
 // visitor roughly when this site went up.
 const example = EXAMPLE_SCANS[0];
 const DEMO_DATA: VerdictData = {
-  verdict: "HIGH_MARKUP",
+  verdict: example.verdict,
   mode: "VERDICT",
   matchConfidence: "exact",
   retailPrice: example.asking,

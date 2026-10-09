@@ -23,6 +23,13 @@ const MAX_CYCLES = 2;
 
 const money = (n: number) => `$${n.toFixed(2)}`;
 
+// The stamp, in the card's own words and colours for each verdict.
+const STAMP: Record<string, { label: string; tone: string }> = {
+  HIGH_MARKUP: { label: "BUSTED", tone: "red" },
+  OVERPRICED: { label: "OVERPRICED", tone: "amber" },
+  FAIR: { label: "FAIR PRICE", tone: "green" },
+};
+
 export default function HeroInstrument() {
   const [index, setIndex] = useState(0);
   const figureRef = useRef<HTMLElement>(null);
@@ -45,6 +52,7 @@ export default function HeroInstrument() {
   }, []);
 
   const ex = EXAMPLE_SCANS[index];
+  const stamp = STAMP[ex.verdict];
   const srcSet = ex.photo.sizes.map(w => `${ex.photo.base}-${w}.webp ${w}w`).join(", ");
 
   return (
@@ -73,7 +81,7 @@ export default function HeroInstrument() {
         <div className="hi-sweep" aria-hidden="true" />
         <div className="hi-hud" aria-hidden="true"><span className="hi-hud-dot" />MATCH LOCKED</div>
         <div className="hi-tag" aria-hidden="true"><span className="hi-tag-k">EXAMPLE</span>{ex.label}</div>
-        <div className="hi-stamp" aria-hidden="true">BUSTED</div>
+        <div className={`hi-stamp hi-stamp-${stamp.tone}`} aria-hidden="true">{stamp.label}</div>
       </div>
 
       <div className="hi-measure" key={`${ex.id}-m`} aria-hidden="true">
@@ -99,7 +107,7 @@ export default function HeroInstrument() {
       </div>
 
       <figcaption className="sr-only">
-        Example scan of {ex.title}: asking {money(ex.asking)}, source {money(ex.source)}, a {ex.markup}% markup, verdict busted.
+        Example scan of {ex.title}: asking {money(ex.asking)}, source {money(ex.source)}, a {ex.markup}% markup, verdict {stamp.label.toLowerCase()}.
       </figcaption>
     </figure>
   );

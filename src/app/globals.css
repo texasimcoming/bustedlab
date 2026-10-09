@@ -203,6 +203,8 @@ body{background:var(--bg);min-height:100vh;overflow-x:hidden;padding-bottom:var(
 .hi-tag{position:absolute;bottom:14px;left:44px;right:44px;display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:550;color:#f5f3ff;text-shadow:0 1px 6px rgba(0,0,0,0.7);white-space:nowrap;overflow:hidden}
 .hi-tag-k{font-family:var(--font-mono),ui-monospace,monospace;font-size:11px;font-weight:500;letter-spacing:0.14em;color:#ece6ff;background:rgba(5,4,9,0.72);padding:3px 7px;border-radius:6px;border:1px solid rgba(255,255,255,0.14);text-shadow:none;flex-shrink:0}
 .hi-stamp{position:absolute;top:14px;right:44px;font-family:var(--font-display),sans-serif;font-weight:800;font-size:15px;letter-spacing:0.14em;color:#ff5a69;background:rgba(5,4,9,0.82);border:2px solid #ff4d5e;padding:4px 10px 3px;border-radius:7px;transform:rotate(-5deg);box-shadow:0 0 0 1px rgba(255,77,94,0.3),0 0 22px rgba(255,77,94,0.45);animation:hiStamp 0.22s cubic-bezier(0.3,1.4,0.5,1) 2.45s both}
+.hi-stamp-amber{color:#fbbf24;border-color:#f59e0b;box-shadow:0 0 0 1px rgba(245,158,11,0.3),0 0 22px rgba(245,158,11,0.4)}
+.hi-stamp-green{color:#34e3b2;border-color:#10d9a0;box-shadow:0 0 0 1px rgba(16,217,160,0.3),0 0 22px rgba(16,217,160,0.35)}
 @keyframes hiStamp{from{opacity:0;transform:rotate(-5deg) scale(1.9)}to{opacity:1;transform:rotate(-5deg) scale(1)}}
 @keyframes hiPop{from{opacity:0;transform:translateY(-4px) scale(0.96)}to{opacity:1;transform:none}}
 
@@ -300,6 +302,28 @@ body{background:var(--bg);min-height:100vh;overflow-x:hidden;padding-bottom:var(
 @keyframes successLock{from{opacity:0;transform:scale(1.4)}to{opacity:1;transform:none}}
 .success-bar{width:140px;height:2px;margin:12px auto 0;border-radius:2px;background:rgba(255,255,255,0.08);overflow:hidden}
 .success-bar span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-bright));transform-origin:left;animation:hiDraw 3s linear both}
+
+/* One-message pages (StatusPage): not found, errors, signing in. */
+.status-page{position:relative;min-height:100vh;min-block-size:100dvh;display:flex;flex-direction:column;padding:0 20px;font-family:var(--font-sans),sans-serif}
+.status-head{position:relative;z-index:2;width:100%;max-width:640px;margin:0 auto;padding-top:calc(env(safe-area-inset-top, 0px) + 10px)}
+.status-head a{margin-bottom:0 !important}
+.status-body{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;width:100%;max-width:400px;margin:0 auto;padding:16px 0 96px}
+.status-reticle{position:relative;width:132px;height:96px;margin-bottom:26px;display:flex;align-items:center;justify-content:center;border-radius:16px;background:radial-gradient(circle at 50% 50%,rgba(138,111,240,0.14),transparent 70%)}
+.status-reticle .hi-corner{width:20px;height:20px}
+.status-reticle .hi-tl,.status-reticle .hi-tr{top:6px}.status-reticle .hi-bl,.status-reticle .hi-br{bottom:6px}
+.status-reticle .hi-tl,.status-reticle .hi-bl{left:6px}.status-reticle .hi-tr,.status-reticle .hi-br{right:6px}
+.status-readout{font-family:var(--font-mono),ui-monospace,monospace;font-size:22px;font-weight:600;letter-spacing:0.08em;color:#e7defe;text-shadow:0 0 18px rgba(169,147,255,0.6)}
+.status-label{font-family:var(--font-mono),ui-monospace,monospace;font-size:11px;letter-spacing:0.18em;color:var(--accent-bright);margin-bottom:12px}
+.status-title{font-size:32px;font-weight:760;letter-spacing:-0.04em;line-height:1.08;color:var(--text);margin-bottom:12px}
+.status-text{color:var(--text-2);font-size:15px;line-height:1.6;margin-bottom:24px}
+.status-cta{display:inline-flex;align-items:center;justify-content:center;min-height:52px;padding:14px 32px;border-radius:16px;font-size:15.5px;text-decoration:none}
+
+/* Terms, privacy, DMCA: long reading, set like a document. */
+.legal-page{position:relative;max-width:720px;margin:0 auto;padding:calc(env(safe-area-inset-top, 0px) + 20px) 20px 80px;color:var(--text);font-family:var(--font-sans),sans-serif}
+.legal-page > *{position:relative;z-index:1}
+.legal-page > .page-light{position:absolute;z-index:0}
+.legal-page section + section{padding-top:24px;border-top:1px solid var(--border)}
+.legal-page a{text-underline-offset:3px}
 
 /* The same single light, for every other page: violet, from above. */
 .page-light{position:absolute;inset:0 0 auto 0;height:520px;pointer-events:none;z-index:0;background:radial-gradient(60% 60% at 50% 0%,rgba(138,111,240,0.16) 0%,transparent 75%)}
