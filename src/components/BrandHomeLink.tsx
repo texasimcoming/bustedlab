@@ -20,7 +20,7 @@ export default function BrandHomeLink() {
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/logo-120.webp" alt="" width={32} height={32} style={{ borderRadius: "8px", display: "block", objectFit: "cover" }} />
-      <span style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: 800, fontSize: "18px", letterSpacing: "-0.5px" }}>BustedLab</span>
+      <span className="brand-wordmark" style={{ fontSize: "18px" }}>BustedLab</span>
     </Link>
   );
 }

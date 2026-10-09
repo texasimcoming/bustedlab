@@ -63,7 +63,7 @@ export default function SoundToggle() {
               width: "2.5px",
               height: `${4 + i * 2.5}px`,
               borderRadius: "1px",
-              background: enabled || i === 0 ? color : "rgba(238,238,246,0.12)",
+              background: enabled || i === 0 ? color : "rgba(245,243,255,0.12)",
               transition: "background 0.18s ease",
             }}
           />

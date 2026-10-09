@@ -19,7 +19,7 @@ export default function OpenGraphImage() {
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          background: "#07070e",
+          background: "#050409",
           padding: "64px 72px",
           position: "relative",
         }}
@@ -32,39 +32,39 @@ export default function OpenGraphImage() {
             left: 240,
             width: 720,
             height: 620,
-            background: "radial-gradient(circle at center, rgba(123,94,167,0.30) 0%, rgba(7,7,14,0) 68%)",
+            background: "radial-gradient(circle at center, rgba(138,111,240,0.30) 0%, rgba(5,4,9,0) 68%)",
             display: "flex",
           }}
         />
 
         {/* Corner brackets, the same motif the scan and verdict screens use */}
-        <div style={{ position: "absolute", top: 34, left: 34, width: 44, height: 44, borderTop: "3px solid rgba(157,127,212,0.55)", borderLeft: "3px solid rgba(157,127,212,0.55)", display: "flex" }} />
-        <div style={{ position: "absolute", top: 34, right: 34, width: 44, height: 44, borderTop: "3px solid rgba(157,127,212,0.55)", borderRight: "3px solid rgba(157,127,212,0.55)", display: "flex" }} />
-        <div style={{ position: "absolute", bottom: 34, left: 34, width: 44, height: 44, borderBottom: "3px solid rgba(157,127,212,0.55)", borderLeft: "3px solid rgba(157,127,212,0.55)", display: "flex" }} />
-        <div style={{ position: "absolute", bottom: 34, right: 34, width: 44, height: 44, borderBottom: "3px solid rgba(157,127,212,0.55)", borderRight: "3px solid rgba(157,127,212,0.55)", display: "flex" }} />
+        <div style={{ position: "absolute", top: 34, left: 34, width: 44, height: 44, borderTop: "3px solid rgba(169,147,255,0.55)", borderLeft: "3px solid rgba(169,147,255,0.55)", display: "flex" }} />
+        <div style={{ position: "absolute", top: 34, right: 34, width: 44, height: 44, borderTop: "3px solid rgba(169,147,255,0.55)", borderRight: "3px solid rgba(169,147,255,0.55)", display: "flex" }} />
+        <div style={{ position: "absolute", bottom: 34, left: 34, width: 44, height: 44, borderBottom: "3px solid rgba(169,147,255,0.55)", borderLeft: "3px solid rgba(169,147,255,0.55)", display: "flex" }} />
+        <div style={{ position: "absolute", bottom: 34, right: 34, width: 44, height: 44, borderBottom: "3px solid rgba(169,147,255,0.55)", borderRight: "3px solid rgba(169,147,255,0.55)", display: "flex" }} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ width: 10, height: 10, borderRadius: 5, background: "#10d9a0", display: "flex" }} />
-          <div style={{ fontSize: 20, letterSpacing: 6, color: "rgba(184,160,232,0.62)", textTransform: "uppercase", display: "flex" }}>
+          <div style={{ fontSize: 20, letterSpacing: 6, color: "rgba(201,184,255,0.62)", textTransform: "uppercase", display: "flex" }}>
             BustedLab
           </div>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: 76, fontWeight: 800, color: "#eeeef6", letterSpacing: -2.4, lineHeight: 1.06, display: "flex" }}>
+          <div style={{ fontSize: 76, fontWeight: 800, color: "#f5f3ff", letterSpacing: -2.4, lineHeight: 1.06, display: "flex" }}>
             They built the price.
           </div>
-          <div style={{ fontSize: 76, fontWeight: 800, color: "#b8a0e8", letterSpacing: -2.4, lineHeight: 1.06, marginTop: 6, display: "flex" }}>
+          <div style={{ fontSize: 76, fontWeight: 800, color: "#c9b8ff", letterSpacing: -2.4, lineHeight: 1.06, marginTop: 6, display: "flex" }}>
             We built the scanner.
           </div>
-          <div style={{ fontSize: 27, color: "rgba(238,238,246,0.5)", marginTop: 26, lineHeight: 1.45, display: "flex" }}>
+          <div style={{ fontSize: 27, color: "rgba(245,243,255,0.5)", marginTop: 26, lineHeight: 1.45, display: "flex" }}>
             The source price, the asking price, and the gap between them.
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <div style={{ display: "flex", padding: "10px 20px", borderRadius: 8, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#ef4444", fontSize: 21, fontWeight: 700, letterSpacing: 3 }}>
+            <div style={{ display: "flex", padding: "10px 20px", borderRadius: 8, background: "rgba(255,77,94,0.10)", border: "1px solid rgba(255,77,94,0.30)", color: "#ff4d5e", fontSize: 21, fontWeight: 700, letterSpacing: 3 }}>
               BUSTED
             </div>
             <div style={{ display: "flex", padding: "10px 20px", borderRadius: 8, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.28)", color: "#f59e0b", fontSize: 21, fontWeight: 700, letterSpacing: 3 }}>
@@ -74,7 +74,7 @@ export default function OpenGraphImage() {
               FAIR PRICE
             </div>
           </div>
-          <div style={{ fontSize: 21, color: "rgba(238,238,246,0.3)", letterSpacing: 2, display: "flex" }}>
+          <div style={{ fontSize: 21, color: "rgba(245,243,255,0.3)", letterSpacing: 2, display: "flex" }}>
             bustedlab.com
           </div>
         </div>

@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 
-// Rebuilt to match the HUD language everywhere else in the app — corner
-// brackets, monospace telemetry, dark scan-styled surface. The previous
-// version was a generic centered modal with a lock emoji and a checkmark
-// list, which broke the illusion at exactly the moment (the $4.99 ask)
-// that most needs to feel like part of the same machine.
+// The same instrument as the rest of the app, at its calmest: one line of
+// light along the top edge, plain white type, the lumen button, and who
+// handles the card said right under it. On a phone it rises from the bottom
+// as a sheet, where the thumb already is; on a wide screen it sits centred.
+// No red, no countdown, no badge near the price.
 // Why the modal is open decides what its header and title may claim.
 //  - remaining 0: the visitor hit the wall. The original copy, unchanged.
 //  - remaining > 0: they chose to upgrade with free scans still in hand, and
@@ -40,7 +40,7 @@ export default function PaywallModal({
 }) {
   const head = headline(remaining, freeTierPaused);
   // Amber for a wall, the brand accent for a choice.
-  const signal = head.warning ? "#f59e0b" : "#9d7fd4";
+  const signal = head.warning ? "#f59e0b" : "#a993ff";
 
   // A modal nobody can see how to leave reads as a trap, and a trap is the
   // opposite of the trust a $4.99 ask depends on. Escape and a visible
@@ -66,46 +66,15 @@ export default function PaywallModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="paywall-title"
-      style={{
-        position: "fixed", inset: 0, background: "rgba(5,5,10,0.88)",
-        backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
-        zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "24px", fontFamily: "var(--font-sans), sans-serif",
-      }}
+      className="sheet-backdrop"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div ref={dialogRef} tabIndex={-1} style={{
-        outline: "none",
-        maxWidth: "420px", width: "100%", borderRadius: "18px", overflow: "hidden",
-        background: "#0d0d1c", border: "1px solid rgba(123,94,167,0.28)",
-        position: "relative",
-        boxShadow: "0 0 50px rgba(123,94,167,0.18), 0 24px 60px rgba(0,0,0,0.6)",
-      }}>
-        {/* Corner brackets — same motif as the scan/verdict screens */}
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ position: "absolute", top: "10px", left: "10px", zIndex: 2 }}>
-          <path d="M1 8 L1 1 L8 1" stroke="#9d7fd4" strokeOpacity="0.6" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ position: "absolute", top: "10px", right: "10px", zIndex: 2 }}>
-          <path d="M19 8 L19 1 L12 1" stroke="#9d7fd4" strokeOpacity="0.6" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ position: "absolute", bottom: "10px", left: "10px", zIndex: 2 }}>
-          <path d="M1 12 L1 19 L8 19" stroke="#9d7fd4" strokeOpacity="0.6" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ position: "absolute", bottom: "10px", right: "10px", zIndex: 2 }}>
-          <path d="M19 12 L19 19 L12 19" stroke="#9d7fd4" strokeOpacity="0.6" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
+      <div ref={dialogRef} tabIndex={-1} className="sheet">
+        <div className="sheet-grip" aria-hidden="true" />
 
-        {/* Ambient glow, matching the scan surfaces */}
+        {/* Header strip: why the sheet is open, and the way out. */}
         <div style={{
-          position: "absolute", inset: 0, pointerEvents: "none",
-          background: "radial-gradient(ellipse at 50% 0%, rgba(123,94,167,0.1) 0%, transparent 70%)",
-        }} />
-
-        {/* Header bar — same telemetry-strip pattern as VerdictCard */}
-        <div style={{
-          background: "linear-gradient(135deg, rgba(123,94,167,0.14) 0%, rgba(123,94,167,0.04) 100%)",
-          borderBottom: "1px solid rgba(123,94,167,0.22)",
-          padding: "14px 24px",
+          padding: "16px 22px 12px",
           display: "flex", alignItems: "center", gap: "8px",
           position: "relative", zIndex: 1,
         }}>
@@ -114,8 +83,8 @@ export default function PaywallModal({
             background: signal, boxShadow: `0 0 6px ${signal}`,
           }} />
           <span style={{
-            fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px",
-            color: head.warning ? "rgba(245,158,11,0.75)" : "rgba(184,160,232,0.8)", textTransform: "uppercase",
+            fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px", letterSpacing: "1.8px",
+            color: head.warning ? "#fbbf24" : "#d6c9ff", textTransform: "uppercase",
           }}>
             {head.label}
           </span>
@@ -123,10 +92,10 @@ export default function PaywallModal({
             onClick={onClose}
             aria-label="Close"
             style={{
-              margin: "-4px -8px -4px auto", width: "36px", height: "36px", borderRadius: "9px",
+              margin: "-6px -8px -6px auto", width: "44px", height: "44px", borderRadius: "12px",
               display: "flex", alignItems: "center", justifyContent: "center",
-              background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
-              color: "rgba(238,238,246,0.7)", cursor: "pointer", padding: 0,
+              background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+              color: "rgba(245,243,255,0.78)", cursor: "pointer", padding: 0,
             }}
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
@@ -135,50 +104,48 @@ export default function PaywallModal({
           </button>
         </div>
 
-        <div style={{ padding: "28px 28px 8px", position: "relative", zIndex: 1, textAlign: "center" }}>
-          <h2 id="paywall-title" style={{
-            fontFamily: "var(--font-display), sans-serif", fontSize: "24px", fontWeight: "800",
-            letterSpacing: "-0.6px", color: "#eeeef6", marginBottom: "8px",
+        <div style={{ padding: "8px 24px 4px", position: "relative", zIndex: 1, textAlign: "center" }}>
+          <h2 id="paywall-title" className="balance" style={{
+            fontSize: "26px", fontWeight: "750",
+            letterSpacing: "-0.03em", lineHeight: "1.15", color: "#f5f3ff", marginBottom: "10px",
           }}>
             {head.title}
           </h2>
-          <p style={{ color: "rgba(238,238,246,0.5)", fontSize: "14px", lineHeight: "1.6" }}>
+          <p className="balance" style={{ color: "var(--text-2)", fontSize: "14.5px", lineHeight: "1.55", maxWidth: "340px", margin: "0 auto" }}>
             One payment of $4.99. Unlimited scans. No subscription, no renewal, no expiration.
           </p>
         </div>
 
         {/* Feature readout — styled like the scan engine's own data nodes */}
-        <div style={{ padding: "18px 28px 4px", position: "relative", zIndex: 1 }}>
+        <div style={{ padding: "18px 24px 4px", position: "relative", zIndex: 1 }}>
           {[
             "Unlimited product scans",
             "Works on every device, forever",
             "Apple Pay & Google Pay accepted",
           ].map(f => (
             <div key={f} style={{
-              display: "flex", alignItems: "center", gap: "10px",
-              padding: "7px 10px", marginBottom: "4px", borderRadius: "7px",
-              background: "rgba(123,94,167,0.05)",
+              display: "flex", alignItems: "center", gap: "11px",
+              padding: "9px 12px", marginBottom: "5px", borderRadius: "11px",
+              background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)",
             }}>
-              <div style={{
-                width: "5px", height: "5px", borderRadius: "50%",
-                background: "#10d9a0", boxShadow: "0 0 5px rgba(16,217,160,0.6)", flexShrink: 0,
-              }} />
-              <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "12px", color: "rgba(238,238,246,0.6)", letterSpacing: "0.2px" }}>
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+                <path d="M2 6.2L4.6 9L10 2.5" stroke="#10d9a0" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span style={{ fontSize: "14px", color: "var(--text)", fontWeight: 500 }}>
                 {f}
               </span>
             </div>
           ))}
         </div>
 
-        <div style={{ padding: "20px 28px 28px", position: "relative", zIndex: 1 }}>
+        <div style={{ padding: "18px 24px calc(22px + env(safe-area-inset-bottom, 0px))", position: "relative", zIndex: 1 }}>
           <button
             onClick={onCheckout}
             className="btn-primary"
             disabled={!checkoutAvailable}
             style={{
-              width: "100%", padding: "16px", borderRadius: "12px",
-              fontSize: "16px", fontWeight: "700",
-              fontFamily: "var(--font-display), sans-serif", marginBottom: "10px",
+              width: "100%", minHeight: "56px", padding: "16px", borderRadius: "16px",
+              fontSize: "16.5px", marginBottom: "10px",
             }}
           >
             {checkoutAvailable ? "Unlock unlimited access. $4.99" : "Checkout offline"}
@@ -188,7 +155,7 @@ export default function PaywallModal({
           {checkoutAvailable && provider === "lemonsqueezy" && (
             <p style={{
               display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-              fontSize: "12px", color: "rgba(238,238,246,0.62)", margin: "2px 0 4px",
+              fontSize: "12.5px", color: "var(--text-2)", margin: "2px 0 4px",
             }}>
               <svg width="11" height="12" viewBox="0 0 11 12" fill="none" aria-hidden="true">
                 <rect x="1" y="5" width="9" height="6.2" rx="1.4" stroke="currentColor" strokeWidth="1.2" />
@@ -203,8 +170,8 @@ export default function PaywallModal({
             // take money: no CHECKOUT_URL, a provider that contradicts the
             // link, or no webhook secret to verify the purchase with.
             <p style={{
-              fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "1px",
-              color: "rgba(245,158,11,0.6)", textAlign: "center", marginBottom: "8px",
+              fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px", letterSpacing: "1px",
+              color: "#fbbf24", textAlign: "center", marginBottom: "8px",
               textTransform: "uppercase",
             }}>
               Payment channel temporarily closed
@@ -214,7 +181,7 @@ export default function PaywallModal({
             onClick={onLogin}
             style={{
               width: "100%", background: "none", border: "none",
-              color: "rgba(238,238,246,0.62)", fontSize: "13px",
+              color: "var(--text-2)", fontSize: "13.5px", textDecoration: "underline", textUnderlineOffset: "3px",
               cursor: "pointer", padding: "12px 8px", fontFamily: "var(--font-sans), sans-serif",
             }}
           >
@@ -266,8 +233,8 @@ function NotifyCapture() {
         textAlign: "center",
       }}>
         <p style={{
-          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
-          letterSpacing: "1.4px", color: "#10d9a0", textTransform: "uppercase",
+          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
+          letterSpacing: "1.2px", color: "#10d9a0", textTransform: "uppercase",
         }}>
           Logged. You will hear from us when the index expands.
         </p>
@@ -278,8 +245,8 @@ function NotifyCapture() {
   return (
     <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
       <p style={{
-        fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10.5px",
-        letterSpacing: "1.3px", color: "rgba(238,238,246,0.66)", textTransform: "uppercase",
+        fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
+        letterSpacing: "1.1px", color: "rgba(245,243,255,0.7)", textTransform: "uppercase",
         marginBottom: "8px", textAlign: "center",
       }}>
         Not ready? Get notified as the index grows
@@ -292,20 +259,15 @@ function NotifyCapture() {
           onChange={e => setEmail(e.target.value)}
           placeholder="your@email.com"
           aria-label="Email address for product updates"
-          style={{
-            flex: 1, minWidth: 0, background: "rgba(255,255,255,0.028)",
-            border: "1px solid rgba(255,255,255,0.09)", borderRadius: "8px",
-            padding: "9px 12px", color: "#eeeef6", fontSize: "13px", outline: "none",
-            fontFamily: "var(--font-sans), sans-serif",
-          }}
+          className="field"
+          style={{ flex: 1, minWidth: 0, padding: "10px 12px", fontSize: "13px" }}
         />
         <button
           type="submit"
           disabled={state === "sending" || !email}
           className="btn-ghost"
           style={{
-            borderRadius: "8px", padding: "9px 14px", fontSize: "13px",
-            fontFamily: "var(--font-display), sans-serif", fontWeight: "600",
+            borderRadius: "12px", padding: "10px 14px", fontSize: "13px", fontWeight: "600",
             opacity: state === "sending" || !email ? 0.4 : 1,
           }}
         >
@@ -313,7 +275,7 @@ function NotifyCapture() {
         </button>
       </form>
       <p style={{
-        fontSize: "10.5px", color: "rgba(238,238,246,0.5)", marginTop: "7px",
+        fontSize: "11px", color: "var(--text-3)", marginTop: "7px",
         lineHeight: "1.5", textAlign: "center",
       }}>
         Product updates only. No sharing, no selling, unsubscribe any time.

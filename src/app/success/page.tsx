@@ -29,31 +29,35 @@ function SuccessInner() {
 
   return (
     <div style={{
-      minHeight: "100vh", display: "flex", alignItems: "center",
-      justifyContent: "center", background: "#08080f", padding: "24px"
+      minHeight: "100vh", display: "flex", alignItems: "center", position: "relative",
+      justifyContent: "center", background: "var(--bg)", padding: "24px"
     }}>
-      <div style={{ textAlign: "center", maxWidth: "400px" }}>
-        <div style={{
-          width: "64px", height: "64px", borderRadius: "50%",
-          background: "rgba(16,217,160,0.1)", border: "2px solid rgba(16,217,160,0.3)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          margin: "0 auto 24px", fontSize: "28px"
-        }}>✓</div>
+      <div className="page-light" aria-hidden="true" style={{ background: "radial-gradient(55% 55% at 50% 0%, rgba(16,217,160,0.14) 0%, transparent 75%)" }} />
+      <div style={{ textAlign: "center", maxWidth: "400px", position: "relative", zIndex: 1 }}>
+        {/* The end of the purchase is its peak: the mark locks in once, in
+            the colour the site keeps for a real, confirmed price. */}
+        <div className="success-mark" aria-hidden="true">
+          <svg width="30" height="30" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6.2L4.6 9L10 2.5" stroke="#10d9a0" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
         <h1 style={{
-          fontFamily: "var(--font-display), sans-serif",
-          fontSize: "26px", fontWeight: "700",
-          color: "#eeeef8", letterSpacing: "-0.8px", marginBottom: "12px"
+          fontSize: "34px", fontWeight: "760",
+          color: "#f5f3ff", letterSpacing: "-0.04em", marginBottom: "12px"
         }}>
           You&apos;re in.
         </h1>
-        <p style={{ color: "rgba(238,238,248,0.55)", fontSize: "15px", lineHeight: "1.65" }}>
+        <p style={{ color: "var(--text-2)", fontSize: "15.5px", lineHeight: "1.6" }}>
           Unlimited scans are unlocking on this device. Your access link is in your inbox too, for any other device.
         </p>
         <p style={{
-          color: "var(--text-2)", fontSize: "13px", marginTop: "24px"
+          color: "var(--text-2)", fontSize: "13px", marginTop: "28px"
         }}>
           Redirecting you back...
         </p>
+        {/* The three seconds before the redirect, drawn: the wait is
+            visible and has an end. */}
+        <div className="success-bar" aria-hidden="true"><span /></div>
       </div>
     </div>
   );
@@ -61,7 +65,7 @@ function SuccessInner() {
 
 export default function SuccessPage() {
   return (
-    <Suspense fallback={<div style={{ background: "#08080f", minHeight: "100vh" }} />}>
+    <Suspense fallback={<div style={{ background: "var(--bg)", minHeight: "100vh" }} />}>
       <SuccessInner />
     </Suspense>
   );

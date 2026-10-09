@@ -21,6 +21,7 @@ import { REACTIONS } from "@/content/reactions";
 import { loadLemonJs, openLemonOverlay } from "@/lib/lemon-overlay";
 import StickyBar from "@/components/StickyBar";
 import StaticVerdictDemo from "@/components/StaticVerdictDemo";
+import HeroInstrument from "@/components/HeroInstrument";
 import SoundToggle from "@/components/SoundToggle";
 import Leaderboards from "@/components/Leaderboards";
 import type { CardMode, MatchConfidence, VerdictType } from "@/components/VerdictCard";
@@ -654,48 +655,38 @@ export default function Home() {
 
   const handleReset = () => { setState("landing"); setPreview(null); setResult(null); setUploadedFile(null); setUrlInput(""); setScanNotice(null); };
 
-  // What the visitor wants to know, asked up front and sitting directly above
-  // the scan button, with the verdict preselected. The same panel stays in
-  // place once a photo is picked, so the choice can still be changed before
-  // scanning. Purple is the only colour here, like every other control.
+  // What the visitor wants to know. Asked again directly above the scan
+  // button once a photo is picked, with the verdict preselected, so the choice
+  // can still be changed before scanning; on arrival it sits under the two
+  // ways in, so the first screen leads with the example and the one action.
   const intentPanel = (
-    <div className="intent-panel" style={{
-      margin: "0 0 12px", padding: "16px 12px 12px", borderRadius: "14px",
-      background: "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.008) 100%)",
-      border: "1px solid rgba(255,255,255,0.08)",
-    }}>
-      <p style={{ fontSize: "10.5px", color: "var(--text-2)", lineHeight: "1.55", margin: "0 0 10px", fontFamily: "var(--font-mono), ui-monospace, monospace", letterSpacing: "0.4px", textAlign: "center" }}>
+    <div className="intent-panel">
+      <p className="intent-rule">
         PRICE VISIBLE = ACCURATE VERDICT.<br className="warning-break" /> NO PRICE = NO READING.
       </p>
-      <p id="intent-label" style={{ fontSize: "12.5px", color: "var(--text-2)", marginBottom: "10px", textAlign: "center" }}>
+      <p id="intent-label" className="intent-q">
         What do you want to know about this product?
       </p>
-      <div role="group" aria-labelledby="intent-label" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+      <div role="group" aria-labelledby="intent-label" className="intent-options">
         {([
           ["verdict", "Am I overcharged?", "Get the full verdict card", "Needs the price visible"],
           ["finder", "Where is it cheapest?", "Just the cheapest link", "No verdict, no price shown"],
         ] as const).map(([key, title, sub, note]) => {
           const on = userIntent === key;
           return (
-            <button key={key} onClick={() => setUserIntent(key)} aria-pressed={on} style={{
-              background: on ? "rgba(123,94,167,0.16)" : "rgba(255,255,255,0.02)",
-              border: `1px solid ${on ? "rgba(157,127,212,0.6)" : "rgba(255,255,255,0.09)"}`,
-              borderRadius: "11px", padding: "10px 8px 9px", cursor: "pointer", textAlign: "center", minWidth: 0,
-              fontFamily: "var(--font-sans), sans-serif", transition: "background 0.18s ease, border-color 0.18s ease",
-            }}>
-              <div style={{ fontSize: "12.5px", fontWeight: "700", color: on ? "var(--accent-bright)" : "var(--text-2)", marginBottom: "3px", textWrap: "balance" }}>
-                {on ? "\u2713 " : ""}{title}
-              </div>
-              <div style={{ fontSize: "11.5px", color: "var(--text-2)", lineHeight: "1.3", marginBottom: "6px" }}>{sub}</div>
-              <div style={{
-                fontSize: "10.5px", lineHeight: "1.3", color: on ? "var(--accent-bright)" : "var(--text-3)",
-                borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "6px",
-              }}>{note}</div>
+            <button key={key} onClick={() => setUserIntent(key)} aria-pressed={on} className="intent-option">
+              <span className="intent-title">{on ? "✓ " : ""}{title}</span>
+              <span className="intent-sub">{sub}</span>
+              <span className="intent-note">{note}</span>
             </button>
           );
         })}
       </div>
     </div>
+  );
+
+  const notice = scanNotice && (
+    <div role="alert" className="scan-notice">{scanNotice}</div>
   );
 
   if (state === "scanning") return <ScanningScreen preview={preview} />;
@@ -709,19 +700,8 @@ export default function Home() {
       onDrop={handleDrop}
     >
       {dragOver && (
-        <div style={{
-          position: "fixed", inset: "12px", zIndex: 900, borderRadius: "18px",
-          border: "1.5px dashed var(--accent-2)", background: "rgba(7,7,14,0.72)",
-          backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          pointerEvents: "none",
-        }}>
-          <span style={{
-            fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "12px", letterSpacing: "3px",
-            color: "var(--accent-bright)", textTransform: "uppercase",
-          }}>
-            RELEASE TO SCAN
-          </span>
+        <div className="drop-target">
+          <span>RELEASE TO SCAN</span>
         </div>
       )}
       {showPaywall && (
@@ -743,183 +723,163 @@ export default function Home() {
         else fileInputRef.current?.click();
       }} hasFile={!!preview || !!urlInput.trim()} onUpgrade={() => openPaywall("wall")} />
 
-      {/* Ambient */}
-      <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "900px", height: "500px", background: "radial-gradient(ellipse at 50% 0%, rgba(123,94,167,0.065) 0%, transparent 60%)", pointerEvents: "none", zIndex: 0 }} />
+      {/* One light, above the headline. Painted once, scrolls with the page. */}
+      <div className="hero-light" aria-hidden="true" />
 
       {/* Nav */}
-      <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "calc(env(safe-area-inset-top, 0px) + 16px) 24px 16px", position: "relative", zIndex: 2, borderBottom: "1px solid var(--border)" }}>
+      <nav className="site-nav">
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/logo-120.webp"
             alt="BustedLab"
-            width={40}
-            height={40}
+            width={36}
+            height={36}
             className="brand-mark"
             style={{ borderRadius: "9px", display: "block", objectFit: "cover" }}
           />
-          <span className="brand-wordmark nav-wordmark" style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "800", fontSize: "20px", letterSpacing: "-0.5px" }}>BustedLab</span>
+          <span className="brand-wordmark nav-wordmark">BustedLab</span>
         </div>
         <div className="nav-right-group" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           {/* Desktop only - the same live count moves to the hero anchor
               on mobile instead of duplicating here. */}
-          <div className="nav-scan-count" style={{ alignItems: "center", gap: "5px" }}>
-            <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 6px rgba(16,217,160,0.6)" }} className="animate-pulse" />
-            <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-2)" }}>{totalScans.toLocaleString("en-US")} scanned</span>
+          <div className="nav-scan-count live-count">
+            <span className="live-dot animate-pulse" />
+            <span className="tnum">{totalScans.toLocaleString("en-US")} scanned</span>
           </div>
           <div className="nav-sound-toggle"><SoundToggle /></div>
           {userStatus.isPaid ? (
-            <span style={{ fontSize: "11px", color: "var(--green)", fontWeight: "600", background: "var(--green-dim)", padding: "3px 10px", borderRadius: "20px", border: "1px solid var(--green-border)" }}>Unlimited</span>
+            <span className="pill-unlimited">Unlimited</span>
           ) : (
-            <button onClick={() => setShowLoginForm(true)} className="btn-ghost" style={{ borderRadius: "8px", padding: "10px 14px", fontSize: "13px" }}>Sign in</button>
+            <button onClick={() => setShowLoginForm(true)} className="btn-ghost" style={{ borderRadius: "10px", padding: "10px 14px", fontSize: "13px", fontWeight: 550 }}>Sign in</button>
           )}
         </div>
       </nav>
 
       {/* Auth messages */}
       {authMessage && (
-        <div style={{ margin: "12px 24px", background: "var(--green-dim)", border: "1px solid var(--green-border)", borderRadius: "10px", padding: "10px 16px", textAlign: "center" }}>
-          <p style={{ color: "var(--green)", fontSize: "13px", fontWeight: "500" }}>{authMessage}</p>
+        <div className="banner-ok" style={{ margin: "12px 20px" }}>
+          <p>{authMessage}</p>
         </div>
       )}
 
       {/* Login form */}
       {showLoginForm && !loginSent && (
-        <div style={{ maxWidth: "520px", margin: "12px auto 0", padding: "0 24px" }}>
-          <div className="card" style={{ borderRadius: "14px", padding: "20px" }}>
-            <h2 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "16px", fontWeight: "700", marginBottom: "6px" }}>Already paid?</h2>
-            <p style={{ color: "var(--text-2)", fontSize: "13px", marginBottom: "14px" }}>Enter your email. A sign-in link arrives instantly.</p>
+        <div style={{ maxWidth: "520px", margin: "12px auto 0", padding: "0 20px", position: "relative", zIndex: 2 }}>
+          <div className="card" style={{ borderRadius: "16px", padding: "20px" }}>
+            <h2 style={{ fontSize: "17px", fontWeight: 700, letterSpacing: "-0.01em", marginBottom: "6px" }}>Already paid?</h2>
+            <p style={{ color: "var(--text-2)", fontSize: "13.5px", marginBottom: "14px" }}>Enter your email. A sign-in link arrives instantly.</p>
             <form onSubmit={handleLoginSubmit} style={{ display: "flex", gap: "8px" }}>
               <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="your@email.com" required
-                style={{ flex: 1, background: "var(--bg-glass)", border: "1px solid var(--border-mid)", borderRadius: "8px", padding: "9px 14px", color: "var(--text)", fontSize: "14px", outline: "none" }} />
-              <button type="submit" className="btn-primary" style={{ borderRadius: "8px", padding: "9px 18px", fontSize: "14px" }}>Send</button>
+                className="field" style={{ flex: 1, minWidth: 0, padding: "11px 14px", fontSize: "14px" }} />
+              <button type="submit" className="btn-primary" style={{ borderRadius: "12px", padding: "11px 20px", fontSize: "14px" }}>Send</button>
             </form>
           </div>
         </div>
       )}
-
       {loginSent && (
-        <div style={{ maxWidth: "520px", margin: "12px auto 0", padding: "0 24px" }}>
-          <div style={{ background: "var(--green-dim)", border: "1px solid var(--green-border)", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
-            <p style={{ color: "var(--green)", fontSize: "14px", fontWeight: "600" }}>If that address has access, a link is in your inbox.</p>
+        <div style={{ maxWidth: "520px", margin: "12px auto 0", padding: "0 20px", position: "relative", zIndex: 2 }}>
+          <div className="banner-ok">
+            <p style={{ fontSize: "14px", fontWeight: 600 }}>If that address has access, a link is in your inbox.</p>
           </div>
         </div>
       )}
 
       {/* ═══ HERO ═══
-          On a phone: the action, then the example card under it. On a wide
-          screen the example card sits beside the action (globals.css,
-          .hero-grid), so the proof is above the fold instead of 900px below
-          it with empty space either side. */}
-      <div className="hero-grid">
-      <section className="hero-section" style={{ maxWidth: "640px", margin: "0 auto", padding: "48px 24px 36px", textAlign: "center", position: "relative", zIndex: 2 }}>
-        {/* Mobile-only live anchor: sits above the indexed-records line so
-            the top of the page breathes before the headline. Hidden on
-            desktop where the same count already lives in the nav bar. */}
-        <div className="hero-scan-count" style={{ alignItems: "center", justifyContent: "center", gap: "6px", marginBottom: "14px" }}>
-          <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 6px rgba(16,217,160,0.6)" }} className="animate-pulse" />
-          <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-2)" }}>{totalScans.toLocaleString("en-US")} scanned</span>
-        </div>
+          Three parts: the claim, the instrument, the action. On a phone they
+          stack in that order, so the first screen is the headline, a real
+          photo being measured, and the button. On a wide screen the claim
+          and the action share the left column and the instrument fills the
+          right (globals.css, .hero-grid). */}
+      <div className={preview ? "hero-grid has-preview" : "hero-grid"}>
+        <div className="hero-head">
+          {/* Mobile-only live anchor. Hidden on desktop where the same count
+              already lives in the nav bar. */}
+          <div className="hero-scan-count live-count">
+            <span className="live-dot animate-pulse" />
+            <span className="tnum">{totalScans.toLocaleString("en-US")} scanned</span>
+          </div>
 
-        <div className="balance" style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "20px", textTransform: "uppercase" }}>
-          SEARCHING 50,000,000,000+ LIVE PRODUCT LISTINGS
-        </div>
+          <div className="hero-eyebrow balance">
+            SEARCHING 50,000,000,000+ LIVE PRODUCT LISTINGS
+          </div>
 
-        <h1 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "clamp(34px,8vw,54px)", fontWeight: "800", lineHeight: "1.08", letterSpacing: "-1.5px", color: "var(--text)", marginBottom: "16px" }}>
-          They built the price.<br />
-          <span style={{ background: "linear-gradient(135deg, #c4aff8 0%, #9d7fd4 40%, #7b5ea7 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
-            We built the scanner.
-          </span>
-        </h1>
+          <h1 className="hero-title">
+            They built the price.<br />
+            <span className="hero-title-2">We built the scanner.</span>
+          </h1>
 
-        <div className="hero-hook-frame">
-          <span className="hero-hook-corner hero-hook-corner-tl" aria-hidden="true" />
-          <span className="hero-hook-corner hero-hook-corner-br" aria-hidden="true" />
-          <p className="hero-hook" style={{ fontSize: "16px", color: "var(--text-2)", lineHeight: "1.7", maxWidth: "440px", margin: "0 auto" }}>
+          <p className="hero-hook">
             Drop a screenshot or paste a link. See what it sells for elsewhere, what they are asking, and the number they hoped you would never calculate.
           </p>
         </div>
 
-        <div style={{ height: "22px" }} />
+        <div className="hero-visual">
+          <HeroInstrument />
+        </div>
 
         {/* ── THE ACTION ──
             One dominant thing to do on arrival: scan a photo. One button
             covers the camera and the photo library, because the phone's own
             picker offers both. The link field sits under it as the secondary
-            path. What the visitor wants to know is asked right above it, with
-            the verdict already chosen. */}
-        <div ref={heroActionRef}>
+            path. */}
+        <div className="hero-action" ref={heroActionRef}>
         {preview ? (
           <>
-            <div style={{ borderRadius: "14px", overflow: "hidden", marginBottom: "4px", position: "relative" }}>
+            <div className="preview-frame">
               {/* A local FileReader data: URL for the photo the visitor just
                   picked. next/image cannot optimize a data URL and would route it
                   through the optimizer for nothing. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={preview} alt="" style={{ width: "100%", maxHeight: "260px", objectFit: "cover", display: "block" }} />
-              {/* Reticle - snaps onto the image in 100ms */}
-              <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-                <div style={{ position: "absolute", top: "10px", left: "10px", width: "16px", height: "16px", borderTop: "2px solid #ef4444", borderLeft: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
-                <div style={{ position: "absolute", top: "10px", right: "10px", width: "16px", height: "16px", borderTop: "2px solid #ef4444", borderRight: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
-                <div style={{ position: "absolute", bottom: "10px", left: "10px", width: "16px", height: "16px", borderBottom: "2px solid #ef4444", borderLeft: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
-                <div style={{ position: "absolute", bottom: "10px", right: "10px", width: "16px", height: "16px", borderBottom: "2px solid #ef4444", borderRight: "2px solid #ef4444", animation: "fadeIn 0.1s ease forwards" }} />
-                <div style={{ position: "absolute", top: "50%", left: "14px", right: "14px", height: "1px", background: "linear-gradient(90deg, transparent, rgba(239,68,68,0.4), rgba(239,68,68,0.4), transparent)", transform: "translateY(-50%)" }} />
-              </div>
-              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 50%, rgba(7,7,14,0.95) 100%)", display: "flex", alignItems: "flex-end", padding: "14px" }}>
-                <button onClick={() => { setPreview(null); setUploadedFile(null); }} className="btn-ghost" style={{ borderRadius: "8px", padding: "10px 16px", fontSize: "13px", background: "rgba(7,7,14,0.6)" }}>Change</button>
+              <img src={preview} alt="" />
+              {/* The brackets lock onto the photo: it has been received and
+                  is ready to measure. */}
+              <span className="hi-corner hi-tl" aria-hidden="true" />
+              <span className="hi-corner hi-tr" aria-hidden="true" />
+              <span className="hi-corner hi-bl" aria-hidden="true" />
+              <span className="hi-corner hi-br" aria-hidden="true" />
+              <div className="preview-foot">
+                <span className="preview-ready" aria-hidden="true"><span className="hi-hud-dot" />READY TO MEASURE</span>
+                <button onClick={() => { setPreview(null); setUploadedFile(null); }} className="btn-ghost" style={{ borderRadius: "10px", padding: "10px 16px", fontSize: "13px", background: "rgba(5,4,9,0.7)" }}>Change</button>
               </div>
             </div>
 
-            <div style={{ height: "12px" }} />
             {intentPanel}
-
-            {scanNotice && (
-              <div role="alert" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.28)", borderRadius: "10px", padding: "10px 14px", margin: "0 0 10px", color: "#fbbf24", fontSize: "13px", fontWeight: 500, lineHeight: 1.5, textAlign: "center" }}>
-                {scanNotice}
-              </div>
-            )}
+            {notice}
             {/* Deactivated rather than relabeled when the free allowance is
                 spent - same button, same words, just disabled. */}
             <button
               ref={scanItRef}
-              className="btn-primary"
+              className="btn-primary cta-big"
               onClick={() => runScan("image")}
-              disabled={!userStatus.isPaid && userStatus.remaining <= 0}
-              style={{ width: "100%", padding: "17px", borderRadius: "14px", fontSize: "17px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif" }}>
+              disabled={!userStatus.isPaid && userStatus.remaining <= 0}>
               Scan it
             </button>
           </>
         ) : (
           <>
-            {intentPanel}
-            {scanNotice && (
-              <div role="alert" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.28)", borderRadius: "10px", padding: "10px 14px", margin: "0 0 10px", color: "#fbbf24", fontSize: "13px", fontWeight: 500, lineHeight: 1.5, textAlign: "center" }}>
-                {scanNotice}
-              </div>
-            )}
+            {notice}
             <button
-              className="btn-primary"
-              onClick={() => fileInputRef.current?.click()}
-              style={{ width: "100%", padding: "18px 16px", borderRadius: "14px", fontSize: "17px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-                <path d="M1.5 5.5V2.5a1 1 0 0 1 1-1h3M12.5 1.5h3a1 1 0 0 1 1 1v3M16.5 12.5v3a1 1 0 0 1-1 1h-3M5.5 16.5h-3a1 1 0 0 1-1-1v-3" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
-                <circle cx="9" cy="9" r="2.4" stroke="white" strokeWidth="1.6" />
+              className="btn-primary cta-big cta-sheen"
+              onClick={() => fileInputRef.current?.click()}>
+              <svg width="20" height="20" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path d="M1.5 5.5V2.5a1 1 0 0 1 1-1h3M12.5 1.5h3a1 1 0 0 1 1 1v3M16.5 12.5v3a1 1 0 0 1-1 1h-3M5.5 16.5h-3a1 1 0 0 1-1-1v-3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                <circle cx="9" cy="9" r="2.4" stroke="currentColor" strokeWidth="1.7" />
               </svg>
               Scan a product
             </button>
-            <p style={{ fontSize: "12px", color: "var(--text-3)", marginTop: "8px", lineHeight: "1.5" }}>
+            <p className="hero-help">
               Photo or screenshot. Keep the price in the shot for a verdict.
             </p>
 
             {/* The secondary path: a link. */}
-            <div style={{ display: "flex", gap: "8px", marginTop: "18px" }}>
+            <div className="link-row">
               <input ref={urlFieldRef} type="url" aria-label="Product link" value={urlInput} onChange={e => {
                 setUrlInput(e.target.value);
                 if (e.target.value.trim() && !inputTracked.current.url) { inputTracked.current.url = true; track("url_entered"); }
               }} placeholder="Or paste a product link"
-                style={{ flex: 1, minWidth: 0, background: "var(--bg-glass)", border: "1px solid var(--border-mid)", borderRadius: "10px", padding: "11px 14px", color: "var(--text)", fontSize: "14px", outline: "none", fontFamily: "var(--font-sans), sans-serif" }}
-                onFocus={e => (e.target.style.borderColor = "var(--accent-2)")}
-                onBlur={e => (e.target.style.borderColor = "var(--border-mid)")}
+                className="field"
+                style={{ flex: 1, minWidth: 0, padding: "12px 14px", fontSize: "14px" }}
               />
               <button
                 className="btn-ghost"
@@ -930,7 +890,7 @@ export default function Home() {
                   runScan("url");
                 }}
                 disabled={!userStatus.isPaid && userStatus.remaining <= 0}
-                style={{ borderRadius: "10px", padding: "11px 16px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif", whiteSpace: "nowrap", opacity: !userStatus.isPaid && userStatus.remaining <= 0 ? 0.4 : 1 }}>
+                style={{ borderRadius: "12px", padding: "12px 16px", fontSize: "14px", fontWeight: 600, whiteSpace: "nowrap", opacity: !userStatus.isPaid && userStatus.remaining <= 0 ? 0.4 : 1 }}>
                 Scan link
               </button>
             </div>
@@ -940,30 +900,27 @@ export default function Home() {
         <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
 
         {!userStatus.isPaid && (
-          <p style={{ fontSize: "12px", color: "var(--text-3)", marginTop: "10px" }}>
-            {userStatus.remaining} free scan{userStatus.remaining !== 1 ? "s" : ""} left today. <button onClick={() => openPaywall("choice")} style={{ background: "none", border: "none", color: "var(--accent-bright)", cursor: "pointer", fontSize: "12px", textDecoration: "underline", padding: "12px 4px", margin: "-12px 0" }}>Unlimited for $4.99</button>
+          <p className="hero-free">
+            {userStatus.remaining} free scan{userStatus.remaining !== 1 ? "s" : ""} left today. <button onClick={() => openPaywall("choice")} className="link-btn">Unlimited for $4.99</button>
           </p>
         )}
-        </div>
-      </section>
 
-      {/* Bridge line - sits between the action buttons above and the demo
-          below, giving the demo context before it renders. */}
-      <div className="hero-bridge" style={{ maxWidth: "640px", margin: "0 auto", padding: "0 24px 28px", textAlign: "center", position: "relative", zIndex: 2 }}>
-        <p style={{ fontSize: "13px", color: "var(--text-3)", lineHeight: "1.6", maxWidth: "420px", margin: "0 auto" }}>
+        {!preview && intentPanel}
+        </div>
+      </div>
+
+      {/* ═══ THE CARD ═══ */}
+      <section className="section">
+        <div className="label">EXAMPLE SCAN</div>
+        <p className="section-lede">
           Any product. Any store. The source price, the asking price, and the exact distance between them.
         </p>
-      </div>
-
-      {/* ═══ STATIC VERDICT DEMO ═══ */}
-      <section className="hero-demo" style={{ maxWidth: "640px", margin: "0 auto", padding: "0 24px", position: "relative", zIndex: 2 }}>
         <StaticVerdictDemo />
       </section>
-      </div>
 
       {/* ═══ STATS ═══ */}
-      <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px" }}>
+      <section className="section reveal">
+        <div className="stats-row">
           {[
             { v: `${totalScans.toLocaleString("en-US")}+`, l: "Products scanned" },
             // Real markup once real scans exceed the demo's own 435% floor,
@@ -980,9 +937,9 @@ export default function Home() {
               l: "Overcharges exposed",
             },
           ].map(s => (
-            <div key={s.l} className="card" style={{ borderRadius: "12px", padding: "16px 10px", textAlign: "center" }}>
-              <div style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "clamp(18px,4vw,24px)", fontWeight: "700", color: "var(--accent-bright)", letterSpacing: "-0.8px", lineHeight: "1" }}>{s.v}</div>
-              <div style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "4px", lineHeight: "1.4" }}>{s.l}</div>
+            <div key={s.l} className="stat">
+              <div className="stat-v tnum">{s.v}</div>
+              <div className="stat-l">{s.l}</div>
             </div>
           ))}
         </div>
@@ -992,27 +949,18 @@ export default function Home() {
       <Leaderboards />
 
       {/* ═══ REACTIONS ═══ */}
-      <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
-        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "14px", textTransform: "uppercase" }}>
-          WHAT IT SOUNDS LIKE WHEN THE MATH LANDS
-        </div>
+      <section className="section reveal">
+        <div className="label">WHAT IT SOUNDS LIKE WHEN THE MATH LANDS</div>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {REACTIONS.quotes.map(r => (
-            <div key={r.name} className="card" style={{ borderRadius: "12px", padding: "16px 18px" }}>
-              <p style={{ fontSize: "14px", color: "var(--text)", lineHeight: "1.6", marginBottom: "10px" }}>
-                &ldquo;{r.quote}&rdquo;
-              </p>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: "var(--accent-2)", flexShrink: 0 }} />
-                <span style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10.5px", color: "var(--text-3)", letterSpacing: "0.5px" }}>
-                  {r.name}, {r.loc}
-                </span>
-              </div>
-            </div>
+            <figure key={r.name} className="card quote">
+              <blockquote>&ldquo;{r.quote}&rdquo;</blockquote>
+              <figcaption>{r.name}, {r.loc}</figcaption>
+            </figure>
           ))}
         </div>
         {REACTIONS.illustrative && (
-          <p style={{ fontSize: "11.5px", color: "var(--text-2)", marginTop: "10px", textAlign: "center" }}>
+          <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "10px", textAlign: "center" }}>
             Illustrative reactions.
           </p>
         )}
@@ -1022,112 +970,46 @@ export default function Home() {
       <WhatWeCatch />
 
       {/* ═══ CLASSIFICATION RULES ═══ */}
-      <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 48px", padding: "0 24px", position: "relative", zIndex: 2 }}>
-        <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", letterSpacing: "2px", color: "rgba(184,160,232,0.7)", marginBottom: "14px", textTransform: "uppercase" }}>
-          CLASSIFICATION THRESHOLDS
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      <section className="section reveal">
+        <div className="label">CLASSIFICATION THRESHOLDS</div>
+        <div className="rules">
           {CLASSIFICATION_RULES.map(c => (
-            <div key={c.label} className="card" style={{ borderRadius: "10px", padding: "14px 16px", display: "flex", alignItems: "flex-start", gap: "12px" }}>
-              <div style={{ width: "5px", height: "5px", borderRadius: "50%", background: TONE_COLOR[c.tone], boxShadow: `0 0 6px ${TONE_COLOR[c.tone]}`, flexShrink: 0, marginTop: "6px" }} />
-              <div style={{ minWidth: 0 }}>
-                <div style={{
-                  fontFamily: "var(--font-display), sans-serif", fontWeight: "700", fontSize: "12px",
-                  color: TONE_COLOR[c.tone], letterSpacing: "1.6px", marginBottom: "4px",
-                }}>{c.label}</div>
-                <div style={{ fontSize: "12px", color: "var(--text-2)", lineHeight: "1.5" }}>{c.rule}</div>
-              </div>
+            <div key={c.label} className="rule" style={{ "--tone": TONE_COLOR[c.tone] } as React.CSSProperties}>
+              <div className="rule-label">{c.label}</div>
+              <div className="rule-text">{c.rule}</div>
             </div>
           ))}
         </div>
-        <p style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px", color: "var(--text-3)", marginTop: "12px", lineHeight: "1.6", letterSpacing: "0.3px" }}>
+        <p className="mono-note">
           Every verdict is produced by these thresholds and nothing else. No manual review. No exceptions.
         </p>
       </section>
 
-      {/* ═══ UPGRADE CTA ═══ */}
-      <section className="reveal" style={{ maxWidth: "640px", margin: "0 auto 76px", padding: "0 24px", position: "relative", zIndex: 2 }}>
-        <div className="upgrade-glow" style={{
-          position: "relative",
-          borderRadius: "20px",
-          padding: "40px 28px 36px",
-          textAlign: "center",
-          background: "linear-gradient(135deg, rgba(123,94,167,0.11) 0%, rgba(123,94,167,0.03) 100%)",
-          border: "1px solid rgba(123,94,167,0.22)",
-        }}>
-          {/* No icon. Every literal shape tried here - an eye, an orb, a
-              lock, a gem - either looked decorative or read as a rendering
-              glitch. The objectively correct answer for the exact moment
-              someone is about to pay: restraint. Apple, Stripe, and every
-              serious payment surface never puts a cartoon glyph above a
-              price - they let light and typography carry the weight. This
-              is a light source with no object attached to it: a soft,
-              compact glow straddling the top edge, wide enough to read as
-              deliberate, small enough to stay quiet. It is the "something
-              is here" sensation without giving that something a shape
-              that can look childish or wrong. */}
-          <div className="upgrade-light-core" style={{
-            position: "absolute", top: "-20px", left: "50%", transform: "translateX(-50%)",
-            width: "72px", height: "40px", pointerEvents: "none",
-            background: "radial-gradient(ellipse 50% 60% at 50% 100%, rgba(232,220,255,0.9) 0%, rgba(157,127,212,0.5) 35%, rgba(123,94,167,0.15) 65%, transparent 85%)",
-            filter: "blur(1px)",
-          }} />
-          <div className="upgrade-light-point" style={{
-            position: "absolute", top: "-2px", left: "50%", transform: "translateX(-50%)",
-            width: "6px", height: "6px", borderRadius: "50%",
-            background: "#f4eeff",
-          }} />
-
-          {/* Eyebrow - paddingLeft compensates for the letter-spacing, which
-              otherwise adds space only after each character and pushes the
-              optical center right of the true geometric center on any
-              tracked-out centered label. */}
-          <p style={{
-            fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
-            letterSpacing: "2px", color: "rgba(184,160,232,0.85)", textTransform: "uppercase",
-            margin: "0 0 28px", paddingLeft: "2px",
-          }}>
-            UNLIMITED ACCESS
-          </p>
-
-          {/* Price group: real air between the price and its caption now -
-              16px, not 10px, because a 44px numeral and an 11px caption
-              need more separation than two same-weight lines would, or the
-              size difference itself reads as crowding regardless of the
-              pixel gap. */}
-          <div style={{ marginBottom: "28px" }}>
-            <h2 style={{ fontFamily: "var(--font-display), sans-serif", fontSize: "44px", fontWeight: "800", letterSpacing: "-1.5px", lineHeight: "1", margin: "0 0 16px" }}>
-              $4.99
-            </h2>
-            <p style={{
-              fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
-              color: "var(--text-3)", letterSpacing: "0.8px", textTransform: "uppercase",
-              margin: 0, paddingLeft: "0.8px",
-            }}>
-              One time. No subscription.
-            </p>
-          </div>
-
-          <div style={{ width: "40px", height: "1px", background: "linear-gradient(90deg, transparent, rgba(157,127,212,0.4), transparent)", margin: "0 auto 28px" }} />
-
-          <p style={{ color: "var(--text-2)", fontSize: "14px", lineHeight: "1.6", maxWidth: "320px", margin: "0 auto 28px" }}>
+      {/* ═══ UPGRADE CTA ═══
+          The price is set in plain white on a quiet surface, with one line of
+          light along the top edge: no red anywhere near the $4.99, no badge,
+          no countdown. The calm is the point at the moment someone pays. */}
+      <section className="section reveal" style={{ marginBottom: "76px" }}>
+        <div className="offer">
+          <p className="offer-eyebrow">UNLIMITED ACCESS</p>
+          <h2 className="offer-price tnum">$4.99</h2>
+          <p className="offer-terms">One time. No subscription.</p>
+          <p className="offer-copy">
             Scan anything. Share the verdict. No limits, no renewal.
           </p>
-
-          <button onClick={handleCheckout} onPointerEnter={warmCheckout} onPointerDown={warmCheckout} onFocus={warmCheckout} disabled={!checkoutAvailable} className="btn-primary" style={{ padding: "14px 36px", borderRadius: "10px", fontSize: "15px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif" }}>
+          <button onClick={handleCheckout} onPointerEnter={warmCheckout} onPointerDown={warmCheckout} onFocus={warmCheckout} disabled={!checkoutAvailable} className="btn-primary" style={{ padding: "15px 36px", borderRadius: "14px", fontSize: "16px", minWidth: "240px" }}>
             {checkoutAvailable ? "Get unlimited access" : "Checkout offline"}
           </button>
-
-          <p style={{ fontSize: "12px", color: "var(--text-3)", margin: "14px 0 0" }}>
+          <p style={{ fontSize: "12.5px", color: "var(--text-3)", margin: "14px 0 0" }}>
             {checkoutAvailable ? "Card, Apple Pay and Google Pay. Access is instant." : "Payment channel temporarily closed. Free scans reset at midnight UTC."}
           </p>
         </div>
       </section>
 
       {/* Footer */}
-      <footer style={{ textAlign: "center", padding: "24px", borderTop: "1px solid var(--border)", position: "relative", zIndex: 2 }}>
+      <footer className="site-footer">
         <div style={{ marginBottom: "8px" }}>
-          <div style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "700", fontSize: "13px", color: "var(--text-3)", marginBottom: "4px" }}>BustedLab</div>
+          <div style={{ fontWeight: 700, fontSize: "13px", color: "var(--text-2)", marginBottom: "4px", letterSpacing: "-0.01em" }}>BustedLab</div>
           <div className="balance" style={{ color: "var(--text-3)", fontSize: "12px" }}>The price was always real. Now you can see it.</div>
         </div>
         <div style={{ display: "flex", justifyContent: "center", gap: "4px 8px", flexWrap: "wrap" }}>
@@ -1137,14 +1019,12 @@ export default function Home() {
             { label: "Privacy", href: "/privacy" },
             { label: "DMCA", href: "/dmca" },
           ].map(link => (
-            <a key={link.href} href={link.href} style={{ color: "var(--text-3)", fontSize: "12px", textDecoration: "none", padding: "12px 8px", display: "inline-block" }}
-              onMouseEnter={e => (e.currentTarget.style.color = "var(--text-2)")}
-              onMouseLeave={e => (e.currentTarget.style.color = "var(--text-3)")}>
+            <a key={link.href} href={link.href} className="footer-link">
               {link.label}
             </a>
           ))}
         </div>
-        <p style={{ fontSize: "12px", color: "var(--text-3)", marginTop: "12px", lineHeight: "1.6" }}>
+        <p style={{ fontSize: "12px", color: "var(--text-3)", marginTop: "12px", lineHeight: "1.6", maxWidth: "560px", marginLeft: "auto", marginRight: "auto" }}>
           All markup data represents editorial analysis of publicly available wholesale listings for similar products. Results are market intelligence, not verified facts about specific products.
         </p>
       </footer>

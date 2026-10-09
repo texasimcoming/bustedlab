@@ -72,7 +72,7 @@ function Row({ entry, rank }: { entry: IndexEntry; rank: number }) {
       className="card panel"
       style={{
         display: "flex", alignItems: "center", gap: "12px",
-        padding: "13px 14px", borderRadius: "11px", textDecoration: "none",
+        padding: "14px 15px", borderRadius: "14px", textDecoration: "none",
       }}
     >
       <div style={{
@@ -91,7 +91,7 @@ function Row({ entry, rank }: { entry: IndexEntry; rank: number }) {
         </div>
         <div style={{
           display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap",
-          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9.5px",
+          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
           color: "var(--text-3)", letterSpacing: "0.5px", textTransform: "uppercase",
         }}>
           <span style={{ color }}>{VERDICT_LABEL[entry.verdict]}</span>
@@ -109,7 +109,7 @@ function Row({ entry, rank }: { entry: IndexEntry; rank: number }) {
           {entry.markup.toLocaleString()}%
         </div>
         <div style={{
-          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9.5px",
+          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
           color: "var(--text-3)", marginTop: "2px",
         }}>
           ${entry.savings.toFixed(2)}
@@ -133,42 +133,33 @@ export default async function IndexPage({ searchParams }: Props) {
 
   return (
     <main style={{ position: "relative", zIndex: 1, minHeight: "100vh", fontFamily: "var(--font-sans), sans-serif" }}>
-      <nav style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "18px 24px", position: "relative", zIndex: 2, borderBottom: "1px solid var(--border)",
-      }}>
+      <div className="page-light" aria-hidden="true" />
+      <nav className="site-nav">
         <Link href="/" style={{ display: "flex", alignItems: "center", gap: "9px", textDecoration: "none" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-120.webp" alt="" width={32} height={32} style={{ borderRadius: "8px", display: "block", objectFit: "cover" }} />
-          <span style={{
-            fontFamily: "var(--font-display), sans-serif", fontWeight: "800",
-            fontSize: "18px", letterSpacing: "-0.5px", color: "var(--text)",
-          }}>BustedLab</span>
+          <img src="/logo-120.webp" alt="" width={36} height={36} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
+          <span className="brand-wordmark" style={{ color: "var(--text)" }}>BustedLab</span>
         </Link>
         {/* No sound toggle here: the verdict tone only ever plays on a scan
             result, so the control did nothing on this page and crowded the
             one action it has. Same nav as a shared verdict page. */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <Link href="/" className="btn-primary" style={{
-            borderRadius: "8px", padding: "10px 12px", fontSize: "13px", fontWeight: "600",
-            fontFamily: "var(--font-display), sans-serif", textDecoration: "none", whiteSpace: "nowrap",
+            borderRadius: "12px", padding: "11px 16px", fontSize: "14px", textDecoration: "none", whiteSpace: "nowrap",
           }}>
             Scan a product
           </Link>
         </div>
       </nav>
 
-      <div style={{ maxWidth: "680px", margin: "0 auto", padding: "28px 24px 70px", position: "relative", zIndex: 2 }}>
-        <div style={{
-          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
-          letterSpacing: "2.4px", color: "rgba(184,160,232,0.7)", textTransform: "uppercase", marginBottom: "12px",
-        }}>
+      <div style={{ maxWidth: "680px", margin: "0 auto", padding: "32px 20px 70px", position: "relative", zIndex: 2 }}>
+        <div className="label">
           THE INDEX &middot; LAST {WINDOW_DAYS} DAYS
         </div>
 
-        <h1 style={{
-          fontFamily: "var(--font-display), sans-serif", fontSize: "clamp(26px,5vw,38px)",
-          fontWeight: "800", letterSpacing: "-1.2px", lineHeight: "1.1",
+        <h1 className="balance" style={{
+          fontFamily: "var(--font-display), sans-serif", fontSize: "clamp(30px,7vw,48px)",
+          fontWeight: "760", letterSpacing: "-0.04em", lineHeight: "1.04",
           color: "var(--text)", marginBottom: "12px",
         }}>
           Everything we have caught
@@ -186,8 +177,8 @@ export default async function IndexPage({ searchParams }: Props) {
               href="/the-index"
               className="panel"
               style={{
-                borderRadius: "20px", padding: "6px 14px", textDecoration: "none",
-                fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10.5px",
+                borderRadius: "999px", padding: "9px 14px", textDecoration: "none",
+                fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
                 letterSpacing: "0.6px", textTransform: "uppercase",
                 color: !category ? "var(--accent-bright)" : "var(--text-3)",
                 borderColor: !category ? "var(--accent-2)" : "var(--border-mid)",
@@ -201,8 +192,8 @@ export default async function IndexPage({ searchParams }: Props) {
                 href={`/the-index?category=${c}`}
                 className="panel"
                 style={{
-                  borderRadius: "20px", padding: "6px 14px", textDecoration: "none",
-                  fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10.5px",
+                  borderRadius: "999px", padding: "9px 14px", textDecoration: "none",
+                  fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
                   letterSpacing: "0.6px", textTransform: "uppercase",
                   color: category === c ? "var(--accent-bright)" : "var(--text-3)",
                   borderColor: category === c ? "var(--accent-2)" : "var(--border-mid)",
@@ -219,9 +210,9 @@ export default async function IndexPage({ searchParams }: Props) {
             {entries.map((e, i) => <Row key={e.id} entry={e} rank={i + 1} />)}
           </div>
         ) : (
-          <div className="card" style={{ borderRadius: "12px", padding: "34px 24px", textAlign: "center" }}>
+          <div className="card" style={{ borderRadius: "18px", padding: "34px 24px", textAlign: "center" }}>
             <div style={{
-              fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
+              fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
               letterSpacing: "2px", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "10px",
             }}>
               NO RECORDS IN THIS WINDOW
@@ -232,23 +223,18 @@ export default async function IndexPage({ searchParams }: Props) {
                 : "The index fills itself. Every confirmed verdict lands here automatically."}
             </p>
             <Link href="/" className="btn-primary" style={{
-              display: "inline-block", padding: "11px 26px", borderRadius: "10px",
-              fontSize: "13.5px", fontWeight: "700",
-              fontFamily: "var(--font-display), sans-serif", textDecoration: "none",
+              display: "inline-block", padding: "13px 28px", borderRadius: "14px",
+              fontSize: "14.5px", textDecoration: "none",
             }}>
               Add the first one
             </Link>
           </div>
         )}
 
-        <div style={{
-          marginTop: "26px", borderRadius: "14px", padding: "22px 20px", textAlign: "center",
-          background: "linear-gradient(135deg, rgba(123,94,167,0.1) 0%, rgba(123,94,167,0.02) 100%)",
-          border: "1px solid rgba(123,94,167,0.18)",
-        }}>
+        <div className="offer" style={{ marginTop: "26px", borderRadius: "20px", padding: "26px 20px 24px" }}>
           <h2 style={{
-            fontFamily: "var(--font-display), sans-serif", fontSize: "19px", fontWeight: "800",
-            letterSpacing: "-0.6px", marginBottom: "6px", color: "var(--text)",
+            fontFamily: "var(--font-display), sans-serif", fontSize: "21px", fontWeight: "750",
+            letterSpacing: "-0.03em", marginBottom: "6px", color: "var(--text)",
           }}>
             Your product is not on this list yet
           </h2>
@@ -256,9 +242,8 @@ export default async function IndexPage({ searchParams }: Props) {
             Drop a link or a screenshot. Whatever it finds goes in the index.
           </p>
           <Link href="/" className="btn-primary" style={{
-            display: "inline-block", padding: "12px 30px", borderRadius: "10px",
-            fontSize: "14px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif",
-            textDecoration: "none",
+            display: "inline-block", padding: "14px 32px", borderRadius: "14px",
+            fontSize: "15px", textDecoration: "none",
           }}>
             Run a scan
           </Link>

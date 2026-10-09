@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { connection } from "next/server";
-import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 // Self-hosted at build time rather than pulled from fonts.googleapis.com on
@@ -15,26 +15,20 @@ import "./globals.css";
 //     have to disclose.
 // The families are exposed as CSS variables; every inline style in the app
 // references those variables rather than a literal family name.
-const inter = Inter({
+// Two variable families, self-hosted at build time (see above): Geist for
+// every word on the site, set tight at display sizes, and Geist Mono for the
+// instrument's readouts (prices, labels, the scan HUD). One variable file
+// each replaces the three families this used to load. The variables keep
+// their old names, so every inline style that asks for --font-display,
+// --font-sans or --font-mono gets the new faces without being touched.
+const geist = Geist({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
   variable: "--font-sans",
   display: "swap",
 });
 
-const spaceGrotesk = Space_Grotesk({
+const geistMono = Geist_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-display",
-  display: "swap",
-});
-
-// The monospace face carries every telemetry readout on the site, so it is
-// pinned rather than left to whatever the device calls "monospace" (which is
-// Courier on a surprising number of Android builds and wrecks the HUD).
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
   variable: "--font-mono",
   display: "swap",
 });
@@ -107,9 +101,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // render time, not database load.
   await connection();
   return (
-    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable} ${mono.variable}`}>
+    <html lang="en" className={`${geist.variable} ${geistMono.variable}`}>
       <head>
-        <meta name="theme-color" content="#07070e" />
+        <meta name="theme-color" content="#050409" />
       </head>
       <body>{children}</body>
     </html>

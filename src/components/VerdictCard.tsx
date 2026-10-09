@@ -71,12 +71,12 @@ export interface VerdictData {
 const VERDICT_CONFIG = {
   HIGH_MARKUP: {
     label: "BUSTED",
-    accentColor: "#ef4444",
-    accentGlow: "rgba(239,68,68,0.35)",
-    accentDim: "rgba(239,68,68,0.08)",
-    accentBorder: "rgba(239,68,68,0.22)",
-    headerBg: "linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(239,68,68,0.04) 100%)",
-    flashColor: "rgba(239,68,68,0.08)",
+    accentColor: "#ff4d5e",
+    accentGlow: "rgba(255,77,94,0.35)",
+    accentDim: "rgba(255,77,94,0.08)",
+    accentBorder: "rgba(255,77,94,0.22)",
+    headerBg: "linear-gradient(135deg, rgba(255,77,94,0.12) 0%, rgba(255,77,94,0.04) 100%)",
+    flashColor: "rgba(255,77,94,0.08)",
     message: "",
   },
   OVERPRICED: {
@@ -293,7 +293,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
         className="verdict-flash"
         style={{
           position: "fixed", inset: 0, zIndex: 9998,
-          background: (cfg as Record<string, string>).flashColor || "rgba(123,94,167,0.06)",
+          background: (cfg as Record<string, string>).flashColor || "rgba(138,111,240,0.06)",
           pointerEvents: "none",
           opacity: 0,
         }}
@@ -305,7 +305,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
       style={{
         borderRadius: compact ? "16px" : "20px",
         overflow: "hidden",
-        background: "#0d0d1c",
+        background: "linear-gradient(180deg, #110e1e 0%, #0b0915 100%)",
         border: `1px solid ${cfg.accentBorder}`,
         position: "relative",
         boxShadow: scanComplete
@@ -319,6 +319,13 @@ export default function VerdictCard({ data, animate = true, compact = false, car
         position: "absolute", inset: 0, pointerEvents: "none",
         background: `radial-gradient(ellipse at 50% 0%, ${cfg.accentDim} 0%, transparent 70%)`,
         zIndex: 0,
+      }} />
+      {/* The measurement line: the laser through the logo, drawn along the
+          card's top edge in the verdict's colour once the verdict lands. */}
+      <div style={{
+        position: "absolute", top: 0, left: 0, right: 0, height: "2px", zIndex: 2, pointerEvents: "none",
+        background: `linear-gradient(90deg, transparent 0%, ${cfg.accentColor} 30%, ${cfg.accentColor} 70%, transparent 100%)`,
+        opacity: scanComplete ? 0.9 : 0, transition: "opacity 0.3s ease",
       }} />
 
       {animate && !scanComplete && (
@@ -340,24 +347,18 @@ export default function VerdictCard({ data, animate = true, compact = false, car
         display: "flex", alignItems: "center", gap: "8px",
         position: "relative", zIndex: 1,
       }}>
-        <div style={{
-          width: compact ? "20px" : "24px", height: compact ? "20px" : "24px",
-          borderRadius: "5px", background: "linear-gradient(135deg, #9d7fd4, #7b5ea7)",
-          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-        }}>
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-            <circle cx="6" cy="5.5" r="3" stroke="white" strokeWidth="1.5" />
-            <path d="M8.5 8L10.5 10" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </div>
+        {/* The brand mark itself, same-origin so the saved image carries it. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-120.webp" alt="" width={compact ? 26 : 30} height={compact ? 26 : 30}
+          style={{ display: "block", width: compact ? "26px" : "30px", height: compact ? "26px" : "30px", borderRadius: "7px", flexShrink: 0, objectFit: "cover" }} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{
-            fontFamily: "var(--font-display), sans-serif", fontSize: compact ? "10px" : "10.5px", fontWeight: "700",
-            color: "rgba(184,160,232,0.9)", letterSpacing: "1.8px", textTransform: "uppercase",
+            fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px", fontWeight: "600",
+            color: "rgba(214,201,255,0.95)", letterSpacing: "1.8px", textTransform: "uppercase",
             lineHeight: "1.4", whiteSpace: "nowrap",
           }}>BUSTEDLAB SCAN</div>
           <div style={{
-            fontSize: compact ? "9.5px" : "10px", color: "rgba(238,238,246,0.66)", letterSpacing: "0.3px",
+            fontSize: "11px", color: "rgba(245,243,255,0.66)", letterSpacing: "0.3px",
             marginTop: "2px", fontFamily: "var(--font-mono), ui-monospace, monospace", lineHeight: "1.5",
           }}
           // The results page pins its moment in a state initialiser, which
@@ -384,7 +385,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
               color: cfg.accentColor, letterSpacing: "1.5px", marginBottom: "10px",
               opacity: stampIn ? 1 : 0, transition: "opacity 0.3s ease",
             }}>{cfg.label}</div>
-            <div style={{ fontSize: compact ? "13px" : "14px", color: "rgba(238,238,246,0.55)", lineHeight: "1.5", maxWidth: "320px", margin: "0 auto" }}>
+            <div style={{ fontSize: compact ? "13px" : "14px", color: "rgba(245,243,255,0.55)", lineHeight: "1.5", maxWidth: "320px", margin: "0 auto" }}>
               {cfg.message}
             </div>
           </div>
@@ -422,7 +423,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                     fontFamily: "var(--font-display), sans-serif",
                     fontSize: compact ? "24px" : "30px",
                     fontWeight: "800", color: cfg.accentColor,
-                    letterSpacing: compact ? "1.5px" : "2.5px", lineHeight: "1.12",
+                    letterSpacing: "0", lineHeight: "1.08",
                     textShadow: `0 0 ${compact ? "14px" : "24px"} ${cfg.accentGlow}`,
                     opacity: stampIn ? 1 : 0, transform: stampIn ? "none" : "scale(1.1)",
                     transition: "opacity 0.3s ease, transform 0.3s ease",
@@ -432,7 +433,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                 {/* Personalised computed sentence - FINDER's own voice,
                     never the verdict voice. */}
                 <div style={{
-                  fontSize: compact ? "13px" : "14.5px", color: "rgba(238,238,246,0.68)",
+                  fontSize: compact ? "13px" : "14.5px", color: "rgba(245,243,255,0.68)",
                   lineHeight: "1.5", marginBottom: compact ? "16px" : "20px", maxWidth: "94%",
                 }}>
                   {buildFinderMessage(data)}
@@ -443,7 +444,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                   borderRadius: compact ? "12px" : "14px", padding: compact ? "16px" : "20px",
                   marginBottom: compact ? "12px" : "14px", textAlign: "center",
                 }}>
-                  <div style={{ fontSize: compact ? "10px" : "11px", color: "rgba(238,238,246,0.66)", textTransform: "uppercase", letterSpacing: "1.2px", marginBottom: "8px", fontWeight: "600" }}>
+                  <div style={{ fontSize: "11px", color: "rgba(245,243,255,0.66)", textTransform: "uppercase", letterSpacing: "1.2px", marginBottom: "8px", fontWeight: "600" }}>
                     Cheapest price found
                   </div>
                   <div style={{
@@ -455,7 +456,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                     ${data.wholesalePrice.toFixed(2)}
                   </div>
                   {data.platform && (
-                    <div style={{ fontSize: compact ? "11.5px" : "12.5px", color: "rgba(238,238,246,0.66)", marginTop: "8px" }}>
+                    <div style={{ fontSize: compact ? "11.5px" : "12.5px", color: "rgba(245,243,255,0.66)", marginTop: "8px" }}>
                       at {data.platform}
                     </div>
                   )}
@@ -467,7 +468,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
             {/* Verdict headline + markup ring — leads the card */}
             <div style={{
                 display: "grid",
-                gridTemplateColumns: compact ? "1fr 68px" : "1fr 88px",
+                gridTemplateColumns: compact ? "1fr 76px" : "1fr 88px",
                 alignItems: "center",
                 gap: compact ? "12px" : "16px",
                 marginBottom: compact ? "16px" : "20px",
@@ -476,9 +477,11 @@ export default function VerdictCard({ data, animate = true, compact = false, car
               <div>
                 <div style={{
                   fontFamily: "var(--font-display), sans-serif",
-                  fontSize: compact ? (isFinder ? "22px" : "38px") : (isFinder ? "30px" : "48px"),
+                  fontSize: cfg.label.length > 7
+                    ? (compact ? "31px" : "42px")
+                    : (compact ? "44px" : "58px"),
                   fontWeight: "800", color: cfg.accentColor,
-                  letterSpacing: compact ? "1.5px" : "3px", lineHeight: "1.12",
+                  letterSpacing: "-0.01em", lineHeight: "1.04",
                   paddingBottom: "2px",
                   textShadow: `0 0 ${compact ? "14px" : "24px"} ${cfg.accentGlow}`,
                   opacity: stampIn ? 1 : 0, transform: stampIn ? "none" : "scale(1.1)",
@@ -488,10 +491,10 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                 {isVerdict && (
                   <div style={{
                     fontFamily: "var(--font-display), sans-serif",
-                    fontSize: compact ? "13px" : "15px",
+                    fontSize: compact ? "14px" : "16px",
                     fontWeight: "700",
-                    color: data.verdict === "FAIR" ? "#10d9a0" : data.verdict === "HIGH_MARKUP" ? "#ef4444" : "#f59e0b",
-                    letterSpacing: "-0.3px",
+                    color: data.verdict === "FAIR" ? "#10d9a0" : data.verdict === "HIGH_MARKUP" ? "#ff6b79" : "#f59e0b",
+                    letterSpacing: "-0.01em",
                     lineHeight: "1.35",
                     marginTop: compact ? "4px" : "6px",
                     opacity: numbersIn ? 1 : 0,
@@ -509,24 +512,39 @@ export default function VerdictCard({ data, animate = true, compact = false, car
               {!isFinder && (
                 <div style={{
                   position: "relative",
-                  width: compact ? "68px" : "88px",
-                  height: compact ? "68px" : "88px",
+                  width: compact ? "76px" : "88px",
+                  height: compact ? "76px" : "88px",
                   flexShrink: 0,
                 }}>
                   <svg
-                    width={compact ? 68 : 88}
-                    height={compact ? 68 : 88}
-                    viewBox={compact ? "0 0 68 68" : "0 0 88 88"}
+                    width={compact ? 76 : 88}
+                    height={compact ? 76 : 88}
+                    viewBox={compact ? "0 0 76 76" : "0 0 88 88"}
                     style={{ position: "absolute", top: 0, left: 0 }}
                   >
                     {(() => {
-                      const c = compact ? 34 : 44;
-                      const r = compact ? 28 : 37;
+                      const c = compact ? 38 : 44;
+                      const r = compact ? 30 : 36;
                       const circumference = 2 * Math.PI * r;
                       const filled = circumference * ringFraction(data.markup);
                       const dash = `${filled.toFixed(2)} ${circumference.toFixed(2)}`;
+                      // The dial: 40 graduations just outside the ring, every
+                      // fifth one longer, so it reads as an instrument's
+                      // scale rather than a progress spinner.
+                      const ticks = Array.from({ length: 40 }, (_, i) => {
+                        const a = (i / 40) * 2 * Math.PI - Math.PI / 2;
+                        const major = i % 5 === 0;
+                        const r1 = r + 3.5, r2 = r + (major ? 7 : 5.5);
+                        return (
+                          <line key={i}
+                            x1={(c + r1 * Math.cos(a)).toFixed(2)} y1={(c + r1 * Math.sin(a)).toFixed(2)}
+                            x2={(c + r2 * Math.cos(a)).toFixed(2)} y2={(c + r2 * Math.sin(a)).toFixed(2)}
+                            stroke={major ? "rgba(255,255,255,0.32)" : "rgba(255,255,255,0.14)"} strokeWidth="1" />
+                        );
+                      });
                       return (
                         <>
+                          {ticks}
                           <circle cx={c} cy={c} r={r} fill="none" stroke={cfg.accentBorder} strokeWidth="1.5" />
                           {/* Glow simulated with a wider, softer duplicate stroke underneath
                               rather than a CSS filter - html2canvas does not reliably
@@ -555,7 +573,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                   }}>
                     <div style={{
                       fontFamily: "var(--font-display), sans-serif",
-                      fontSize: compact ? "13px" : "17px",
+                      fontSize: compact ? "15px" : "17px",
                       fontWeight: "800", color: cfg.accentColor,
                       letterSpacing: "-0.5px", lineHeight: "1.2",
                       opacity: numbersIn ? 1 : 0,
@@ -565,8 +583,8 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                       {data.markup > 9999 ? "9999+" : `${data.markup}%`}
                     </div>
                     <div style={{
-                      fontSize: compact ? "8.5px" : "9.5px", color: "rgba(238,238,246,0.7)",
-                      letterSpacing: "0.8px", marginTop: "3px",
+                      fontSize: "11px", color: "rgba(245,243,255,0.7)",
+                      letterSpacing: "0.4px", marginTop: "2px",
                       textTransform: "uppercase",
                     }}>markup</div>
                   </div>
@@ -576,7 +594,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
 
             {/* Human-voice line — computed, not static copy */}
             <div style={{
-              fontSize: compact ? "13px" : "14.5px", color: "rgba(238,238,246,0.68)",
+              fontSize: compact ? "13px" : "14.5px", color: "rgba(245,243,255,0.68)",
               lineHeight: "1.5", marginBottom: compact ? "16px" : "20px", maxWidth: "94%",
             }}>
               {buildMessage(data)}
@@ -586,9 +604,9 @@ export default function VerdictCard({ data, animate = true, compact = false, car
             {/* The two boxes stretch to one height and hold their prices on
                 the bottom edge, so when a label wraps on a narrow phone the
                 two prices still line up. */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 20px 1fr", gap: compact ? "8px" : "10px", alignItems: "stretch", marginBottom: compact ? "16px" : "20px" }}>
-              <div style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)", borderRadius: compact ? "10px" : "12px", padding: compact ? "11px 13px" : "13px 15px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                <div style={{ fontSize: compact ? "10px" : "11px", color: "rgba(238,238,246,0.66)", textTransform: "uppercase", letterSpacing: compact ? "0.5px" : "1px", marginBottom: compact ? "4px" : "5px", fontWeight: "600" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 28px 1fr", gap: compact ? "8px" : "10px", alignItems: "stretch", marginBottom: compact ? "16px" : "20px" }}>
+              <div style={{ background: "rgba(255,77,94,0.06)", border: "1px solid rgba(255,77,94,0.15)", borderRadius: compact ? "10px" : "12px", padding: compact ? "11px 13px" : "13px 15px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px", color: "rgba(245,243,255,0.7)", textTransform: "uppercase", letterSpacing: compact ? "0.4px" : "1.2px", marginBottom: compact ? "4px" : "6px", fontWeight: "500" }}>
                   Retail asking
                 </div>
                 {/* The strike is a text decoration rather than a line laid
@@ -597,9 +615,9 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                     in globals.css for why those used to disagree). */}
                 <div>
                 <div style={{
-                  fontFamily: "var(--font-display), sans-serif", fontSize: compact ? "20px" : "24px", fontWeight: "700", color: "#ef4444", letterSpacing: "-0.8px", lineHeight: "1.2",
+                  fontFamily: "var(--font-display), sans-serif", fontSize: compact ? "21px" : "26px", fontWeight: "750", color: "#ff6b79", letterSpacing: "-0.03em", lineHeight: "1.2", fontVariantNumeric: "tabular-nums",
                   textDecoration: isVerdict ? "line-through" : "none",
-                  textDecorationColor: "rgba(239,68,68,0.75)",
+                  textDecorationColor: "rgba(255,77,94,0.75)",
                   textDecorationThickness: "2px",
                   opacity: numbersIn ? 1 : 0,
                   transform: numbersIn ? "none" : "translateY(4px)",
@@ -608,21 +626,31 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                   ${data.retailPrice.toFixed(2)}
                 </div>
                 {data.retailOriginal && (
-                  <div style={{ fontSize: compact ? "10.5px" : "11px", color: "rgba(238,238,246,0.66)", marginTop: "3px", fontWeight: 500 }}>
+                  <div style={{ fontSize: "11px", color: "rgba(245,243,255,0.66)", marginTop: "3px", fontWeight: 500 }}>
                     {formatOriginalPrice(data.retailOriginal)} on screen
                   </div>
                 )}
                 </div>
               </div>
 
-              <div style={{ textAlign: "center", alignSelf: "center", fontSize: compact ? "10px" : "11px", color: "rgba(238,238,246,0.62)", fontWeight: "600", letterSpacing: "0.5px" }}>VS</div>
+              {/* The two prices joined by the laser line, the gap between
+                  them literally measured. */}
+              <div style={{ position: "relative", alignSelf: "center", height: "22px", margin: compact ? "0 -8px" : "0 -10px" }}>
+                <div style={{ position: "absolute", left: 0, right: 0, top: "10px", height: "2px", background: "linear-gradient(90deg, #ff4d5e, #2ee6b0)", boxShadow: "0 0 8px rgba(255,77,94,0.45)" }} />
+                <div style={{
+                  position: "absolute", left: "50%", top: 0, width: "30px", marginLeft: "-15px", height: "22px", lineHeight: "20px",
+                  borderRadius: "11px", background: "#0b0915", border: "1px solid rgba(255,255,255,0.16)",
+                  textAlign: "center", fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px", fontWeight: "600",
+                  color: "rgba(245,243,255,0.75)", letterSpacing: "0.3px",
+                }}>VS</div>
+              </div>
 
               <div style={{ background: "rgba(16,217,160,0.06)", border: "1px solid rgba(16,217,160,0.18)", borderRadius: compact ? "10px" : "12px", padding: compact ? "11px 13px" : "13px 15px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                <div style={{ fontSize: compact ? "10px" : "11px", color: "rgba(238,238,246,0.66)", textTransform: "uppercase", letterSpacing: compact ? "0.5px" : "1px", marginBottom: compact ? "4px" : "5px", fontWeight: "600" }}>
+                <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px", color: "rgba(245,243,255,0.7)", textTransform: "uppercase", letterSpacing: compact ? "0.4px" : "1.2px", marginBottom: compact ? "4px" : "6px", fontWeight: "500" }}>
                   {isVerdict ? "Wholesale from" : "Closest listing"}
                 </div>
                 <div style={{
-                  fontFamily: "var(--font-display), sans-serif", fontSize: compact ? "20px" : "24px", fontWeight: "700", color: "#10d9a0", letterSpacing: "-0.8px", lineHeight: "1.2",
+                  fontFamily: "var(--font-display), sans-serif", fontSize: compact ? "21px" : "26px", fontWeight: "750", color: "#2ee6b0", letterSpacing: "-0.03em", lineHeight: "1.2", fontVariantNumeric: "tabular-nums",
                   opacity: numbersIn ? 1 : 0,
                   transform: numbersIn ? "none" : "translateY(4px)",
                   transition: "opacity 0.25s ease 0.1s, transform 0.25s ease 0.1s",
@@ -670,7 +698,7 @@ export default function VerdictCard({ data, animate = true, compact = false, car
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{
-                  fontSize: compact ? "11.5px" : "12.5px", fontWeight: "600", color: "rgba(238,238,246,0.75)",
+                  fontSize: compact ? "11.5px" : "12.5px", fontWeight: "600", color: "rgba(245,243,255,0.75)",
                   lineHeight: "1.45", marginBottom: "3px", wordBreak: "break-word",
                 }}>{clampTitle(data.productTitle, compact)}</div>
                 {/* The confidence readout is text and nothing else. The bar
@@ -679,13 +707,13 @@ export default function VerdictCard({ data, animate = true, compact = false, car
                     in a card whose whole job is to be read in two seconds at
                     thumbnail size. */}
                 <div style={{
-                  fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: compact ? "10px" : "10.5px",
+                  fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
                   color: cfg.accentColor, letterSpacing: "0.7px", lineHeight: "1.4",
                 }}>{plateLabel(data.mode, data.matchConfidence)}</div>
               </div>
             </div>
 
-            <div style={{ fontSize: compact ? "10.5px" : "11px", color: "rgba(238,238,246,0.62)", lineHeight: "1.5", letterSpacing: "0.2px" }}>
+            <div style={{ fontSize: "11px", color: "rgba(245,243,255,0.62)", lineHeight: "1.5", letterSpacing: "0.2px" }}>
               {evidenceNote(data.mode, data.matchConfidence)}
             </div>
           </>
@@ -700,12 +728,12 @@ export default function VerdictCard({ data, animate = true, compact = false, car
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: "#10d9a0", boxShadow: "0 0 4px rgba(16,217,160,0.6)" }} />
-          <span style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "700", fontSize: compact ? "12px" : "13px", color: "rgba(196,175,248,0.9)", letterSpacing: "0.3px" }}>
+          <span style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "700", fontSize: compact ? "12.5px" : "13.5px", color: "rgba(236,229,255,0.95)", letterSpacing: "-0.01em" }}>
             bustedlab.com
           </span>
         </div>
         {data.scanId && (
-          <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: compact ? "9.5px" : "10.5px", color: "rgba(238,238,246,0.6)", letterSpacing: "0.5px" }}>
+          <div style={{ fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px", color: "rgba(245,243,255,0.6)", letterSpacing: "0.5px" }}>
             {data.scanId}
           </div>
         )}

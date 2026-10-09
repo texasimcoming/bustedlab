@@ -128,7 +128,7 @@ export default function ResultsPage({
     // in globals.css (search "html2canvas"): it measures fonts in the live
     // page, so an option here cannot reach it.
     return html2canvas(cardRef.current, {
-      backgroundColor: "#07070e", scale: 3, useCORS: true, allowTaint: true, logging: false,
+      backgroundColor: "#050409", scale: 3, useCORS: true, allowTaint: true, logging: false,
     });
   };
 
@@ -158,11 +158,11 @@ export default function ResultsPage({
       story.width = W; story.height = H;
       const ctx = story.getContext("2d");
       if (!ctx) return null;
-      ctx.fillStyle = "#07070e";
+      ctx.fillStyle = "#050409";
       ctx.fillRect(0, 0, W, H);
       const glow = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, W * 0.9);
-      glow.addColorStop(0, "rgba(123,94,167,0.22)");
-      glow.addColorStop(1, "rgba(123,94,167,0)");
+      glow.addColorStop(0, "rgba(138,111,240,0.22)");
+      glow.addColorStop(1, "rgba(138,111,240,0)");
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, W, H);
 
@@ -179,10 +179,10 @@ export default function ResultsPage({
       const sans = getComputedStyle(document.documentElement).getPropertyValue("--font-sans").trim() || "sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "alphabetic";
-      ctx.fillStyle = "rgba(238,238,246,0.72)";
+      ctx.fillStyle = "rgba(245,243,255,0.72)";
       ctx.font = `500 38px ${sans}`;
       ctx.fillText("Scan yours at", W / 2, y + drawH + 150);
-      ctx.fillStyle = "#c4aff8";
+      ctx.fillStyle = "#e2d8ff";
       ctx.font = `700 64px ${display}`;
       ctx.fillText("bustedlab.com", W / 2, y + drawH + 230);
       return toPng(story, "bustedlab-verdict-story.png");
@@ -301,20 +301,21 @@ export default function ResultsPage({
 
   return (
     <main style={{ position: "relative", zIndex: 1, minHeight: "100vh", paddingBottom: "40px", fontFamily: "var(--font-sans), sans-serif" }}>
-      <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", zIndex: 2, position: "relative", borderBottom: "1px solid rgba(255,255,255,0.055)" }}>
+      <div className="page-light" aria-hidden="true" />
+      <nav className="site-nav">
         <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
           {/* Fixed 32px mark. next/image would add an optimizer round trip
               and a srcset for an asset that is never rendered at another size.
               eslint-disable-next-line @next/next/no-img-element */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-120.webp" alt="" width={32} height={32} style={{ borderRadius: "8px", display: "block", objectFit: "cover" }} />
-          <span className="nav-wordmark" style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: "800", fontSize: "18px", letterSpacing: "-0.5px", color: "#eeeef6" }}>BustedLab</span>
+          <span className="nav-wordmark brand-wordmark" style={{ fontSize: "18px", color: "#f5f3ff" }}>BustedLab</span>
         </div>
         {/* Sized so the labelled sound toggle and this button fit beside the
             wordmark on a 390px phone without wrapping. */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <SoundToggle />
-          <button onClick={onReset} style={{ background: "transparent", color: "rgba(238,238,246,0.7)", border: "1px solid rgba(255,255,255,0.12)", cursor: "pointer", transition: "color 0.18s ease, border-color 0.18s ease", fontFamily: "var(--font-sans), sans-serif", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", whiteSpace: "nowrap" }}>
+          <button onClick={onReset} className="btn-ghost" style={{ borderRadius: "10px", padding: "10px 13px", fontSize: "13px", fontWeight: 550, whiteSpace: "nowrap" }}>
             {/* One label for every result: a no-match ends in its own full
                 "Try another scan" button, and the longer label pushed the
                 nav past the edge of a 390px phone. */}
@@ -323,7 +324,7 @@ export default function ResultsPage({
         </div>
       </nav>
 
-      <div style={{ maxWidth: "520px", margin: "0 auto", padding: "16px 24px 60px", zIndex: 2, position: "relative" }}>
+      <div style={{ maxWidth: "520px", margin: "0 auto", padding: "16px 20px 60px", zIndex: 2, position: "relative" }}>
         <div style={{ marginBottom: "12px" }}>
           <VerdictCard data={verdictData} animate={true} compact={isMobile} cardRef={cardRef} sound />
         </div>
@@ -354,7 +355,7 @@ export default function ResultsPage({
             <p style={{ fontSize: "13px", color: "var(--text-2)", lineHeight: "1.6", margin: "0 4px 16px" }}>
               Try a screenshot with the product more centered and in focus, or paste a direct product link instead.
             </p>
-            <button onClick={onReset} className="btn-primary" style={{ width: "100%", padding: "15px", borderRadius: "12px", fontSize: "15px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif" }}>
+            <button onClick={onReset} className="btn-primary" style={{ width: "100%", padding: "16px", borderRadius: "14px", fontSize: "16px" }}>
               Try another scan
             </button>
           </div>
@@ -363,14 +364,14 @@ export default function ResultsPage({
             {/* Its own layer: the card above is positioned, so its drop shadow
                 otherwise paints on top of this row and greys the buttons out. */}
             <div style={{ display: "flex", gap: "8px", marginBottom: "8px", position: "relative", zIndex: 1 }}>
-              <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "14px", borderRadius: "10px", fontSize: "14px", fontWeight: "600", fontFamily: "var(--font-display), sans-serif", background: "linear-gradient(135deg, #8563c0, #7b5ea7)", color: "white", border: "none", cursor: "pointer", transition: "all 0.18s ease", opacity: saving ? 0.5 : 1 }}>
+              <button onClick={handleSave} disabled={saving} className="btn-primary" style={{ flex: 1, padding: "15px 14px", borderRadius: "14px", fontSize: "15px", opacity: saving ? 0.6 : 1 }}>
                 {saving ? "Generating..." : saved ? "Saved" : "Save to photos"}
               </button>
               {/* 9:16, for Stories. */}
-              <button onClick={handleStory} disabled={storySaving} aria-label="Save for Stories" style={{ padding: "14px 14px", borderRadius: "10px", fontSize: "14px", background: "transparent", color: "rgba(238,238,246,0.8)", border: "1px solid rgba(255,255,255,0.14)", cursor: storySaving ? "default" : "pointer", fontFamily: "var(--font-sans), sans-serif", opacity: storySaving ? 0.5 : 1, whiteSpace: "nowrap" }}>
+              <button onClick={handleStory} disabled={storySaving} aria-label="Save for Stories" className="btn-ghost" style={{ padding: "15px 14px", borderRadius: "14px", fontSize: "14px", fontWeight: 550, cursor: storySaving ? "default" : "pointer", opacity: storySaving ? 0.5 : 1, whiteSpace: "nowrap" }}>
                 {storySaving ? "Rendering" : "Stories"}
               </button>
-              <button onClick={handleShare} disabled={sharing} style={{ padding: "14px 16px", borderRadius: "10px", fontSize: "14px", background: "transparent", color: copied ? "#10d9a0" : "rgba(238,238,246,0.8)", border: copied ? "1px solid rgba(16,217,160,0.3)" : "1px solid rgba(255,255,255,0.14)", cursor: sharing ? "default" : "pointer", transition: "color 0.18s ease, border-color 0.18s ease", fontFamily: "var(--font-sans), sans-serif", opacity: sharing ? 0.5 : 1 }}>
+              <button onClick={handleShare} disabled={sharing} className="btn-ghost" style={{ padding: "15px 16px", borderRadius: "14px", fontSize: "14px", fontWeight: 550, color: copied ? "#10d9a0" : undefined, borderColor: copied ? "rgba(16,217,160,0.3)" : undefined, cursor: sharing ? "default" : "pointer", opacity: sharing ? 0.5 : 1 }}>
                 {sharing ? "Rendering" : copied ? "Copied" : "Share"}
               </button>
             </div>
@@ -379,10 +380,10 @@ export default function ResultsPage({
               <a
                 href={`/scan/${result.scanId}`}
                 style={{
-                  display: "block", width: "100%", padding: "12px", borderRadius: "10px",
-                  fontSize: "13px", textAlign: "center", textDecoration: "none", fontWeight: "500",
-                  marginBottom: "8px", color: "rgba(184,160,232,0.75)",
-                  border: "1px solid rgba(123,94,167,0.28)", background: "rgba(123,94,167,0.06)",
+                  display: "block", width: "100%", padding: "13px", borderRadius: "14px",
+                  fontSize: "13.5px", textAlign: "center", textDecoration: "none", fontWeight: "550",
+                  marginBottom: "8px", color: "#d6c9ff",
+                  border: "1px solid rgba(169,147,255,0.3)", background: "rgba(138,111,240,0.08)",
                   fontFamily: "var(--font-sans), sans-serif",
                 }}
               >
@@ -397,10 +398,10 @@ export default function ResultsPage({
                   target="_blank"
                   rel="noopener noreferrer"
                   style={mode === "VERDICT" ? {
-                    display: "block", width: "100%", padding: "12px", borderRadius: "10px",
-                    fontSize: "13px", textAlign: "center", textDecoration: "none", fontWeight: "500",
-                    marginBottom: "8px", color: "rgba(238,238,246,0.5)",
-                    border: "1px solid rgba(255,255,255,0.09)", background: "transparent",
+                    display: "block", width: "100%", padding: "13px", borderRadius: "14px",
+                    fontSize: "13.5px", textAlign: "center", textDecoration: "none", fontWeight: "500",
+                    marginBottom: "8px", color: "var(--text-2)",
+                    border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.02)",
                     transition: "all 0.18s ease", fontFamily: "var(--font-sans), sans-serif",
                   } : {
                     // FINDER mode's whole purpose is reaching this exact
@@ -409,9 +410,9 @@ export default function ResultsPage({
                     // static shareable image where a button would be a dead
                     // click waiting to happen.
                     display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-                    width: "100%", padding: "14px", borderRadius: "12px",
-                    background: "linear-gradient(135deg, #38bdf8, #2563eb)",
-                    color: "#07070e", fontWeight: "700", fontSize: "14px",
+                    width: "100%", padding: "15px", borderRadius: "14px",
+                    background: "linear-gradient(180deg, #7dd3fc, #38bdf8)",
+                    color: "#050409", fontWeight: "700", fontSize: "14px",
                     fontFamily: "var(--font-display), sans-serif", textDecoration: "none",
                     marginBottom: "8px", boxShadow: "0 0 20px rgba(56,189,248,0.25)",
                   }}
@@ -420,7 +421,7 @@ export default function ResultsPage({
                     <>
                       {sp.linkIsDirect === false ? "Search this listing" : "Go to this price"}
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M7 17L17 7M17 7H9M17 7V15" stroke="#07070e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M7 17L17 7M17 7H9M17 7V15" stroke="#050409" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </>
                   )}
@@ -444,12 +445,12 @@ export default function ResultsPage({
             )}
 
             {!isPaid && (
-              <div style={{ borderRadius: "14px", padding: "20px", textAlign: "center", background: "linear-gradient(135deg, rgba(123,94,167,0.08) 0%, transparent 100%)", border: "1px solid rgba(123,94,167,0.15)", backgroundColor: "#10101e" }}>
-                <p style={{ fontWeight: "600", fontSize: "14px", marginBottom: "4px", color: "#eeeef6" }}>Running low on scans?</p>
-                <p style={{ fontSize: "13px", color: "rgba(238,238,246,0.5)", marginBottom: "16px", lineHeight: "1.55" }}>
+              <div className="offer" style={{ padding: "24px 20px 22px", borderRadius: "18px", marginTop: "8px" }}>
+                <p style={{ fontWeight: "650", fontSize: "15px", marginBottom: "4px", color: "#f5f3ff" }}>Running low on scans?</p>
+                <p style={{ fontSize: "13.5px", color: "var(--text-2)", marginBottom: "16px", lineHeight: "1.55" }}>
                   One-time $4.99. Unlimited scans. Forever.
                 </p>
-                <button onClick={onUpgrade} onPointerEnter={onUpgradeIntent} onPointerDown={onUpgradeIntent} onFocus={onUpgradeIntent} style={{ padding: "11px 28px", borderRadius: "9px", fontSize: "14px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif", background: "linear-gradient(135deg, #8563c0, #7b5ea7)", color: "white", border: "none", cursor: "pointer" }}>
+                <button onClick={onUpgrade} onPointerEnter={onUpgradeIntent} onPointerDown={onUpgradeIntent} onFocus={onUpgradeIntent} className="btn-primary" style={{ padding: "13px 28px", borderRadius: "12px", fontSize: "14.5px" }}>
                   Get unlimited access
                 </button>
               </div>
@@ -457,7 +458,7 @@ export default function ResultsPage({
           </>
         )}
 
-        <div style={{ marginTop: "24px", padding: "14px 16px", borderRadius: "10px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+        <div style={{ marginTop: "24px", padding: "14px 16px", borderRadius: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)" }}>
           <p style={{ fontSize: "12px", color: "var(--text-3)", lineHeight: "1.6", marginBottom: "6px" }}>
             <strong style={{ color: "var(--text-2)" }}>Market Analysis Disclaimer:</strong> All pricing data shown reflects publicly available wholesale listings for similar or comparable products. Results are editorial market analysis, not verified statements about any specific product or brand.
           </p>

@@ -38,13 +38,7 @@ function LoginInner() {
       background: "var(--bg)", fontFamily: "var(--font-sans), sans-serif",
       position: "relative",
     }}>
-      {/* Ambient */}
-      <div style={{
-        position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)",
-        width: "700px", height: "400px",
-        background: "radial-gradient(ellipse at 50% 0%, rgba(123,94,167,0.08) 0%, transparent 65%)",
-        pointerEvents: "none",
-      }} />
+      <div className="page-light" aria-hidden="true" />
 
       <div style={{ maxWidth: "400px", width: "100%", position: "relative", zIndex: 1 }}>
 
@@ -56,21 +50,14 @@ function LoginInner() {
           <Link href="/" aria-label="BustedLab home" style={{ display: "inline-flex", alignItems: "center", gap: "10px", marginBottom: "8px", textDecoration: "none" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo-120.webp" alt="" width={36} height={36} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
-            <span style={{
-              fontFamily: "var(--font-display), sans-serif",
-              fontWeight: "700", fontSize: "20px", letterSpacing: "-0.5px",
-              color: "var(--text)",
-            }}>BustedLab</span>
+            <span className="brand-wordmark" style={{ fontSize: "21px", color: "var(--text)" }}>BustedLab</span>
           </Link>
           <p style={{ fontSize: "14px", color: "var(--text-2)", lineHeight: "1.5" }}>
             Sign in to access your unlimited scans
           </p>
         </div>
 
-        <div style={{
-          background: "var(--bg-card)", border: "1px solid var(--border)",
-          borderRadius: "20px", overflow: "hidden",
-        }}>
+        <div className="card" style={{ borderRadius: "22px", overflow: "hidden" }}>
 
           {sent ? (
             <div style={{ padding: "40px 28px", textAlign: "center" }}>
@@ -83,8 +70,7 @@ function LoginInner() {
                 ✓
               </div>
               <h2 style={{
-                fontFamily: "var(--font-display), sans-serif",
-                fontSize: "20px", fontWeight: "700", marginBottom: "8px",
+                fontSize: "22px", fontWeight: "750", letterSpacing: "-0.03em", marginBottom: "8px",
               }}>Check your inbox</h2>
               <p style={{ color: "var(--text-2)", fontSize: "14px", lineHeight: "1.6" }}>
                 If <strong style={{ color: "var(--text)" }}>{email}</strong> has access, a sign-in link is on its way. Tap it to get in.
@@ -104,17 +90,9 @@ function LoginInner() {
                     onChange={e => setEmail(e.target.value)}
                     placeholder="your@email.com"
                     required
-                    style={{
-                      width: "100%", padding: "12px 16px",
-                      background: "var(--bg-glass)",
-                      border: "1px solid var(--border-mid)",
-                      borderRadius: "10px", color: "var(--text)",
-                      fontSize: "14px", outline: "none",
-                      fontFamily: "var(--font-sans), sans-serif",
-                      marginBottom: "10px", boxSizing: "border-box",
-                    }}
-                    onFocus={e => (e.target.style.borderColor = "var(--accent-2)")}
-                    onBlur={e => (e.target.style.borderColor = "var(--border-mid)")}
+                    aria-label="Email address"
+                    className="field"
+                    style={{ width: "100%", padding: "14px 16px", fontSize: "15px", marginBottom: "10px" }}
                   />
                   {error && (
                     <p style={{
@@ -127,11 +105,9 @@ function LoginInner() {
                     disabled={sending || !email}
                     className="btn-primary"
                     style={{
-                      width: "100%", padding: "13px",
-                      borderRadius: "10px", fontSize: "14px",
-                      fontWeight: "700",
-                      fontFamily: "var(--font-display), sans-serif",
-                      opacity: sending || !email ? 0.4 : 1,
+                      width: "100%", minHeight: "52px", padding: "14px",
+                      borderRadius: "14px", fontSize: "15.5px",
+                      opacity: sending || !email ? 0.45 : 1,
                     }}
                   >
                     {sending ? "Sending..." : "Send sign-in link"}
@@ -169,7 +145,7 @@ export default function LoginPage() {
   return (
     <Suspense fallback={
       <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: "32px", height: "32px", borderRadius: "50%", border: "2px solid rgba(123,94,167,0.2)", borderTopColor: "#9d7fd4" }} className="animate-spin" />
+        <div style={{ width: "32px", height: "32px", borderRadius: "50%", border: "2px solid rgba(138,111,240,0.2)", borderTopColor: "#a993ff" }} className="animate-spin" />
       </div>
     }>
       <LoginInner />

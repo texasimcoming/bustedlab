@@ -36,7 +36,7 @@ export default async function ScanOgImage({ params }: Props) {
   const { id } = await params;
   const record = await cachedRecord(id);
 
-  const accent = record ? VERDICT_COLOR[record.verdict] : "#b8a0e8";
+  const accent = record ? VERDICT_COLOR[record.verdict] : "#c9b8ff";
   const label = record ? VERDICT_LABEL[record.verdict] : "BUSTEDLAB";
 
   return new ImageResponse(
@@ -48,7 +48,7 @@ export default async function ScanOgImage({ params }: Props) {
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          background: "#07070e",
+          background: "#050409",
           padding: "58px 68px",
           position: "relative",
         }}
@@ -60,7 +60,7 @@ export default async function ScanOgImage({ params }: Props) {
             left: 200,
             width: 800,
             height: 680,
-            background: `radial-gradient(circle at center, ${accent}33 0%, rgba(7,7,14,0) 68%)`,
+            background: `radial-gradient(circle at center, ${accent}33 0%, rgba(5,4,9,0) 68%)`,
             display: "flex",
           }}
         />
@@ -71,7 +71,7 @@ export default async function ScanOgImage({ params }: Props) {
 
         <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
           <div style={{ width: 10, height: 10, borderRadius: 5, background: "#10d9a0", display: "flex" }} />
-          <div style={{ fontSize: 19, letterSpacing: 6, color: "rgba(184,160,232,0.6)", display: "flex" }}>
+          <div style={{ fontSize: 19, letterSpacing: 6, color: "rgba(201,184,255,0.6)", display: "flex" }}>
             BUSTEDLAB VERIFIED SCAN
           </div>
         </div>
@@ -87,21 +87,21 @@ export default async function ScanOgImage({ params }: Props) {
               </div>
             </div>
 
-            <div style={{ fontSize: 40, color: "#eeeef6", marginTop: 22, lineHeight: 1.3, display: "flex" }}>
+            <div style={{ fontSize: 40, color: "#f5f3ff", marginTop: 22, lineHeight: 1.3, display: "flex" }}>
               {record.verdict === "FAIR"
                 ? `$${record.savings.toFixed(2)} off market`
                 : `$${record.savings.toFixed(2)} above market`}
             </div>
 
             <div style={{ display: "flex", gap: 14, marginTop: 26 }}>
-              <div style={{ display: "flex", flexDirection: "column", padding: "16px 24px", borderRadius: 12, background: "rgba(239,68,68,0.09)", border: "1px solid rgba(239,68,68,0.28)" }}>
-                <div style={{ fontSize: 17, color: "rgba(238,238,246,0.42)", letterSpacing: 2, display: "flex" }}>ASKING</div>
-                <div style={{ fontSize: 42, fontWeight: 700, color: "#ef4444", marginTop: 6, display: "flex" }}>
+              <div style={{ display: "flex", flexDirection: "column", padding: "16px 24px", borderRadius: 12, background: "rgba(255,77,94,0.09)", border: "1px solid rgba(255,77,94,0.28)" }}>
+                <div style={{ fontSize: 17, color: "rgba(245,243,255,0.42)", letterSpacing: 2, display: "flex" }}>ASKING</div>
+                <div style={{ fontSize: 42, fontWeight: 700, color: "#ff4d5e", marginTop: 6, display: "flex" }}>
                   ${record.retailPrice.toFixed(2)}
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", padding: "16px 24px", borderRadius: 12, background: "rgba(16,217,160,0.09)", border: "1px solid rgba(16,217,160,0.26)" }}>
-                <div style={{ fontSize: 17, color: "rgba(238,238,246,0.42)", letterSpacing: 2, display: "flex" }}>MARKET</div>
+                <div style={{ fontSize: 17, color: "rgba(245,243,255,0.42)", letterSpacing: 2, display: "flex" }}>MARKET</div>
                 <div style={{ fontSize: 42, fontWeight: 700, color: "#10d9a0", marginTop: 6, display: "flex" }}>
                   ${record.wholesalePrice.toFixed(2)}
                 </div>
@@ -110,20 +110,20 @@ export default async function ScanOgImage({ params }: Props) {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: 74, fontWeight: 800, color: "#eeeef6", letterSpacing: -2, lineHeight: 1.08, display: "flex" }}>
+            <div style={{ fontSize: 74, fontWeight: 800, color: "#f5f3ff", letterSpacing: -2, lineHeight: 1.08, display: "flex" }}>
               They built the price.
             </div>
-            <div style={{ fontSize: 74, fontWeight: 800, color: "#b8a0e8", letterSpacing: -2, lineHeight: 1.08, marginTop: 4, display: "flex" }}>
+            <div style={{ fontSize: 74, fontWeight: 800, color: "#c9b8ff", letterSpacing: -2, lineHeight: 1.08, marginTop: 4, display: "flex" }}>
               We built the scanner.
             </div>
           </div>
         )}
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 26, color: "rgba(238,238,246,0.55)", maxWidth: 760, display: "flex", overflow: "hidden" }}>
+          <div style={{ fontSize: 26, color: "rgba(245,243,255,0.55)", maxWidth: 760, display: "flex", overflow: "hidden" }}>
             {record ? record.title.slice(0, 62) : "Scan any product"}
           </div>
-          <div style={{ fontSize: 20, color: "rgba(238,238,246,0.3)", letterSpacing: 2, display: "flex" }}>
+          <div style={{ fontSize: 20, color: "rgba(245,243,255,0.3)", letterSpacing: 2, display: "flex" }}>
             bustedlab.com
           </div>
         </div>

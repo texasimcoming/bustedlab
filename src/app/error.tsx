@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import StatusPage from "@/components/StatusPage";
 
 // A page that throws while rendering. Without this, Next replaces the whole
 // screen with its generic "Application error" text, which to someone who
@@ -14,41 +15,13 @@ export default function PageError({ error, reset }: { error: Error & { digest?: 
   }, [error]);
 
   return (
-    <main style={{
-      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      padding: "24px", fontFamily: "var(--font-sans), sans-serif", position: "relative", zIndex: 1,
-    }}>
-      <div style={{ textAlign: "center", maxWidth: "380px" }}>
-        <div style={{
-          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "10px",
-          letterSpacing: "2.5px", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "14px",
-        }}>
-          SIGNAL LOST
-        </div>
-        <h1 style={{
-          fontFamily: "var(--font-display), sans-serif", fontSize: "26px", fontWeight: "800",
-          letterSpacing: "-0.8px", color: "var(--text)", marginBottom: "10px",
-        }}>
-          Something broke on our side
-        </h1>
-        <p style={{ color: "var(--text-2)", fontSize: "14px", lineHeight: "1.6", marginBottom: "22px" }}>
-          Not you, and nothing you did is lost. Try again in a moment.
-        </p>
-        <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
-          <button onClick={reset} className="btn-primary" style={{
-            padding: "12px 26px", borderRadius: "10px", fontSize: "14px",
-            fontWeight: "700", fontFamily: "var(--font-display), sans-serif",
-          }}>
-            Try again
-          </button>
-          <Link href="/" className="btn-ghost" style={{
-            padding: "12px 22px", borderRadius: "10px", fontSize: "14px", textDecoration: "none",
-            fontFamily: "var(--font-display), sans-serif",
-          }}>
-            Back to the scanner
-          </Link>
-        </div>
+    <StatusPage readout="ERR" label="SIGNAL LOST">
+      <h1 className="status-title balance">Something broke on our side</h1>
+      <p className="status-text">Not you, and nothing you did is lost. Try again in a moment.</p>
+      <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
+        <button onClick={reset} className="btn-primary status-cta">Try again</button>
+        <Link href="/" className="btn-ghost status-cta">Back to the scanner</Link>
       </div>
-    </main>
+    </StatusPage>
   );
 }

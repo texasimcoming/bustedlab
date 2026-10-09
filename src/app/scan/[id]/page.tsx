@@ -93,14 +93,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <div className="card" style={{ borderRadius: "10px", padding: "12px 14px" }}>
+    <div className="card" style={{ borderRadius: "14px", padding: "13px 15px" }}>
       <div style={{
-        fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px",
-        letterSpacing: "1.4px", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "5px",
+        fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "11px",
+        letterSpacing: "1px", color: "var(--text-3)", textTransform: "uppercase", marginBottom: "6px",
       }}>{label}</div>
       <div style={{
-        fontFamily: "var(--font-display), sans-serif", fontSize: "17px", fontWeight: "700",
-        color: color || "var(--text)", letterSpacing: "-0.5px", lineHeight: "1.2",
+        fontFamily: "var(--font-display), sans-serif", fontSize: "20px", fontWeight: "750",
+        color: color || "var(--text)", letterSpacing: "-0.03em", lineHeight: "1.15", fontVariantNumeric: "tabular-nums",
       }}>{value}</div>
     </div>
   );
@@ -112,8 +112,8 @@ function RelatedRow({ record }: { record: ScanRecord }) {
       href={`/scan/${record.id}`}
       className="card panel"
       style={{
-        display: "flex", alignItems: "center", gap: "12px", padding: "11px 13px",
-        borderRadius: "10px", textDecoration: "none",
+        display: "flex", alignItems: "center", gap: "12px", padding: "13px 14px",
+        borderRadius: "12px", textDecoration: "none",
       }}
     >
       <div style={{
@@ -123,7 +123,7 @@ function RelatedRow({ record }: { record: ScanRecord }) {
       }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: "12.5px", color: "var(--text-2)", lineHeight: "1.4",
+          fontSize: "13px", color: "var(--text)", lineHeight: "1.4",
           overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
         }}>{record.title}</div>
       </div>
@@ -158,42 +158,52 @@ export default async function ScanPage({ params }: Props) {
 
   return (
     <main style={{ position: "relative", zIndex: 1, minHeight: "100vh", fontFamily: "var(--font-sans), sans-serif" }}>
-      <nav style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "18px 24px", position: "relative", zIndex: 2, borderBottom: "1px solid var(--border)",
-      }}>
+      <div className="page-light" aria-hidden="true" />
+      <nav className="site-nav">
         <Link href="/" aria-label="BustedLab home" style={{ display: "flex", alignItems: "center", gap: "9px", textDecoration: "none" }}>
           {/* Fixed 32px mark; next/image would add an optimizer round trip for
               an asset never rendered at another size. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-120.webp" alt="" width={40} height={40} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
-          <span className="nav-wordmark" style={{
-            fontFamily: "var(--font-display), sans-serif", fontWeight: "800",
-            fontSize: "20px", letterSpacing: "-0.5px", color: "var(--text)",
-          }}>BustedLab</span>
+          <img src="/logo-120.webp" alt="" width={36} height={36} style={{ borderRadius: "9px", display: "block", objectFit: "cover" }} />
+          <span className="nav-wordmark brand-wordmark" style={{ color: "var(--text)" }}>BustedLab</span>
         </Link>
         <Link href="/" className="btn-primary" style={{
-          borderRadius: "8px", padding: "8px 16px", fontSize: "13px", fontWeight: "600",
-          fontFamily: "var(--font-display), sans-serif", textDecoration: "none",
+          borderRadius: "12px", padding: "11px 16px", fontSize: "14px", textDecoration: "none",
         }}>
           Scan a product
         </Link>
       </nav>
 
-      <div style={{ maxWidth: "520px", margin: "0 auto", padding: "20px 24px 64px", position: "relative", zIndex: 2 }}>
-        <div style={{
-          fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px",
-          letterSpacing: "2px", color: "rgba(184,160,232,0.7)", textTransform: "uppercase",
-          marginBottom: "14px", textAlign: "center",
-        }}>
+      <div style={{ maxWidth: "520px", margin: "0 auto", padding: "20px 20px 64px", position: "relative", zIndex: 2 }}>
+        <div className="label">
           ARCHIVED SCAN RECORD
         </div>
 
         <SharedVerdict data={recordToVerdictData(record)} />
 
+        {/* The next step for someone who arrived on a shared card: their own
+            scan, straight under the card they came for. */}
+        <div className="offer" style={{ marginTop: "16px", padding: "24px 20px 22px", borderRadius: "20px", position: "relative", zIndex: 1 }}>
+          <h2 className="balance" style={{
+            fontSize: "21px", fontWeight: "750",
+            letterSpacing: "-0.03em", marginBottom: "6px", color: "var(--text)",
+          }}>
+            Check the one you were about to buy
+          </h2>
+          <p style={{ color: "var(--text-2)", fontSize: "14px", lineHeight: "1.55", marginBottom: "16px" }}>
+            Drop a link or a screenshot. Two free scans a day, no account.
+          </p>
+          <Link href="/" className="btn-primary" style={{
+            display: "flex", alignItems: "center", justifyContent: "center", width: "100%", minHeight: "54px",
+            padding: "15px 30px", borderRadius: "16px", fontSize: "16px", textDecoration: "none",
+          }}>
+            Run a scan
+          </Link>
+        </div>
+
         {/* Its own layer, so the card's drop shadow does not paint over it. */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "16px", position: "relative", zIndex: 1 }}>
-          <Stat label="Asking price" value={`$${record.retailPrice.toFixed(2)}`} color="#ef4444" />
+          <Stat label="Asking price" value={`$${record.retailPrice.toFixed(2)}`} color="#ff6b79" />
           <Stat label="Market price" value={`$${record.wholesalePrice.toFixed(2)}`} color="#10d9a0" />
           <Stat label="Markup" value={`${record.markup.toLocaleString()}%`} color={VERDICT_COLOR[record.verdict]} />
           <Stat label="Gap" value={`$${record.savings.toFixed(2)}`} color={VERDICT_COLOR[record.verdict]} />
@@ -205,7 +215,7 @@ export default async function ScanPage({ params }: Props) {
         )}
 
         <div style={{
-          marginTop: "10px", padding: "13px 15px", borderRadius: "10px",
+          marginTop: "10px", padding: "14px 16px", borderRadius: "14px",
           background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)",
           display: "flex", flexDirection: "column", gap: "7px",
         }}>
@@ -221,10 +231,10 @@ export default async function ScanPage({ params }: Props) {
                 ]] as [string, string][])
               : []),
           ].map(([label, value]) => (
-            <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: "14px", fontSize: "11.5px" }}>
+            <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: "14px", fontSize: "12.5px" }}>
               <span style={{
                 fontFamily: "var(--font-mono), ui-monospace, monospace",
-                color: "var(--text-3)", letterSpacing: "0.5px", textTransform: "uppercase", fontSize: "9.5px", paddingTop: "2px",
+                color: "var(--text-3)", letterSpacing: "0.5px", textTransform: "uppercase", fontSize: "11px", paddingTop: "1px",
               }}>{label}</span>
               <span style={{ color: "var(--text-2)", textAlign: "right" }}>{value}</span>
             </div>
@@ -237,45 +247,18 @@ export default async function ScanPage({ params }: Props) {
             target="_blank"
             rel="noopener noreferrer nofollow"
             style={{
-              display: "block", width: "100%", padding: "12px", borderRadius: "10px",
-              fontSize: "13px", textAlign: "center", textDecoration: "none", fontWeight: "500",
-              marginTop: "10px", color: "var(--text-2)", border: "1px solid var(--border-mid)",
+              display: "block", width: "100%", padding: "13px", borderRadius: "14px",
+              fontSize: "13.5px", textAlign: "center", textDecoration: "none", fontWeight: "500",
+              marginTop: "10px", color: "var(--text-2)", border: "1px solid var(--border-mid)", background: "rgba(255,255,255,0.02)",
             }}
           >
             View the listing this was measured against
           </a>
         )}
 
-        <div style={{
-          marginTop: "22px", borderRadius: "14px", padding: "22px 20px", textAlign: "center",
-          background: "linear-gradient(135deg, rgba(123,94,167,0.1) 0%, rgba(123,94,167,0.02) 100%)",
-          border: "1px solid rgba(123,94,167,0.18)",
-        }}>
-          <h2 style={{
-            fontFamily: "var(--font-display), sans-serif", fontSize: "19px", fontWeight: "800",
-            letterSpacing: "-0.6px", marginBottom: "6px", color: "var(--text)",
-          }}>
-            Check the one you were about to buy
-          </h2>
-          <p style={{ color: "var(--text-2)", fontSize: "13px", lineHeight: "1.6", marginBottom: "16px" }}>
-            Drop a link or a screenshot. Two free scans a day, no account.
-          </p>
-          <Link href="/" className="btn-primary" style={{
-            display: "inline-block", padding: "12px 30px", borderRadius: "10px",
-            fontSize: "14px", fontWeight: "700", fontFamily: "var(--font-display), sans-serif",
-            textDecoration: "none",
-          }}>
-            Run a scan
-          </Link>
-        </div>
-
         {related.length > 0 && (
           <div style={{ marginTop: "26px" }}>
-            <div style={{
-              fontFamily: "var(--font-mono), ui-monospace, monospace", fontSize: "9px",
-              letterSpacing: "2px", color: "rgba(184,160,232,0.7)",
-              textTransform: "uppercase", marginBottom: "10px",
-            }}>
+            <div className="label">
               RECENT FINDINGS
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
