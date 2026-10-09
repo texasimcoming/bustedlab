@@ -148,6 +148,18 @@ for (const r of answered) {
   r.after = guardMatch({ match: r.gate, tie: r.tie ?? undefined, why: r.why }, r.listing, r.read);
   r.held = r.host || !claims(r.after.match);
 }
+// The model the engine gates with, read from src/lib/scan.ts. Replays on it
+// are held to every rule below. Replays on any other model are trials of a
+// candidate gate: reported in full (TRIAL REPLAYS), never enforced, so that
+// measuring a cheaper model cannot break the build. Switching the gate to a
+// model makes its replays enforced from that commit on.
+const ENGINE_SOURCE = readFileSync(resolve(REPO, "src/lib/scan.ts"), "utf8");
+const MODEL_CONSTS = Object.fromEntries([...ENGINE_SOURCE.matchAll(/^const (\w+) = "(claude-[a-z0-9-]+)";/gm)].map(m => [m[1], m[2]]));
+const gateConst = ENGINE_SOURCE.match(/^const GATE_MODEL = (\w+|"[^"]+");/m)?.[1] || "";
+const SHIPPED_GATE = gateConst.startsWith('"') ? gateConst.slice(1, -1) : (MODEL_CONSTS[gateConst] || "claude-sonnet-5-5");
+const isShippedReplay = (r) => r.source === "replay" && (r.model || SHIPPED_GATE) === SHIPPED_GATE;
+const trials = answered.filter(r => r.source === "replay" && !isShippedReplay(r));
+for (const r of answered) if (r.source === "replay" && !isShippedReplay(r)) r.source = "trial";
 const rows = answered.filter(r => claims(r.gate));
 const replays = rows.filter(r => r.source === "replay");
 // Every candidate the current gate judged again, whatever it answered: a
@@ -196,6 +208,28 @@ if (replays.length > 0) {
     const before = best(rows.filter(r => r.caseId === caseId && r.source === "scan" && !r.host));
     const now = bestNow(rows.filter(r => r.caseId === caseId && r.source === "replay"));
     console.log(`  ${caseId.padEnd(24)} ${before.padEnd(7)} -> ${now}${before !== "none" && now === "none" ? "   (lost)" : ""}`);
+  }
+}
+
+// ── Trials: replays on a model the engine does not gate with ────────────────
+for (const model of [...new Set(trials.map(r => r.model))]) {
+  const all = trials.filter(r => r.model === model);
+  const claimed = all.filter(r => claims(r.gate));
+  const shown = (r) => !r.host && claims(r.after.match);
+  const wrongClaimed = claimed.filter(r => !r.right);
+  const wrongShown = all.filter(r => !r.right && shown(r));
+  const rightShown = all.filter(r => r.right && shown(r));
+  console.log(`\nTRIAL REPLAYS on ${model} (not the shipped gate, ${SHIPPED_GATE}; reported, not enforced)`);
+  console.log(`  ${all.length} candidates judged; claimed exact or likely ${claimed.length}; wrong claimed ${wrongClaimed.length}, still shown after the guards ${wrongShown.length}; right shown ${rightShown.length}`);
+  for (const r of wrongShown) console.log(`  [WRONG SHOWN] ${fmt(r)}`);
+  // Head to head with the shipped gate's replays, on the candidates both judged.
+  const shippedByKey = new Map(answered.filter(isShippedReplay).map(r => [keyOf(r), r]));
+  const both = all.filter(r => shippedByKey.has(keyOf(r)));
+  if (both.length) {
+    const rightShippedShown = both.filter(r => r.right && shown(shippedByKey.get(keyOf(r))));
+    const rightTrialShown = both.filter(r => r.right && shown(r));
+    const wrongShippedShown = both.filter(r => !r.right && shown(shippedByKey.get(keyOf(r))));
+    console.log(`  on the ${both.length} candidates ${SHIPPED_GATE} also judged: right shown ${rightTrialShown.length} (shipped gate ${rightShippedShown.length}); wrong shown ${both.filter(r => !r.right && shown(r)).length} (shipped gate ${wrongShippedShown.length})`);
   }
 }
 

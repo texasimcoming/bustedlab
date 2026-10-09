@@ -73,6 +73,9 @@ export function storedAnswers(resultsDir, runs) {
         run: n, source: "replay", caseId: r.caseId, intent: r.intent || "", purpose: r.purpose || "identify", read: r.read || null,
         listing: { title: r.title || "", source: r.source || "", link: r.link || "", price: r.price || 0 },
         gate: r.gate, match: r.match, tie: r.tie, guard: r.guard || null, why: r.why || "", from: r.from || null,
+        // "claude-haiku-5-5@low"; runs that did not record it replayed the
+        // shipped gate (Sonnet 5.5 at low effort).
+        model: String(d.replay?.model || "claude-sonnet-5-5@low").split("@")[0],
       });
     }
   }
