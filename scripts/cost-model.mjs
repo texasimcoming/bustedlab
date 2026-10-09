@@ -25,11 +25,12 @@
 // https://platform.claude.com/docs/en/about-claude/pricing
 // https://platform.claude.com/docs/en/build-with-claude/prompt-caching
 // Cache write (5 minutes) is 1.25x input on both; cache read is 0.05x input
-// on Opus 5.5 and 0.1x on Sonnet 5.5 ($0.20 per million either way). Both
-// cache a prefix from 512 tokens, so the reference photo caches on both.
+// on both ($0.20 per million on Opus 5.5, $0.10 on Sonnet 5.5; checked
+// 2026-10-09). Both cache a prefix from 512 tokens, so the reference photo
+// caches on both.
 const MODELS = {
   opus: { id: "claude-opus-5-5", input: 4.0, output: 20.0, cacheRead: 0.05, cacheMinimum: 512 },
-  sonnet: { id: "claude-sonnet-5-5", input: 2.0, output: 10.0, cacheRead: 0.1, cacheMinimum: 512 },
+  sonnet: { id: "claude-sonnet-5-5", input: 2.0, output: 10.0, cacheRead: 0.05, cacheMinimum: 512 },
 };
 const CACHE_WRITE_MULTIPLIER = 1.25;
 

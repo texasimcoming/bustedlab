@@ -54,6 +54,9 @@ const DOCUMENTED = {
   "claude-sonnet-5-5": { sampling: "rejected",         thinking: ["adaptive", "between_tools"], effort: true, thinksByDefault: true, betweenToolsMaxEffort: "high" },
   "claude-fable-5":    { sampling: "rejected",         thinking: ["adaptive"],                 effort: true, thinksByDefault: true },
   "claude-fable-5-1":  { sampling: "rejected",         thinking: ["adaptive"],                 effort: true, thinksByDefault: true },
+  // Haiku 5.5 migration guide, checked 2026-10-09: non-default sampling,
+  // budget_tokens and prefill are a 400; disabled thinking only at high or below.
+  "claude-haiku-5-5":  { sampling: "rejected",         thinking: ["adaptive", "disabled"],     effort: true, thinksByDefault: true, disabledMaxEffort: "high" },
 };
 const canonical = (model) => String(model || "").replace(/-\d{8}$/, "");
 
@@ -332,6 +335,10 @@ globalThis.fetch = async (input, init = {}) => {
 // ════════════════════════════════════════════════════════════════
 // Run.
 // ════════════════════════════════════════════════════════════════
+// The engine checks every page address with DNS before fetching it
+// (fetchPublic in src/lib/net-guard.ts). These hosts are made up and served by
+// the stubbed fetch, so they resolve to a public documentation address here.
+(await import(localModule("net-guard"))).setResolverForChecks(async () => [{ address: "93.184.216.34" }]);
 const engine = await loadEngine();
 const { resetSpendModeCache } = await import(localModule("model-budget"));
 

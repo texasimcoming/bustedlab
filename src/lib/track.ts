@@ -1,6 +1,24 @@
 "use client";
 
 import type { EventName } from "@/lib/analytics";
+import { detectSource, type TrafficSource } from "@/lib/source";
+
+/**
+ * The visit's channel (src/lib/source.ts), worked out once per page load and
+ * held in memory only: nothing is written to the device. The whole funnel,
+ * from landing to checkout, happens on one page, and a visitor who moves from
+ * a shared verdict to the scanner is recognised by the address they came from.
+ */
+let pageSource: TrafficSource | null = null;
+function visitSource(): TrafficSource {
+  if (!pageSource) {
+    pageSource = detectSource({
+      search: location.search, path: location.pathname, referrer: document.referrer,
+      userAgent: navigator.userAgent, host: location.hostname,
+    });
+  }
+  return pageSource;
+}
 
 /**
  * The client half of the counter. Three lines of real work and one important
@@ -19,7 +37,7 @@ import type { EventName } from "@/lib/analytics";
 export function track(event: EventName): void {
   if (typeof window === "undefined") return;
   try {
-    const body = JSON.stringify({ event });
+    const body = JSON.stringify({ event, source: visitSource() });
     if (navigator.sendBeacon) {
       navigator.sendBeacon("/api/event", new Blob([body], { type: "application/json" }));
       return;

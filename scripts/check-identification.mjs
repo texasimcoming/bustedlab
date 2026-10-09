@@ -1088,6 +1088,10 @@ process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
 const REFERENCE_PHOTO = Buffer.from("REFERENCE-PHOTO-A").toString("base64");
 const SECOND_PHOTO = Buffer.from("REFERENCE-PHOTO-B").toString("base64");
 
+// The engine checks every page address with DNS before fetching it
+// (fetchPublic in src/lib/net-guard.ts). These hosts are made up and served by
+// the stubbed fetch, so they resolve to a public documentation address here.
+(await import(localModule("net-guard"))).setResolverForChecks(async () => [{ address: "93.184.216.34" }]);
 const { resetSpendModeCache } = await import(localModule("model-budget"));
 
 function freshStats() {

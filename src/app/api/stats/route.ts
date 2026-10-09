@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildFunnel, readEvents, readScanCosts, readScanFailures, readWrongProduct, CLIENT_EVENTS } from "@/lib/analytics";
+import { buildFunnel, readEvents, readEventsBySource, readScanCosts, readScanFailures, readWrongProduct, CLIENT_EVENTS } from "@/lib/analytics";
 import { getLedgerSize, readCspViolations, readGlobalScansHistory, GLOBAL_DAILY_CAP } from "@/lib/redis";
 import { readModelSpendHistory, currentSpendMode, DAILY_MODEL_BUDGET_USD } from "@/lib/model-budget";
 import { serperCreditsLeft, serpApiSearchesLeft } from "@/lib/provider-balance";
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   const requested = Number(req.nextUrl.searchParams.get("days") || 30);
   const days = Math.min(Math.max(Number.isFinite(requested) ? requested : 30, 1), 120);
 
-  const [series, ledgerSize, csp, failures, wrongProduct, spendDays, scanDays, mode, serper, serpapi, scanCosts] = await Promise.all([
+  const [series, ledgerSize, csp, failures, wrongProduct, spendDays, scanDays, mode, serper, serpapi, scanCosts, bySource] = await Promise.all([
     readEvents(days),
     getLedgerSize().catch(() => 0),
     readCspViolations(days).catch(() => []),
@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
     serperCreditsLeft(),
     serpApiSearchesLeft(),
     readScanCosts(days),
+    readEventsBySource(days),
   ]);
 
   return NextResponse.json(
@@ -81,6 +82,10 @@ export async function GET(req: NextRequest) {
       scanCosts,
       // What the search accounts have left (free lookups; numbers only).
       providers: { serperCreditsLeft: serper.known ? serper.left : null, serpApiSearchesLeft: serpapi.known ? serpapi.left : null },
+      // The browser-side funnel over the window, by the channel that brought
+      // the visit (src/lib/source.ts). Counts sent before channels existed
+      // are in the totals only.
+      bySource,
       window: buildFunnel(series, "window"),
       lifetime: buildFunnel(series, "total"),
       series: series.map(s => ({

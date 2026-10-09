@@ -165,6 +165,10 @@ globalThis.fetch = async (input, init = {}) => {
   throw new Error(`unmocked fetch: ${url}`);
 };
 
+// The engine checks every page address with DNS before fetching it
+// (fetchPublic in src/lib/net-guard.ts). These hosts are made up and served by
+// the stubbed fetch, so they resolve to a public documentation address here.
+(await import(localModule("net-guard"))).setResolverForChecks(async () => [{ address: "93.184.216.34" }]);
 const engine = await loadEngine(undefined, "prices");
 const { resetSpendModeCache } = await import(localModule("model-budget"));
 async function run(next, how = "photo") {

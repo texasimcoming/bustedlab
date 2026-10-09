@@ -66,4 +66,20 @@ section("THE FAILURE RECORD IS READABLE");
     JSON.stringify(failures.recent[0]));
 }
 
+section("REDIS UNREACHABLE: A FREE SCAN IS REFUSED, NOT RUN UNCAPPED");
+{
+  // An Upstash outage, or its free tier running out in a spike. Every other
+  // limit fails open; the global daily cap must not, or free scans would run
+  // without any cap on spend.
+  env({ ANTHROPIC_API_KEY: "sk-ant-failure-check-key" }); reset();
+  const callsBefore = logs.errors.filter(e => e.includes("provider=anthropic")).length;
+  redis.down = true;
+  const res = await scan();
+  redis.down = false;
+  check("answers 503 high_demand", res.status === 503 && res.json?.error === "high_demand", `${res.status} ${res.text.slice(0, 120)}`);
+  check("no model call was attempted", logs.errors.filter(e => e.includes("provider=anthropic")).length === callsBefore,
+    logs.errors.slice(-3).join(" | "));
+  check("and it says why in the log", logs.errors.some(e => e.includes("global daily cap could not be read")), logs.errors.slice(-2).join(" | "));
+}
+
 finish("scan failure");

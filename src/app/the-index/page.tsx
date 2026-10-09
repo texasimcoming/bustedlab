@@ -54,11 +54,20 @@ export const metadata: Metadata = {
   description:
     "A live index of the steepest product markups verified in the last 30 days. Real prices, real sources, every entry backed by a permanent scan record.",
   alternates: { canonical: "/the-index" },
+  // A page's own openGraph replaces the site's, image included, so the image
+  // is named here: without it a shared link to The Index had no preview.
   openGraph: {
     title: "The Index: every markup we have measured",
     description: "The steepest product markups verified in the last 30 days. Every entry is a real scan.",
     url: "/the-index",
     type: "website",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "BustedLab. They built the price. We built the scanner." }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "The Index: every markup we have measured",
+    description: "The steepest product markups verified in the last 30 days. Every entry is a real scan.",
+    images: ["/opengraph-image"],
   },
 };
 

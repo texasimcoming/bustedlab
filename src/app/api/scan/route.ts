@@ -384,12 +384,23 @@ export async function POST(req: NextRequest) {
     } else {
       // ── Global daily spend guard. Only uncached scans can reach the paid
       //    APIs, so only uncached scans count against the cap. ──
+      //
+      //    It fails CLOSED for free scans. Every other limit on this route
+      //    fails open when Redis cannot be reached, so that a storage blip
+      //    never blocks a real visitor; this cap is what bounds the day's
+      //    spend on free scans, and if it failed open too, an Upstash outage,
+      //    or its free tier running out during a viral spike, would let free
+      //    scans run uncapped until the Anthropic balance was gone. Paid
+      //    scans are not affected (and are bounded by revenue and fair use);
+      //    the hourly watchdog raises an alarm when Redis is unreachable.
       if (!isPaid) {
+        let atCap = true;
         try {
-          if (await getGlobalScansToday() >= GLOBAL_DAILY_CAP) {
-            return NextResponse.json({ error: "high_demand" }, { status: 503 });
-          }
-        } catch { /* allow */ }
+          atCap = (await getGlobalScansToday()) >= GLOBAL_DAILY_CAP;
+        } catch (err) {
+          console.error("[scan] free scan refused: the global daily cap could not be read, so free scans pause until Redis answers:", (err as Error)?.message || err);
+        }
+        if (atCap) return NextResponse.json({ error: "high_demand" }, { status: 503 });
       }
       result = await runScan();
       if (result.failure) {

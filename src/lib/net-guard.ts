@@ -1,3 +1,5 @@
+import { lookup } from "node:dns/promises";
+
 /**
  * ADDRESS AND HOSTNAME CLASSIFICATION for the image proxy's SSRF guard.
  *
@@ -18,9 +20,10 @@
  *     blank. This one classifies global unicast as public, and enumerates
  *     what is private.
  *
- * Kept in its own module with zero imports so scripts/check-net-guard.mjs
- * can exercise the real functions against a fixed table, the same way
- * verdict.ts is separated for the calibration check. A guard whose failure
+ * Kept in its own module, importing nothing but Node's resolver, so
+ * scripts/check-net-guard.mjs can exercise the real functions against a
+ * fixed table, the same way verdict.ts is separated for the calibration
+ * check, and the scan engine's test loader can use it as it is. A guard whose failure
  * mode is "the whole site loses its images" earns a test that does not
  * depend on a DNS server answering.
  */
@@ -39,6 +42,7 @@ function isPrivateIPv4(host: string): boolean {
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 192 && b === 168) return true;
   if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+  if (a === 198 && (b === 18 || b === 19)) return true; // benchmarking 198.18.0.0/15
   if (a >= 224) return true;                         // multicast and reserved
   return false;
 }
@@ -62,6 +66,16 @@ export function isPrivateAddress(address: string): boolean {
   // IPv4-mapped and IPv4-translated forms carry a v4 address inside them.
   const embedded = host.match(/:((?:\d{1,3}\.){3}\d{1,3})$/);
   if (embedded) return isPrivateIPv4(embedded[1]);
+
+  // The same mapped forms written in hex (::ffff:a9fe:a9fe is
+  // 169.254.169.254), and the NAT64 prefix 64:ff9b::/96, which a resolver
+  // can hand back for any IPv4 address, private ones included.
+  const hexMapped = host.match(/^(?:::ffff:(?:0:)?|64:ff9b::)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (hexMapped) {
+    const high = parseInt(hexMapped[1], 16);
+    const low = parseInt(hexMapped[2], 16);
+    return isPrivateIPv4(`${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`);
+  }
 
   // 6to4 (2002::/16) encodes an IPv4 address in the next two hextets, which
   // is a documented way to smuggle a private destination past a v6 check.
@@ -94,4 +108,94 @@ export function isPrivateHostname(hostname: string): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * A URL the server may fetch on someone else's say-so (a link a visitor
+ * pasted, a store address read off a screenshot): http or https on the
+ * default port, no credentials in it, a dotted public hostname. Returns the
+ * parsed URL, or null. The resolved address is judged separately
+ * (fetchPublic, below), because that needs DNS.
+ */
+export function publicHttpUrl(raw: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  if (url.username || url.password) return null;
+  if (url.port && url.port !== "443" && url.port !== "80") return null;
+  const host = stripBrackets(url.hostname);
+  if (!host.includes(".") || isPrivateHostname(host)) return null;
+  return url;
+}
+
+
+/**
+ * FETCHING A URL SOMEONE ELSE CHOSE.
+ *
+ * A link scan fetches whatever page the visitor pasted, and a screenshot scan
+ * fetches the store address the model read off the image. Both used to go
+ * straight to fetch() with redirects followed, so a link to an internal
+ * address, or a public page that redirects to one, was fetched from inside
+ * the platform and its text handed to the model. Every hop is now checked
+ * here first: the URL itself (publicHttpUrl, above) and the
+ * addresses its hostname resolves to. Redirects are followed by hand, at most
+ * MAX_REDIRECTS of them, each checked the same way.
+ *
+ * The same trade the image proxy makes (src/app/api/proxy-image/route.ts):
+ * the address is checked, not pinned, so a resolver that answers differently
+ * a moment later is not covered. Pinning means a custom connection agent on
+ * the scan path; this narrows the real hole for one DNS lookup per hop.
+ */
+const MAX_REDIRECTS = 4;
+
+type Resolver = (host: string) => Promise<{ address: string }[]>;
+let resolveHost: Resolver = host => lookup(host, { all: true, verbatim: true });
+
+/**
+ * For the offline checks only (scripts/check-*.mjs), which serve made-up shop
+ * hosts from a stubbed fetch and have no DNS to ask. Production never calls it.
+ */
+export function setResolverForChecks(resolver: Resolver): void {
+  resolveHost = resolver;
+}
+
+/** True when the name has no public address, or any of its addresses is private. */
+export async function resolvesToPrivate(hostname: string): Promise<boolean> {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  // A literal was already judged by publicHttpUrl.
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":")) return false;
+  try {
+    const records = await resolveHost(host);
+    if (records.length === 0) return true;
+    return records.some(record => isPrivateAddress(record.address));
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * fetch() for a URL from outside, or null when any hop is refused, a redirect
+ * has nowhere to go, or there are too many of them. The caller's own errors
+ * (a timeout, a reset) still throw, as fetch() does.
+ */
+export async function fetchPublic(raw: string, init: RequestInit = {}): Promise<Response | null> {
+  let current = raw;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const url = publicHttpUrl(current);
+    if (!url || (await resolvesToPrivate(url.hostname))) return null;
+    const res = await fetch(url.toString(), { ...init, redirect: "manual" });
+    if (res.status < 300 || res.status >= 400) return res;
+    const location = res.headers.get("location");
+    if (!location) return null;
+    try {
+      current = new URL(location, url).toString();
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }

@@ -242,9 +242,12 @@ export default function ResultsPage({
 
   // The permanent address for this verdict. Present only when the ledger write
   // succeeded, so a share never points at a page that does not exist.
+  // Tagged ?ref=share, so a visit that arrives on it counts for the share
+  // loop wherever it was posted (src/lib/source.ts). The tag carries nothing
+  // about who shared it.
   const permalink = result.scanId
-    ? `${typeof window === "undefined" ? "https://bustedlab.com" : window.location.origin}/scan/${result.scanId}`
-    : "https://bustedlab.com";
+    ? `${typeof window === "undefined" ? "https://bustedlab.com" : window.location.origin}/scan/${result.scanId}?ref=share`
+    : "https://bustedlab.com/?ref=share";
 
   // What travels with the card: see shareCaption in src/lib/verdict-copy.ts.
   // The URL is the part that matters. Sharing only a PNG was a dead end: an

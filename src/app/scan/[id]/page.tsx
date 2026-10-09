@@ -5,6 +5,7 @@ import { unstable_cache } from "next/cache";
 import { getScanRecord, getProductAggregate, getRecentRecords, type ScanRecord } from "@/lib/redis";
 import { recordToVerdictData, recordHeadline, VERDICT_COLOR, VERDICT_LABEL } from "@/lib/scan-record-view";
 import SharedVerdict from "@/components/SharedVerdict";
+import ViewBeacon from "@/components/ViewBeacon";
 import { conversionNote } from "@/lib/verdict-copy";
 
 /**
@@ -180,6 +181,8 @@ export default async function ScanPage({ params }: Props) {
         </div>
 
         <SharedVerdict data={recordToVerdictData(record)} />
+        {/* The top of the share loop's funnel: a shared verdict was opened. */}
+        <ViewBeacon event="shared_viewed" />
 
         {/* The next step for someone who arrived on a shared card: their own
             scan, straight under the card they came for. */}

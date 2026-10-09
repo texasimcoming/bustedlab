@@ -74,6 +74,13 @@ export const MODEL_RULES: Record<string, ModelRule> = {
   // high), at $10 / $50 per million tokens, and it needs 30-day data
   // retention: an organization without it gets a 400 invalid_request_error.
   "claude-fable-5-1": { effort: "low", efforts: EFFORTS },
+  // In the table so the evaluation can measure it, at $0.10 / $0.50 per
+  // million tokens (prompts up to 100K tokens), a twentieth of Sonnet 5.5.
+  // Same request surface (no sampling, adaptive thinking on by default, no
+  // prefill, efforts low to max, default medium); "disabled" thinking is
+  // accepted at high effort or below, and is never sent. No server-side
+  // refusal fallback on this model: the engine's own fallback model covers it.
+  "claude-haiku-5-5": { effort: "low", efforts: EFFORTS },
 };
 
 /** "claude-sonnet-5-5-20261001" -> "claude-sonnet-5-5". Current ids carry no date. */
