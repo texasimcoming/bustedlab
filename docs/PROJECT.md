@@ -1,6 +1,6 @@
 # BustedLab: project memory
 
-As of 2 October 2026, updated 5 October 2026. These are the owner's facts and decisions. Do not add claims here that the owner has not made.
+As of 2 October 2026, updated 9 October 2026. These are the owner's facts and decisions. Do not add claims here that the owner has not made.
 
 ## What it is
 
@@ -46,6 +46,8 @@ Never change or remove these. If a change would touch one, flag it and ask.
 - Same-market verdicts: a scan gets a verdict (BUSTED / OVERPRICED / FAIR PRICE) only when the source listing's price is in the same currency as the asking price (the screenshot's, or the scanned page's). A euro screenshot against a rupiah store, or a dirham one against a US listing, gets the cheapest-link card with the regional-shipping note and no verdict; both prices are still converted for display. Why: regional prices, VAT and shipping make a cross-border gap unreliable to accuse a seller on. See SAME-MARKET VERDICTS in `src/lib/scan.ts`.
 - Prices are read by one parser (`parsePrice` in `src/lib/fx.ts`) wherever they come from: page meta tags, microdata and JSON-LD, Serper and SerpApi price strings, and the model's reads. A format that could mean two things is unreadable, never guessed: a missing price only costs a verdict, a wrong one makes a false accusation. Provider prices count only when the provider's text and its own extracted number agree.
 - Plausible gap: no verdict when the asking price and the source price are more than 50 times apart, in either direction. The scan returns the cheapest-link card with a short note. A misread price is off by 100 or 1,000 times, not by a few percent. See PLAUSIBLE GAP in `src/lib/scan.ts`.
+- Pages fetched on someone else's say-so (a pasted link, a store address read off a screenshot, a search result) go through `fetchPublic` in `src/lib/net-guard.ts`: http or https on the default port, no credentials, a public hostname whose every address is public, and redirects followed by hand, at most four, each hop checked. `npm run check:net-guard` proves it offline; run 11 proved it live (an http link redirected to https and the page was read).
+- The global daily cap on free scans fails closed: if Redis cannot be read, a free scan gets the "high demand" answer instead of running uncapped. Every other limit fails open. Paid scans are unaffected.
 - Link scans take the brand the page's own product data states (schema.org brand or product:brand, never "Generic" or "Unbranded"), and the match guards compare listings with it as with a brand read off a photo.
 - Search: Serper is primary, SerpApi is the backup.
 - Escalation policy: the cheapest provider first, the better one when the cheap one cannot verify. Serper's Lens answers first; when nothing it found survives the gate and the match guards, SerpApi's Lens is asked once, only while SerpApi is above its reserve with a known balance, never on a degraded day. See ESCALATION in `src/lib/scan.ts`.
@@ -67,6 +69,13 @@ Never change or remove these. If a change would touch one, flag it and ask.
   - SerpApi costs about $0.015 per search, with 250 free a month.
 - **Voyage multimodal embeddings:** a free allowance of roughly tens of thousands of images, then about a tenth of a cent each.
 - **Anthropic's connector directory portal** opened on 25 Sept 2026 for anyone on a paid Claude plan (claude.ai/directory/manage).
+- **Anthropic prices (checked 9 Oct 2026, platform.claude.com pricing page):** Opus 5.5 $4 / $20 per million tokens, Sonnet 5.5 $2 / $10, Haiku 5.5 $0.10 / $0.50 (prompts up to 100K tokens). Cache reads 0.05x input on Opus 5.5 and Sonnet 5.5, 0.1x on Haiku 5.5; 5-minute cache writes 1.25x. Batch is 50% off but asynchronous, so it does not fit a live scan.
+- **Upstash free tier:** 500,000 commands a month, then pay as you go at about $0.20 per 100,000 (Upstash's own blog). A landing visit costs about 16 to 20 commands in production (measured locally: 36 without the CDN-cached leaderboard).
+- **Vercel Hobby:** 1M function invocations and 4 CPU-hours a month; going over pauses the feature for up to 30 days. Non-commercial only. Pro is $20 a month.
+- **Lemon Squeezy:** 5% + 50c per sale, +1.5% international, +1.5% PayPal. Payouts on the 1st and 15th, $50 minimum; US bank payouts free, 1% outside the US (docs; the pricing page was not reachable from the sandbox).
+- **SerpApi:** free plan 250 searches a month; cached searches (the same Lens query again within its cache window) are free.
+- **WhatsApp link previews** fail silently above about 300 KB (widely reported, undocumented). The preview images here are 72 to 81 KB.
+- **Haiku 5.5 as the gate: rejected (run 11, 9 Oct 2026).** It would cut the gate, about 83% of a scan's Claude cost, by about 20 times. Replayed on all 370 stored candidates for $0.046: the guards held 11 of its 12 wrong claims, but one was still shown (a Taobao "Stanley Shaker Cup" passed as likely on the Stanley logo), and on run 6's 89 hard candidates it kept 6 right matches against Sonnet 5.5's 11. Zero wrong products comes first, so the gate stays on Sonnet. Re-test any new small model the same way: a `replay` with `model` in `evals/run.json`; `npm run check:match-guards` reports it as a trial, head to head with the shipped gate.
 - **Sovrn Commerce and Skimlinks** auto-convert outbound links, and each reviews the site first.
   - Sovrn: install, generate clicks, then about 5 business days. Independent sources say new or small sites are often declined.
   - Skimlinks reportedly keeps about 25% and pays on long terms (secondary sources).
@@ -92,6 +101,28 @@ Each phase moves on only when its gate is met and its cost is funded by revenue.
   - then ChatGPT;
   - starting with link and text inputs and a capped free allowance.
 
+## Tagging links (for the funnel by channel)
+
+Each browser count carries one channel word (`src/lib/source.ts`). Tag every link you post so it is counted right: the TikTok bio `https://bustedlab.com/?utm_source=tiktok`, an Instagram Story sticker `?utm_source=instagram`, X `?utm_source=x`. Share links from the result screen carry `?ref=share` already. `/api/stats` returns `bySource`, and the weekly brief has "Where visits came from".
+
+## Example photos: the shot list
+
+The landing page's hero and example card read `src/content/examples.ts`. It works with the one photo there is now and cycles through more. For each new example: one product you own, bought cheaply, with its two prices verified by you (the asking price on an ad or shop listing, and the source price on a wholesale listing for the same configuration).
+
+- **Products:** an LED light therapy face mask (`led-face-mask`), an electric scalp massager (`scalp-massager`), a galaxy star projector night light (`star-projector`), a USB portable blender (`portable-blender`), a posture corrector brace (`posture-corrector`).
+- **Framing:** square, at least 2400 px, the product about 60% of the frame's width, centred, held or used by one hand to show its size. Keep everything important in the middle band: phones crop the top and bottom fifth.
+- **Background:** plain matte charcoal or a dark desk. No props. Turn brand names away from the camera.
+- **Light:** one soft light from above and front-left (a window, or a lamp bounced off the ceiling), a white card opposite. No flash, no filters, no retouching beyond crop and exposure.
+- **Files:** `public/demo/<id>-480.webp`, `-720.webp`, `-960.webp` (square), and `<id>-150.webp` for the card's thumbnail, next to the original `public/demo/<id>.jpg`, as the first example has them.
+- **Entry:** add `{ id, title, label, asking, source, photo, thumb }` to `examples.ts`. The markup, the gap and the verdict are computed by `calculateVerdict`, so they cannot disagree with the engine.
+
+## Rollback plan
+
+- **A bad deploy:** in Vercel, Deployments, open the last good production deployment and choose "Promote to Production" (instant, no rebuild). Then revert the merge on GitHub (`git revert -m 1 <merge sha>`) through a PR so main matches what is live.
+- **How you know:** the watchdog runs after every production deploy (diagnose when runtime code changed) and every hour, and opens a "watchdog" issue that mentions the owner when anything fails.
+- **Spend running away:** set `DAILY_MODEL_BUDGET_USD` lower, or `GLOBAL_DAILY_SCAN_CAP` to 0 to pause free scans, in Vercel's environment variables, then redeploy. The Anthropic balance is prepaid, so it is the final ceiling.
+- **Redis down:** free scans pause by themselves (the cap fails closed); landing pages keep working.
+
 ## Lessons
 
 - **Stubbed tests hide real failures.** Tests that stubbed the Claude API hid a real 400 (temperature on Opus 5) behind silent failures. After any model or parameter change, run `/api/diagnose` and keep failures loud.
@@ -100,6 +131,8 @@ Each phase moves on only when its gate is met and its cost is funded by revenue.
 - **Evaluation scans never touch public data.**
 - **All changes go through a PR.** Never push a zip to main.
 - **No test purchase with the owner's card.**
+- **Every URL from outside is hostile until checked.** Link scans fetched any address with redirects followed; the image proxy had been guarded since the start, the page fetch had not. One guard now covers both kinds of fetch.
+- **A cap that fails open is not a cap.** The free-scan cap is the one limit that fails closed.
 - **A model's "match" is a claim, not a fact.** The gate called lookalikes "exact" or "likely" on shape and colour alone, and once answered "exact" on a page it had itself described as an article. Match rules are enforced in code on every answer, and measured against every stored labelled result (`npm run check:match-guards`). Zero wrong products labelled exact or likely comes first; the recall it costs is reported plainly.
 
 ## How to report to the owner
